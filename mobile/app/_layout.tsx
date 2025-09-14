@@ -1,6 +1,6 @@
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { useFonts } from 'expo-font';
-import { Slot, Stack, useRouter, useSegments } from 'expo-router';
+import { Stack, useRouter, useSegments } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import 'react-native-reanimated';
 
@@ -9,23 +9,29 @@ import { AuthProvider, useAuth } from '@/main/AuthContext';
 import React, { useEffect } from 'react';
 
 function AuthGate() {
-	const { isAuthenticated, selectedMotorcycle } = useAuth();
+	const { isAuthenticated, user, selectedMotorcycle } = useAuth();
 	const router = useRouter();
 	const segments = useSegments();
 
 	useEffect(() => {
 		if (!isAuthenticated) {
-			if (segments[0] !== 'login') router.replace('/login');
+			if (segments[0] !== 'login' && segments[0] !== 'signup') router.replace('/login');
 			return;
 		}
-		if (isAuthenticated && !selectedMotorcycle) {
-			if (segments[0] !== 'select-motorcycle') router.replace('/select-motorcycle');
-			return;
+
+		// Route based on user role
+		if (isAuthenticated && user) {
+			if (user.role === 'operator') {
+				if (segments[0] !== 'operator-dashboard') router.replace('/operator-dashboard');
+			} else if (user.role === 'driver') {
+				if (!selectedMotorcycle) {
+					if (segments[0] !== 'select-motorcycle') router.replace('/select-motorcycle');
+				} else {
+					if (segments[0] !== '(tabs)') router.replace('/(tabs)');
+				}
+			}
 		}
-		if (isAuthenticated && selectedMotorcycle) {
-			if (segments[0] !== '(tabs)') router.replace('/(tabs)');
-		}
-	}, [isAuthenticated, selectedMotorcycle, segments]);
+	}, [isAuthenticated, user, selectedMotorcycle, segments]);
 
 	return null;
 }
@@ -47,7 +53,9 @@ export default function RootLayout() {
 				<Stack>
 					<Stack.Screen name="(tabs)" options={{ headerShown: false }} />
 					<Stack.Screen name="login" options={{ headerShown: false }} />
+					<Stack.Screen name="signup" options={{ headerShown: false }} />
 					<Stack.Screen name="select-motorcycle" options={{ title: 'Select Motorcycle' }} />
+					<Stack.Screen name="operator-dashboard" options={{ headerShown: false }} />
 					<Stack.Screen name="+not-found" />
 				</Stack>
 				<StatusBar style="auto" />

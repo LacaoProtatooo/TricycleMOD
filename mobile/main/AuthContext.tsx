@@ -1,5 +1,14 @@
 import React, { createContext, useContext, useMemo, useState, ReactNode } from 'react';
 
+export type UserRole = 'driver' | 'operator';
+
+export interface User {
+	id: string;
+	email: string;
+	name: string;
+	role: UserRole;
+}
+
 export type MotorcycleModel =
 	| 'Yamaha RS 110/125'
 	| 'Vega Force i'
@@ -30,11 +39,13 @@ const DEFAULT_TASKS: MaintenanceTaskDefinition[] = [
 
 interface AuthState {
 	isAuthenticated: boolean;
+	user: User | null;
 	selectedMotorcycle: MotorcycleModel | null;
 	odometerKm: number;
 	maintenanceTasks: MaintenanceTaskDefinition[];
 	maintenanceRecords: Record<MaintenanceTaskKey, MaintenanceRecord>;
-	login: () => void;
+	login: (email: string, password: string) => void;
+	signup: (email: string, password: string, name: string, role: UserRole) => void;
 	logout: () => void;
 	selectMotorcycle: (model: MotorcycleModel) => void;
 	addKilometers: (deltaKm: number) => void;
@@ -45,6 +56,7 @@ const AuthContext = createContext<AuthState | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: ReactNode }) {
 	const [isAuthenticated, setIsAuthenticated] = useState<boolean>(false);
+	const [user, setUser] = useState<User | null>(null);
 	const [selectedMotorcycle, setSelectedMotorcycle] = useState<MotorcycleModel | null>(null);
 	const [odometerKm, setOdometerKm] = useState<number>(0);
 	const [maintenanceTasks] = useState<MaintenanceTaskDefinition[]>(DEFAULT_TASKS);
@@ -53,6 +65,13 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 		chain_lubrication: { lastServicedKm: 0 },
 		tire_checkup: { lastServicedKm: 0 },
 	});
+
+	// Simple in-memory storage for demo purposes
+	// In a real app, this would be stored in a database
+	const [users, setUsers] = useState<User[]>([
+		{ id: '1', email: 'driver@example.com', name: 'John Driver', role: 'driver' },
+		{ id: '2', email: 'operator@example.com', name: 'Jane Operator', role: 'operator' },
+	]);
 
 	function addKilometers(deltaKm: number) {
 		if (!Number.isFinite(deltaKm)) return;
@@ -66,15 +85,45 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 		}));
 	}
 
+	function login(email: string, password: string) {
+		// Simple authentication - in a real app, this would validate against a secure backend
+		const foundUser = users.find(u => u.email === email);
+		if (foundUser) {
+			setUser(foundUser);
+			setIsAuthenticated(true);
+		}
+	}
+
+	function signup(email: string, password: string, name: string, role: UserRole) {
+		// Check if user already exists
+		const existingUser = users.find(u => u.email === email);
+		if (existingUser) {
+			throw new Error('User already exists');
+		}
+
+		// Create new user
+		const newUser: User = {
+			id: Date.now().toString(),
+			email,
+			name,
+			role,
+		};
+
+		setUsers(prev => [...prev, newUser]);
+	}
+
 	const value = useMemo<AuthState>(() => ({
 		isAuthenticated,
+		user,
 		selectedMotorcycle,
 		odometerKm,
 		maintenanceTasks,
 		maintenanceRecords,
-		login: () => setIsAuthenticated(true),
+		login,
+		signup,
 		logout: () => {
 			setIsAuthenticated(false);
+			setUser(null);
 			setSelectedMotorcycle(null);
 			setOdometerKm(0);
 			setMaintenanceRecords({
@@ -86,7 +135,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 		selectMotorcycle: (model: MotorcycleModel) => setSelectedMotorcycle(model),
 		addKilometers,
 		markServiced,
-	}), [isAuthenticated, selectedMotorcycle, odometerKm, maintenanceTasks, maintenanceRecords]);
+	}), [isAuthenticated, user, selectedMotorcycle, odometerKm, maintenanceTasks, maintenanceRecords, users]);
 
 	return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
