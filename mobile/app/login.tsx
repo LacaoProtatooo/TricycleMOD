@@ -16,17 +16,18 @@ export default function LoginScreen() {
 	const [email, setEmail] = useState('');
 	const [password, setPassword] = useState('');
 
-	function handleLogin() {
+	async function handleLogin() {
 		if (!email || !password) {
 			Alert.alert('Error', 'Please enter both email and password');
 			return;
 		}
 
 		try {
-			login(email, password);
-			// Navigation will be handled by the layout based on user role
+			await login(email, password);
+			Alert.alert('Success', 'Login successful!');
+			router.replace('/(tabs)');
 		} catch (error) {
-			Alert.alert('Login Failed', 'Invalid email or password');
+			Alert.alert('Login Failed', error.message || 'Invalid email or password');
 		}
 	}
 

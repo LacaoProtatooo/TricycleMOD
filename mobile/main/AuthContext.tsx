@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useMemo, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useMemo, useState, ReactNode, useEffect } from 'react';
+import apiService from '../services/api';
 
 export type UserRole = 'driver' | 'operator';
 
@@ -7,6 +8,11 @@ export interface User {
 	email: string;
 	name: string;
 	role: UserRole;
+	plateNumber?: string;
+	address?: string;
+	contactNumber?: string;
+	operatorName?: string;
+	driverPicture?: string;
 }
 
 export type MotorcycleModel =
@@ -44,12 +50,15 @@ interface AuthState {
 	odometerKm: number;
 	maintenanceTasks: MaintenanceTaskDefinition[];
 	maintenanceRecords: Record<MaintenanceTaskKey, MaintenanceRecord>;
-	login: (email: string, password: string) => void;
-	signup: (email: string, password: string, name: string, role: UserRole) => void;
-	logout: () => void;
+	loading: boolean;
+	login: (email: string, password: string) => Promise<void>;
+	signup: (email: string, password: string, name: string, contactNumber: string, plateNumber: string, role?: UserRole) => Promise<void>;
+	logout: () => Promise<void>;
 	selectMotorcycle: (model: MotorcycleModel) => void;
 	addKilometers: (deltaKm: number) => void;
 	markServiced: (task: MaintenanceTaskKey) => void;
+	updateProfile: (profileData: Partial<Pick<User, 'plateNumber' | 'address' | 'contactNumber' | 'operatorName' | 'driverPicture'>>) => Promise<void>;
+	loadUser: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthState | undefined>(undefined);
@@ -65,13 +74,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 		chain_lubrication: { lastServicedKm: 0 },
 		tire_checkup: { lastServicedKm: 0 },
 	});
+	const [loading, setLoading] = useState<boolean>(false);
 
-	// Simple in-memory storage for demo purposes
-	// In a real app, this would be stored in a database
-	const [users, setUsers] = useState<User[]>([
-		{ id: '1', email: 'driver@example.com', name: 'John Driver', role: 'driver' },
-		{ id: '2', email: 'operator@example.com', name: 'Jane Operator', role: 'operator' },
-	]);
+	// Load user on app start
+	useEffect(() => {
+		loadUser();
+	}, []);
 
 	function addKilometers(deltaKm: number) {
 		if (!Number.isFinite(deltaKm)) return;
@@ -85,43 +93,130 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 		}));
 	}
 
-	function login(email: string, password: string) {
-		// Simple authentication - in a real app, this would validate against a secure backend
-		const foundUser = users.find(u => u.email === email);
-		if (foundUser) {
-			setUser(foundUser);
-			setIsAuthenticated(true);
+	async function loadUser() {
+		try {
+			setLoading(true);
+			// Check if we have a token in storage first
+			const token = await getStoredToken();
+			if (!token) {
+				setIsAuthenticated(false);
+				setUser(null);
+				return;
+			}
+			
+			apiService.setToken(token);
+			const response = await apiService.getCurrentUser();
+			if (response.user) {
+				setUser(response.user);
+				setIsAuthenticated(true);
+			}
+		} catch (error) {
+			console.error('Failed to load user:', error);
+			setIsAuthenticated(false);
+			setUser(null);
+			// Clear invalid token
+			await clearStoredToken();
+			apiService.setToken(null);
+		} finally {
+			setLoading(false);
 		}
 	}
 
-	function signup(email: string, password: string, name: string, role: UserRole) {
-		// Check if user already exists
-		const existingUser = users.find(u => u.email === email);
-		if (existingUser) {
-			throw new Error('User already exists');
+	// Helper functions for token storage
+	async function getStoredToken(): Promise<string | null> {
+		try {
+			// Using AsyncStorage for token persistence
+			const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+			return await AsyncStorage.getItem('auth_token');
+		} catch (error) {
+			console.error('Failed to get stored token:', error);
+			return null;
 		}
-
-		// Create new user
-		const newUser: User = {
-			id: Date.now().toString(),
-			email,
-			name,
-			role,
-		};
-
-		setUsers(prev => [...prev, newUser]);
 	}
 
-	const value = useMemo<AuthState>(() => ({
-		isAuthenticated,
-		user,
-		selectedMotorcycle,
-		odometerKm,
-		maintenanceTasks,
-		maintenanceRecords,
-		login,
-		signup,
-		logout: () => {
+	async function storeToken(token: string) {
+		try {
+			const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+			await AsyncStorage.setItem('auth_token', token);
+		} catch (error) {
+			console.error('Failed to store token:', error);
+		}
+	}
+
+	async function clearStoredToken() {
+		try {
+			const AsyncStorage = require('@react-native-async-storage/async-storage').default;
+			await AsyncStorage.removeItem('auth_token');
+		} catch (error) {
+			console.error('Failed to clear stored token:', error);
+		}
+	}
+
+	async function updateProfile(profileData: Partial<Pick<User, 'plateNumber' | 'address' | 'contactNumber' | 'operatorName' | 'driverPicture'>>) {
+		try {
+			setLoading(true);
+			const response = await apiService.updateProfile(profileData);
+			if (response.user) {
+				setUser(response.user);
+			}
+		} catch (error) {
+			console.error('Failed to update profile:', error);
+			throw error;
+		} finally {
+			setLoading(false);
+		}
+	}
+
+	async function login(email: string, password: string) {
+		try {
+			setLoading(true);
+			const response = await apiService.login(email, password);
+			if (response.user && response.token) {
+				await storeToken(response.token);
+				setUser(response.user);
+				setIsAuthenticated(true);
+			}
+		} catch (error) {
+			console.error('Login failed:', error);
+			throw error;
+		} finally {
+			setLoading(false);
+		}
+	}
+
+	async function signup(email: string, password: string, name: string, contactNumber: string, plateNumber: string, role: UserRole = 'driver') {
+		try {
+			setLoading(true);
+			const response = await apiService.register({
+				email,
+				password,
+				name,
+				contactNumber,
+				plateNumber,
+				role
+			});
+			if (response.user && response.token) {
+				await storeToken(response.token);
+				setUser(response.user);
+				setIsAuthenticated(true);
+			}
+		} catch (error) {
+			console.error('Signup failed:', error);
+			throw error;
+		} finally {
+			setLoading(false);
+		}
+	}
+
+	async function logout() {
+		try {
+			setLoading(true);
+			await apiService.logout();
+			await clearStoredToken();
+			apiService.setToken(null);
+		} catch (error) {
+			console.error('Logout failed:', error);
+		} finally {
 			setIsAuthenticated(false);
 			setUser(null);
 			setSelectedMotorcycle(null);
@@ -131,11 +226,27 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 				chain_lubrication: { lastServicedKm: 0 },
 				tire_checkup: { lastServicedKm: 0 },
 			});
-		},
+			setLoading(false);
+		}
+	}
+
+	const value = useMemo<AuthState>(() => ({
+		isAuthenticated,
+		user,
+		selectedMotorcycle,
+		odometerKm,
+		maintenanceTasks,
+		maintenanceRecords,
+		loading,
+		login,
+		signup,
+		logout,
 		selectMotorcycle: (model: MotorcycleModel) => setSelectedMotorcycle(model),
 		addKilometers,
 		markServiced,
-	}), [isAuthenticated, user, selectedMotorcycle, odometerKm, maintenanceTasks, maintenanceRecords, users]);
+		updateProfile,
+		loadUser,
+	}), [isAuthenticated, user, selectedMotorcycle, odometerKm, maintenanceTasks, maintenanceRecords, loading]);
 
 	return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

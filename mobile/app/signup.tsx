@@ -19,11 +19,13 @@ export default function SignupScreen() {
 	const [password, setPassword] = useState('');
 	const [confirmPassword, setConfirmPassword] = useState('');
 	const [name, setName] = useState('');
+	const [contactNumber, setContactNumber] = useState('');
+	const [plateNumber, setPlateNumber] = useState('');
 	const [selectedRole, setSelectedRole] = useState<UserRole>('driver');
 
-	function handleSignup() {
+	async function handleSignup() {
 		// Basic validation
-		if (!email || !password || !name) {
+		if (!email || !password || !name || !contactNumber || !plateNumber) {
 			Alert.alert('Error', 'Please fill in all required fields');
 			return;
 		}
@@ -38,9 +40,14 @@ export default function SignupScreen() {
 			return;
 		}
 
-		// Sign up the user with their role
-		signup(email, password, name, selectedRole);
-		router.replace('/login');
+		try {
+			// Sign up the user with their role
+			await signup(email, password, name, contactNumber, plateNumber, selectedRole);
+			Alert.alert('Success', 'Account created successfully!');
+			router.replace('/(tabs)');
+		} catch (error) {
+			Alert.alert('Error', error.message || 'Failed to create account');
+		}
 	}
 
 	function handleRoleSelection(role: UserRole) {
@@ -78,6 +85,32 @@ export default function SignupScreen() {
 					onChangeText={setEmail}
 					keyboardType="email-address"
 					autoCapitalize="none"
+				/>
+
+				<TextInput
+					style={[styles.input, { 
+						backgroundColor: Colors[colorScheme ?? 'light'].background,
+						borderColor: Colors[colorScheme ?? 'light'].border,
+						color: Colors[colorScheme ?? 'light'].text 
+					}]}
+					placeholder="Contact Number"
+					placeholderTextColor={Colors[colorScheme ?? 'light'].text + '80'}
+					value={contactNumber}
+					onChangeText={setContactNumber}
+					keyboardType="phone-pad"
+				/>
+
+				<TextInput
+					style={[styles.input, { 
+						backgroundColor: Colors[colorScheme ?? 'light'].background,
+						borderColor: Colors[colorScheme ?? 'light'].border,
+						color: Colors[colorScheme ?? 'light'].text 
+					}]}
+					placeholder="Plate Number"
+					placeholderTextColor={Colors[colorScheme ?? 'light'].text + '80'}
+					value={plateNumber}
+					onChangeText={setPlateNumber}
+					autoCapitalize="characters"
 				/>
 
 				<TextInput
