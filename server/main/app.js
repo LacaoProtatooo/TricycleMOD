@@ -13,7 +13,7 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 app.use(cookieParser());
 app.use(cors({
-  origin: process.env.NODE_ENV === 'production' ? false : ['http://localhost:3000', 'http://localhost:8081', 'http://192.168.254.106:8081'],
+  origin: process.env.NODE_ENV === 'production' ? false : ['http://localhost:3000', 'http://localhost:8081', 'http://192.168.254.111:8081'],
   credentials: true
 }));
 

@@ -24,9 +24,9 @@ export default function LoginScreen() {
 
 		try {
 			await login(email, password);
-			Alert.alert('Success', 'Login successful!');
-			router.replace('/(tabs)');
+			// Navigation will be handled by the layout based on user role
 		} catch (error) {
+			console.error('Login error:', error);
 			Alert.alert('Login Failed', error.message || 'Invalid email or password');
 		}
 	}
