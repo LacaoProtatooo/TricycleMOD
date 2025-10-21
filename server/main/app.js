@@ -25,10 +25,14 @@ import userRoutes from '../routes/userRoutes.js';
 app.use('/api/auth', authRoutes);
 app.use('/api/users', userRoutes);
 
+
+// Paayos nito donn hahahaha. kapag may /api/health meaning: merong kang healthRoutes. tulad ng syntax sa taas
 // Health check endpoint
 app.get('/api/health', (req, res) => {
   res.status(200).json({ message: 'Server is running!' });
 });
+
+
 
 // Error handling middleware
 app.use((err, req, res, next) => {
