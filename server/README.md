@@ -50,3 +50,5 @@ The User model includes the following fields:
 - `driverPicture` (optional, URL)
 - `role` (enum: 'driver' | 'operator', default: 'driver')
 
+
+

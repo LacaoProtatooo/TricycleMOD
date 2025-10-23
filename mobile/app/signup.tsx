@@ -1,6 +1,6 @@
 import { useRouter } from 'expo-router';
 import React, { useState } from 'react';
-import { StyleSheet, View, TextInput, Alert } from 'react-native';
+import { StyleSheet, View, TextInput, Alert, TouchableOpacity, Text } from 'react-native';
 import { ThemedText } from '@/components/ThemedText';
 import { ThemedView } from '@/components/ThemedView';
 import { Colors } from '@/constants/Colors';
@@ -22,6 +22,8 @@ export default function SignupScreen() {
 	const [contactNumber, setContactNumber] = useState('');
 	const [plateNumber, setPlateNumber] = useState('');
 	const [selectedRole, setSelectedRole] = useState<UserRole>('driver');
+	const [showPassword, setShowPassword] = useState(false);
+	const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
 	async function handleSignup() {
 		// Basic validation
@@ -113,31 +115,51 @@ export default function SignupScreen() {
 					autoCapitalize="characters"
 				/>
 
-				<TextInput
-					style={[styles.input, { 
-						backgroundColor: Colors[colorScheme ?? 'light'].background,
-						borderColor: Colors[colorScheme ?? 'light'].border,
-						color: Colors[colorScheme ?? 'light'].text 
-					}]}
-					placeholder="Password"
-					placeholderTextColor={Colors[colorScheme ?? 'light'].text + '80'}
-					value={password}
-					onChangeText={setPassword}
-					secureTextEntry
-				/>
+				<View style={{ width: '100%', position: 'relative' }}>
+					<TextInput
+						style={[styles.input, { 
+							backgroundColor: Colors[colorScheme ?? 'light'].background,
+							borderColor: Colors[colorScheme ?? 'light'].border,
+							color: Colors[colorScheme ?? 'light'].text 
+						}]}
+						placeholder="Password"
+						placeholderTextColor={Colors[colorScheme ?? 'light'].text + '80'}
+						value={password}
+						onChangeText={setPassword}
+						secureTextEntry={!showPassword}
+					/>
+					<TouchableOpacity
+						style={styles.showButton}
+						onPress={() => setShowPassword((prev) => !prev)}
+					>
+						<Text style={{ color: Colors[colorScheme ?? 'light'].tint }}>
+							{showPassword ? 'Hide' : 'Show'}
+						</Text>
+					</TouchableOpacity>
+				</View>
 
-				<TextInput
-					style={[styles.input, { 
-						backgroundColor: Colors[colorScheme ?? 'light'].background,
-						borderColor: Colors[colorScheme ?? 'light'].border,
-						color: Colors[colorScheme ?? 'light'].text 
-					}]}
-					placeholder="Confirm Password"
-					placeholderTextColor={Colors[colorScheme ?? 'light'].text + '80'}
-					value={confirmPassword}
-					onChangeText={setConfirmPassword}
-					secureTextEntry
-				/>
+				<View style={{ width: '100%', position: 'relative' }}>
+					<TextInput
+						style={[styles.input, { 
+							backgroundColor: Colors[colorScheme ?? 'light'].background,
+							borderColor: Colors[colorScheme ?? 'light'].border,
+							color: Colors[colorScheme ?? 'light'].text 
+						}]}
+						placeholder="Confirm Password"
+						placeholderTextColor={Colors[colorScheme ?? 'light'].text + '80'}
+						value={confirmPassword}
+						onChangeText={setConfirmPassword}
+						secureTextEntry={!showConfirmPassword}
+					/>
+					<TouchableOpacity
+						style={styles.showButton}
+						onPress={() => setShowConfirmPassword((prev) => !prev)}
+					>
+						<Text style={{ color: Colors[colorScheme ?? 'light'].tint }}>
+							{showConfirmPassword ? 'Hide' : 'Show'}
+						</Text>
+					</TouchableOpacity>
+				</View>
 
 				<ThemedText style={styles.roleTitle}>Select Your Role:</ThemedText>
 				
@@ -213,75 +235,84 @@ export default function SignupScreen() {
 }
 
 const styles = StyleSheet.create({
-	container: {
-		flex: 1,
-		alignItems: 'center',
-		justifyContent: 'center',
-		padding: 24,
-	},
-	content: {
-		width: '100%',
-		maxWidth: 420,
-		alignItems: 'center',
-		gap: 16,
-	},
-	title: {
-		color: '#FF7A00',
-		marginBottom: 4,
-	},
-	subtitle: {
-		opacity: 0.8,
-		marginBottom: 8,
-	},
-	input: {
-		width: '100%',
-		padding: 14,
-		borderRadius: 12,
-		borderWidth: 1,
-		fontSize: 16,
-	},
-	roleTitle: {
-		fontSize: 16,
-		fontWeight: '600',
-		marginTop: 8,
-		marginBottom: 8,
-	},
-	roleContainer: {
-		width: '100%',
-		gap: 12,
-	},
-	roleButton: {
-		width: '100%',
-		padding: 16,
-		borderRadius: 12,
-		borderWidth: 2,
-		alignItems: 'center',
-	},
-	roleText: {
-		fontSize: 18,
-		fontWeight: '600',
-		marginBottom: 4,
-	},
-	roleDescription: {
-		fontSize: 14,
-		textAlign: 'center',
-	},
-	button: {
-		paddingVertical: 14,
-		paddingHorizontal: 18,
-		borderRadius: 12,
-		width: '100%',
-		alignItems: 'center',
-		marginTop: 8,
-	},
-	buttonText: {
-		color: '#FFFFFF',
-		fontWeight: '600',
-		fontSize: 16,
-	},
-	linkText: {
-		color: '#FF7A00',
-		marginTop: 16,
-		textDecorationLine: 'underline',
-	},
+    container: {
+        flex: 1,
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: 12, // reduced from 24
+    },
+    content: {
+        width: '100%',
+        maxWidth: 340, // reduced from 420
+        alignItems: 'center',
+        gap: 8, // reduced from 16
+    },
+    title: {
+        color: '#FF7A00',
+        marginBottom: 2, // reduced from 4
+        fontSize: 22, // reduced from default
+    },
+    subtitle: {
+        opacity: 0.8,
+        marginBottom: 4, // reduced from 8
+        fontSize: 14, // reduced from default
+    },
+    input: {
+        width: '100%',
+        padding: 10, // reduced from 14
+        borderRadius: 8, // reduced from 12
+        borderWidth: 1,
+        fontSize: 15, // reduced from 16
+    },
+    roleTitle: {
+        fontSize: 14, // reduced from 16
+        fontWeight: '600',
+        marginTop: 4, // reduced from 8
+        marginBottom: 4, // reduced from 8
+    },
+    roleContainer: {
+        width: '100%',
+        gap: 6, // reduced from 12
+    },
+    roleButton: {
+        width: '100%',
+        padding: 10, // reduced from 16
+        borderRadius: 8, // reduced from 12
+        borderWidth: 2,
+        alignItems: 'center',
+    },
+    roleText: {
+        fontSize: 15, // reduced from 18
+        fontWeight: '600',
+        marginBottom: 2, // reduced from 4
+    },
+    roleDescription: {
+        fontSize: 12, // reduced from 14
+        textAlign: 'center',
+    },
+    button: {
+        paddingVertical: 10, // reduced from 14
+        paddingHorizontal: 12, // reduced from 18
+        borderRadius: 8, // reduced from 12
+        width: '100%',
+        alignItems: 'center',
+        marginTop: 6, // reduced from 8
+    },
+    buttonText: {
+        color: '#FFFFFF',
+        fontWeight: '600',
+        fontSize: 15, // reduced from 16
+    },
+    linkText: {
+        color: '#FF7A00',
+        marginTop: 10, // reduced from 16
+        textDecorationLine: 'underline',
+        fontSize: 13, // reduced from default
+    },
+    showButton: {
+        position: 'absolute',
+        right: 12,
+        top: 12,
+        padding: 4,
+    },
 });
