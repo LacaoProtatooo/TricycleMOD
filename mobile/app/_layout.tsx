@@ -14,10 +14,10 @@ function AuthGate() {
 	const segments = useSegments();
 
 	useEffect(() => {
-		if (!isAuthenticated) {
-			if (segments[0] !== 'login' && segments[0] !== 'signup') router.replace('/login');
-			return;
-		}
+		// if (!isAuthenticated) {
+		// 	if (segments[0] !== 'login' && segments[0] !== 'signup') router.replace('/login');
+		// 	return;
+		// }
 
 		// Route based on user role
 		if (isAuthenticated && user) {
@@ -57,6 +57,8 @@ export default function RootLayout() {
 					<Stack.Screen name="select-motorcycle" options={{ title: 'Select Motorcycle' }} />
 					<Stack.Screen name="operator-dashboard" options={{ headerShown: false }} />
 					<Stack.Screen name="+not-found" />
+
+					<Stack.Screen name="maps" options={{ headerShown: false }} />
 				</Stack>
 				<StatusBar style="auto" />
 				<AuthGate />

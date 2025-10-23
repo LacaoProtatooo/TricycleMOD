@@ -8,8 +8,6 @@ import { ThemedView } from '@/components/ThemedView';
 import { useColorScheme } from '@/hooks/useColorScheme';
 import { Colors } from '@/constants/Colors';
 
-// To be Removed, maps.tsx in tabs is same functionality as this file
-
 type Place = {
   id: string;
   title: string;
