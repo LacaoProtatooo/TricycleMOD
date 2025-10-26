@@ -1,48 +1,53 @@
 import express from 'express';
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
-import dotenv from 'dotenv';
-
-// Load environment variables
-dotenv.config();
-
-const app = express();
-
-// Middleware
-app.use(express.json({ limit: '10mb' }));
-app.use(express.urlencoded({ extended: true }));
-app.use(cookieParser());
-app.use(cors({
-  origin: process.env.NODE_ENV === 'production' ? false : ['http://localhost:3000', 'http://localhost:8081', 'http://192.168.254.111:8081'],
-  credentials: true
-}));
 
 // Route Imports
-import authRoutes from '../routes/authRoutes.js';
-import userRoutes from '../routes/userRoutes.js';
+import authRoutes from '../routes/authRoute.js';
+import loginRoutes from '../routes/loginRoute.js';
 
-// Routes
-app.use('/api/auth', authRoutes);
-app.use('/api/users', userRoutes);
+const app = express();
+app.use(express.json());
 
 
-// Paayos nito donn hahahaha. kapag may /api/health meaning: merong kang healthRoutes. tulad ng syntax sa taas
-// Health check endpoint
-app.get('/api/health', (req, res) => {
-  res.status(200).json({ message: 'Server is running!' });
+// Middleware for parsing request bodies
+app.use(cookieParser());
+const allowedOrigins = ['http://localhost:8081',
+    // 'https://example.com',
+];
+
+app.use(cors({
+    origin: allowedOrigins,
+    credentials: true,
+}));
+
+// Middleware for setting security headers
+app.use((req, res, next) => {
+    res.setHeader('Cross-Origin-Opener-Policy', 'same-origin-allow-popups');
+    res.setHeader('Cross-Origin-Embedder-Policy', 'require-corp');
+    next();
 });
 
+// Router Connection || Dito ka maglagay donn ng mga routes, import mo din sa bandang taas
+app.use('/api/auth', authRoutes);
+app.use('/api/auth', loginRoutes);
 
+
+// Fallback for unknown routes
+app.use((req, res, next) => {
+    res.status(404).json({
+        success: false,
+        message: "Resource not found",
+    });
+});
 
 // Error handling middleware
 app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).json({ message: 'Something went wrong!' });
-});
-
-// 404 handler
-app.use((req, res) => {
-  res.status(404).json({ message: 'Route not found' });
+    console.error(err.stack);
+    res.status(err.status || 500).json({
+        success: false,
+        message: err.message || "Internal Server Error",
+    });
 });
 
 export default app; 

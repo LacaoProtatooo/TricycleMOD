@@ -1,0 +1,72 @@
+{
+  "expo": {
+    "name": "TricycleMOD",
+    "slug": "device",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/ghost.png",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "splash": {
+      "image": "./assets/ghost.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "extra": {
+      "BACKEND_URL": "http://192.168.100.12:5000",
+      "eas": {
+        "projectId": "9318ce3a-b5b0-461a-98bf-1cca498a078e"
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/ghost.png",
+        "backgroundColor": "#ffffff"
+      },
+      "edgeToEdgeEnabled": true,
+      "package": "com.company.tricyclemod"
+    },
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "@react-native-google-signin/google-signin",
+      [
+        "expo-dev-client",
+        {
+          "launchMode": "most-recent"
+        }
+      ],
+      [
+        "expo-sqlite",
+        {
+          "enableFTS": true,
+          "useSQLCipher": true,
+          "android": {
+            "enableFTS": false,
+            "useSQLCipher": false
+          }
+        }
+      ],
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow TricycleMOD to access your camera",
+          "microphonePermission": "Allow TricycleMOD to access your microphone",
+          "recordAudioAndroid": true
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "The app accesses your photos to let you share them with your friends."
+        }
+      ],
+      [
+        "expo-build-properties",
+        {}
+      ]
+    ],
+    "owner": "protatooolacao"
+  }
+}

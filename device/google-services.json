@@ -1,0 +1,47 @@
+{
+  "project_info": {
+    "project_number": "75787064888",
+    "project_id": "tricyclemod",
+    "storage_bucket": "tricyclemod.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:75787064888:android:741d6f7f9eaab50a8e78cd",
+        "android_client_info": {
+          "package_name": "com.company.tricyclemod"
+        }
+      },
+      "oauth_client": [
+        {
+          "client_id": "75787064888-r7q9p9uist1c90uas097nj0mabriufv6.apps.googleusercontent.com",
+          "client_type": 1,
+          "android_info": {
+            "package_name": "com.company.tricyclemod",
+            "certificate_hash": "cec9a5917b06680a8f7a64a02f954e2942cae3ca"
+          }
+        },
+        {
+          "client_id": "75787064888-l1hip5a66fhr6h7bgoo36okvj8qncm35.apps.googleusercontent.com",
+          "client_type": 3
+        }
+      ],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDpQOELiKrWVmEFbHhotcmE0Gbtq_FE2Y4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": [
+            {
+              "client_id": "75787064888-l1hip5a66fhr6h7bgoo36okvj8qncm35.apps.googleusercontent.com",
+              "client_type": 3
+            }
+          ]
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

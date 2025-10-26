@@ -1,2 +1,41 @@
+### Node.js dependencies
 node_modules/
+npm-debug.log
+yarn-error.log
+
+### Environment variables
 .env
+.env.local
+
+### Logs
+logs/
+*.log
+log/
+*.log*
+
+### OS Files
+.DS_Store
+Thumbs.db
+
+### Editor Files
+.vscode/
+.idea/
+
+### Build Files
+dist/
+build/
+
+### Cache Files
+.cache/
+.npm/
+.yarn/
+.next/
+
+### Miscellaneous
+coverage/
+*.swp
+*.swo
+
+### Package Lock Files
+package-lock.json
+yarn.lock
