@@ -79,11 +79,17 @@ const Navigator = () => {
 
     return () => {
       try {
-        if (subscription && typeof subscription.remove === 'function') {
-          subscription.remove();
+        if (subscription) {
+          // preferred: listener object has remove()
+          if (typeof subscription.remove === 'function') {
+            subscription.remove();
+          } else if (typeof Notifications.removeNotificationSubscription === 'function') {
+            // fallback for older API versions
+            Notifications.removeNotificationSubscription(subscription);
+          }
         }
       } catch (e) {
-        // ignore
+        console.warn('Failed to remove notification listener', e);
       }
     };
   }, []);

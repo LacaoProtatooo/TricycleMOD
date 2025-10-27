@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, TextInput, TouchableOpacity, StyleSheet, ScrollView, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, fonts } from '../../components/common/theme';
 
 const STORAGE_KEY = 'maintenance_data_v1';
+
+// same key used in BackgroundLocationTask
 const KM_KEY = 'vehicle_current_km_v1';
 
 const defaultSchedule = [
@@ -65,10 +67,11 @@ const defaultSchedule = [
 	},
 ];
 
-export default function MaintenanceTracker() {
+const MaintenanceTracker = (props) => {
 	const [currentKm, setCurrentKm] = useState('');
 	const [data, setData] = useState({}); // { itemKey: lastServiceKm }
 	const [loaded, setLoaded] = useState(false);
+	const [odometerKm, setOdometerKm] = useState(null);
 
 	useEffect(() => {
 		(async () => {
@@ -83,6 +86,23 @@ export default function MaintenanceTracker() {
 				setLoaded(true);
 			}
 		})();
+	}, []);
+
+	// load once and then poll AsyncStorage so odometer reflects realtime updates
+	useEffect(() => {
+		let mounted = true;
+		const loadOdometer = async () => {
+			try {
+				const raw = await AsyncStorage.getItem(KM_KEY);
+				if (!mounted) return;
+				setOdometerKm(raw ? Number(raw) : 0);
+			} catch (e) {
+				// ignore
+			}
+		};
+		loadOdometer();
+		const interval = setInterval(loadOdometer, 2000); // poll every 2s
+		return () => { mounted = false; clearInterval(interval); };
 	}, []);
 
 	const saveKm = async () => {
@@ -118,22 +138,16 @@ export default function MaintenanceTracker() {
 	if (!loaded) return null;
 
 	return (
-		<View style={styles.wrapper}>
+		<View style={styles.container}>
 			<Text style={styles.title}>Maintenance Tracker</Text>
 
-			<View style={styles.kmRow}>
-				<TextInput
-					value={String(currentKm)}
-					onChangeText={setCurrentKm}
-					keyboardType="numeric"
-					placeholder="Enter current km"
-					style={styles.kmInput}
-				/>
-				<TouchableOpacity style={styles.saveBtn} onPress={saveKm}>
-					<Ionicons name="save-outline" size={20} color={colors.ivory1} />
-					<Text style={styles.saveText}>Save</Text>
-				</TouchableOpacity>
-			</View>
+			{/* manual km input removed — odometer is read-only and updated by background tracking */}
+
+            {/* Realtime odometer */}
+            <View style={styles.odometerRow}>
+                <Text style={styles.odometerLabel}>Odometer</Text>
+                <Text style={styles.odometerValue}>{odometerKm !== null ? `${odometerKm.toFixed(3)} km` : '—'}</Text>
+            </View>
 
 			<ScrollView
 				nestedScrollEnabled={true}
@@ -173,16 +187,13 @@ export default function MaintenanceTracker() {
 			</ScrollView>
 		</View>
 	);
-}
+};
 
 const styles = StyleSheet.create({
-	wrapper: {
-		marginTop: spacing.large,
+	container: {
+		flex: 1,
 		backgroundColor: colors.ivory4,
 		padding: spacing.medium,
-		borderRadius: 12,
-		borderWidth: 1,
-		borderColor: colors.ivory3,
 	},
 	title: {
 		fontSize: 18,
@@ -261,4 +272,27 @@ const styles = StyleSheet.create({
 		padding: 8,
 		borderRadius: 8,
 	},
+	odometerRow: {
+		flexDirection: 'row',
+		justifyContent: 'space-between',
+		alignItems: 'center',
+		backgroundColor: colors.ivory1,
+		padding: spacing.small,
+		borderRadius: 8,
+		borderWidth: 1,
+		borderColor: colors.ivory3,
+		marginBottom: spacing.medium,
+	},
+	odometerLabel: {
+		fontSize: 14,
+		fontWeight: '500',
+		color: colors.orangeShade6,
+	},
+	odometerValue: {
+		fontSize: 16,
+		fontWeight: '700',
+		color: colors.orangeShade7,
+	},
 });
+
+export default MaintenanceTracker;
