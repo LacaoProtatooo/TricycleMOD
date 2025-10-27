@@ -15,6 +15,8 @@ import { colors, spacing, fonts } from '../../components/common/theme';
 import { getUserCredentials } from '../../utils/userStorage';
 import defaultAvatar from '../../../assets/ghost.png';
 import StatCard from '../../components/home/StatCard';
+import MaintenanceTracker from '../../components/home/MaintenanceTracker';
+import WeatherWidget from '../../components/home/WeatherWidget';
 
 const Tab = createBottomTabNavigator();
 
@@ -33,21 +35,23 @@ const DashboardTab = () => {
     try {
       const userData = await getUserCredentials();
       setUser(userData);
-      // optionally set stats from userData or fetch from API here
     } catch (error) {
       console.error('Error fetching user:', error);
     }
   };
 
-  // only keep Completed rides and Rating
+  // keep only Rating stat; replace Completed with WeatherWidget below
   const statsData = [
-    { icon: 'checkmark-circle-outline', value: stats.completedRides, label: 'Completed', bg: colors.secondary },
-    { icon: 'star-outline', value: stats.rating.toFixed(1), label: 'Rating', bg: '#ffc107' },
+    { icon: 'star-outline', value: Number(stats.rating).toFixed(1), label: 'Rating', bg: '#ffc107' },
   ];
 
   return (
     <SafeAreaView style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scrollContent}>
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={[styles.scrollContent, { flexGrow: 1 }]}
+        nestedScrollEnabled={true}
+      >
         <View style={styles.headerSection}>
           <View>
             <Text style={styles.greeting}>Hello,</Text>
@@ -65,6 +69,13 @@ const DashboardTab = () => {
             <StatCard key={i} icon={s.icon} bgColor={s.bg} value={s.value} label={s.label} />
           ))}
         </View>
+
+        {/* NEW: Weather for today + following hours */}
+        <WeatherWidget />
+
+        {/* Maintenance tracker */}
+        <MaintenanceTracker />
+
       </ScrollView>
     </SafeAreaView>
   );
