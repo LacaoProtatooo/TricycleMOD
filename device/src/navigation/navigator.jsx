@@ -14,6 +14,7 @@ import Home from '../screens/common/home';
 import About from '../screens/common/about';
 import Login from '../screens/common/login';
 import Signup from '../screens/common/signup';
+import OperatorScreen from '../screens/common/OperatorScreen';
 
 // Drawers
 import AppDrawer from '../components/common/appdrawer';
@@ -74,7 +75,7 @@ const Navigator = () => {
                 <>
                   <Stack.Screen name="Home" component={Home} />
                   <Stack.Screen name="About" component={About} />
-
+                  <Stack.Screen name="OperatorScreen" component={OperatorScreen} />
                 </>
               )
             ) : (
@@ -84,6 +85,7 @@ const Navigator = () => {
                 <Stack.Screen name="Signup" component={Signup} />
                 <Stack.Screen name="Home" component={Home} />
                 <Stack.Screen name="About" component={About} />
+                <Stack.Screen name="OperatorScreen" component={OperatorScreen} />
               </>
             )}
 

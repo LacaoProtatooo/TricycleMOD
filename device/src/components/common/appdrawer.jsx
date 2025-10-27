@@ -129,6 +129,18 @@ const AppDrawer = ({ closeDrawer, navigation }) => {
                     }}
                   />
                   <DrawerItem
+                    icon={({ focused }) => renderIcon('settings-outline', focused)}
+                    label="Operator"
+                    labelStyle={styles.drawerLabel}
+                    activeBackgroundColor={`${colors.ivory4}CC`}
+                    activeTintColor={colors.primary}
+                    inactiveTintColor={colors.orangeShade8}
+                    onPress={() => {
+                      navigation.navigate('OperatorScreen');
+                      closeDrawer();
+                    }}
+                  />
+                  <DrawerItem
                     icon={({ focused }) => renderIcon('alert-circle-outline', focused)}
                     label="About"
                     labelStyle={styles.drawerLabel}
@@ -155,6 +167,19 @@ const AppDrawer = ({ closeDrawer, navigation }) => {
                     inactiveTintColor={colors.orangeShade8}
                     onPress={() => {
                       navigation.navigate('Account');
+                      closeDrawer();
+                    }}
+                  />
+
+                  <DrawerItem
+                    icon={({ focused }) => renderIcon('settings-outline', focused)}
+                    label="Operator"
+                    labelStyle={styles.drawerLabel}
+                    activeBackgroundColor={`${colors.ivory4}CC`}
+                    activeTintColor={colors.primary}
+                    inactiveTintColor={colors.orangeShade8}
+                    onPress={() => {
+                      navigation.navigate('OperatorScreen');
                       closeDrawer();
                     }}
                   />
