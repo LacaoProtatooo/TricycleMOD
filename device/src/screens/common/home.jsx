@@ -18,6 +18,7 @@ import StatCard from '../../components/home/StatCard';
 import MaintenanceTracker from '../../components/home/MaintenanceTracker';
 import WeatherWidget from '../../components/home/WeatherWidget';
 import ProfileScreen from './ProfileScreen';
+import TrackingMap from '../../components/home/TrackingMap';
 
 const Tab = createBottomTabNavigator();
 
@@ -85,27 +86,7 @@ const DashboardTab = () => {
 const MapsTab = () => {
   return (
     <SafeAreaView style={styles.container}>
-      <View style={styles.mapContainer}>
-        <View style={styles.mapPlaceholder}>
-          <Ionicons name="map" size={80} color={colors.orangeShade4} />
-          <Text style={styles.mapPlaceholderText}>Map View</Text>
-          <Text style={styles.mapPlaceholderSubtext}>Your map integration will appear here</Text>
-        </View>
-        <View style={styles.mapControls}>
-          <TouchableOpacity style={styles.mapButton}>
-            <Ionicons name="locate-outline" size={24} color={colors.ivory1} />
-            <Text style={styles.mapButtonText}>Current Location</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.mapButton}>
-            <Ionicons name="navigate-outline" size={24} color={colors.ivory1} />
-            <Text style={styles.mapButtonText}>Directions</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.mapButton}>
-            <Ionicons name="search-outline" size={24} color={colors.ivory1} />
-            <Text style={styles.mapButtonText}>Search</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
+      <TrackingMap />
     </SafeAreaView>
   );
 };

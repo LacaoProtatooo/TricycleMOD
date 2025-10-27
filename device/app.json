@@ -24,7 +24,21 @@
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
-      "package": "com.company.tricyclemod"
+      "package": "com.company.tricyclemod",
+      "permissions": [
+        "ACCESS_FINE_LOCATION",
+        "ACCESS_COARSE_LOCATION",
+        "ACCESS_BACKGROUND_LOCATION"
+      ],
+      "foregroundService": {
+        "notificationTitle": "TricycleMOD tracking",
+        "notificationBody": "Background location running"
+      },
+      "config": {
+        "googleMaps": {
+          "apiKey": "AIzaSyBE_y3W7JmPpbZVpl_uPFV0wSPOxInoAI8"
+        }
+      }
     },
     "web": {
       "favicon": "./assets/favicon.png"
