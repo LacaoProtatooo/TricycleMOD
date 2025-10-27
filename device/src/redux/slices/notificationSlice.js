@@ -2,7 +2,7 @@ import { createSlice } from '@reduxjs/toolkit';
 import Constants from 'expo-constants';
 import axios from 'axios';
 
-const apiURL = Constants.expoConfig?.extra?.BACKEND_URL || 'http://192.168.1.123:5000';
+const apiURL = Constants.expoConfig?.extra?.BACKEND_URL || 'http://192.168.254.111:5000';
 
 const initialState = {
     notifToken: null,

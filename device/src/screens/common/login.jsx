@@ -44,7 +44,7 @@ const Login = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const { extra: { BACKEND_URL } = {} } = Constants.expoConfig;
-  const apiURL = BACKEND_URL || 'http://192.168.1.123:5000';
+  const apiURL = BACKEND_URL || 'http://192.168.254.111:5000';
 
   const navigateAfterLogin = (user) => {
     navigation.dispatch(
