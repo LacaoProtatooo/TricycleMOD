@@ -17,6 +17,7 @@ import defaultAvatar from '../../../assets/ghost.png';
 import StatCard from '../../components/home/StatCard';
 import MaintenanceTracker from '../../components/home/MaintenanceTracker';
 import WeatherWidget from '../../components/home/WeatherWidget';
+import ProfileScreen from './ProfileScreen';
 
 const Tab = createBottomTabNavigator();
 
@@ -181,7 +182,7 @@ const Home = () => (
   >
     <Tab.Screen name="Dashboard" component={DashboardTab} options={{ tabBarIcon: ({ color, size }) => <Ionicons name="grid-outline" size={size} color={color} /> }} />
     <Tab.Screen name="Maps" component={MapsTab} options={{ tabBarIcon: ({ color, size }) => <Ionicons name="map-outline" size={size} color={color} /> }} />
-    <Tab.Screen name="Profile" component={ProfileTab} options={{ tabBarIcon: ({ color, size }) => <Ionicons name="person-outline" size={size} color={color} /> }} />
+    <Tab.Screen name="Profile" component={ProfileScreen} options={{ tabBarIcon: ({ color, size }) => <Ionicons name="person-outline" size={size} color={color} /> }} />
   </Tab.Navigator>
 );
 
