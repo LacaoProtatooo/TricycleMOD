@@ -11,12 +11,16 @@ import * as Notifications from 'expo-notifications';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 
 import { colors } from '../components/common/theme';
-import { DashboardTab, MapsTab, ProfileTab } from '../screens/common/home'; // exported screens
+
+// Screens
 import About from '../screens/common/about';
 import Login from '../screens/common/login';
 import Signup from '../screens/common/signup';
-import OperatorScreen from '../screens/common/OperatorScreen';
 import AppDrawer from '../components/common/appdrawer';
+import Account from '../screens/common/account';
+
+import { DashboardTab, MapsTab, ProfileTab } from '../screens/common/home'; // exported screens
+import OperatorScreen from '../screens/operator/OperatorScreen';
 
 // Create Stack and navigation ref
 const Stack = createStackNavigator();
@@ -131,6 +135,7 @@ const Navigator = () => {
                   <Stack.Screen name="Home" component={TabNavigator} />
                   <Stack.Screen name="About" component={About} />
                   <Stack.Screen name="OperatorScreen" component={OperatorScreen} />
+                  <Stack.Screen name="Account" component={Account} />
                 </>
               )
             ) : (
