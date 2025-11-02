@@ -11,9 +11,9 @@ import Ionicons from 'react-native-vector-icons/Ionicons';
 import { colors } from '../../components/common/theme';
 
 // Import tab components
-import DashboardTab from './DashboardTab';
-import MapsTab from './MapsTab';
-import ProfileTab from './ProfileTab';
+import DashboardTab from '../dashboard/DashboardTab';
+import MapsTab from '../dashboard/MapsTab';
+import ProfileTab from '../dashboard/ProfileTab';
 
 const Tab = createBottomTabNavigator();
 
