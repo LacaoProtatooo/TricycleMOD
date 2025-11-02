@@ -8,60 +8,23 @@ import { Provider as PaperProvider } from 'react-native-paper';
 import { useSelector } from 'react-redux';
 import { createNavigationContainerRef } from '@react-navigation/native';
 import * as Notifications from 'expo-notifications';
-import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 
 import { colors } from '../components/common/theme';
 
 // Screens
+import Home from '../screens/common/home';
 import About from '../screens/common/about';
 import Login from '../screens/common/login';
 import Signup from '../screens/common/signup';
-import AppDrawer from '../components/common/appdrawer';
 import Account from '../screens/common/account';
-
-import { DashboardTab, MapsTab, ProfileTab } from '../screens/common/home'; // exported screens
 import OperatorScreen from '../screens/operator/OperatorScreen';
+
+// Drawers
+import AppDrawer from '../components/common/appdrawer';
 
 // Create Stack and navigation ref
 const Stack = createStackNavigator();
 const navigationRef = createNavigationContainerRef();
-const Tab = createBottomTabNavigator();
-
-function TabNavigator() {
-  return (
-    <Tab.Navigator
-      screenOptions={{
-        tabBarActiveTintColor: colors.primary,
-        tabBarInactiveTintColor: colors.orangeShade5,
-        tabBarStyle: {
-          backgroundColor: colors.ivory1,
-          borderTopWidth: 1,
-          borderTopColor: colors.ivory3,
-          height: 60,
-          paddingBottom: 8,
-          paddingTop: 8,
-        },
-        headerShown: false,
-      }}
-    >
-      <Tab.Screen
-        name="Dashboard"
-        component={DashboardTab}
-        options={{ tabBarIcon: ({ color, size }) => <Ionicons name="grid-outline" size={size} color={color} /> }}
-      />
-      <Tab.Screen
-        name="Maps"
-        component={MapsTab}
-        options={{ tabBarIcon: ({ color, size }) => <Ionicons name="map-outline" size={size} color={color} /> }}
-      />
-      <Tab.Screen
-        name="Profile"
-        component={ProfileTab}
-        options={{ tabBarIcon: ({ color, size }) => <Ionicons name="person-outline" size={size} color={color} /> }}
-      />
-    </Tab.Navigator>
-  );
-}
 
 const Navigator = () => {
   const [modalVisible, setModalVisible] = useState(false);
@@ -70,31 +33,14 @@ const Navigator = () => {
   const user = useSelector((state) => state.auth.user);
 
   useEffect(() => {
-    let subscription;
-    try {
-      subscription = Notifications.addNotificationResponseReceivedListener(response => {
-        const message = response?.notification?.request?.content?.body;
-        setNotificationData({ message });
-        setModalVisible(true);
-      });
-    } catch (e) {
-      console.warn('notification listener failed', e);
-    }
-
+    const subscription = Notifications.addNotificationResponseReceivedListener(response => {
+      const message = response?.notification?.request?.content?.body;
+      setNotificationData({ message });
+      setModalVisible(true);
+    });
+  
     return () => {
-      try {
-        if (subscription) {
-          // preferred: listener object has remove()
-          if (typeof subscription.remove === 'function') {
-            subscription.remove();
-          } else if (typeof Notifications.removeNotificationSubscription === 'function') {
-            // fallback for older API versions
-            Notifications.removeNotificationSubscription(subscription);
-          }
-        }
-      } catch (e) {
-        console.warn('Failed to remove notification listener', e);
-      }
+      subscription.remove();
     };
   }, []);
 
@@ -125,14 +71,14 @@ const Navigator = () => {
               user.isAdmin ? (
                 // Admin Stack
                 <>
-                  <Stack.Screen name="Home" component={TabNavigator} />
+                  <Stack.Screen name="Home" component={Home} />
                   <Stack.Screen name="OperatorScreen" component={OperatorScreen} />
                   <Stack.Screen name="About" component={About} />
                 </>
               ) : (
                 // User Stack
                 <>
-                  <Stack.Screen name="Home" component={TabNavigator} />
+                  <Stack.Screen name="Home" component={Home} />
                   <Stack.Screen name="About" component={About} />
                   <Stack.Screen name="OperatorScreen" component={OperatorScreen} />
                   <Stack.Screen name="Account" component={Account} />
@@ -143,7 +89,7 @@ const Navigator = () => {
               <>
                 <Stack.Screen name="Login" component={Login} />
                 <Stack.Screen name="Signup" component={Signup} />
-                <Stack.Screen name="Home" component={TabNavigator} />
+                <Stack.Screen name="Home" component={Home} />
                 <Stack.Screen name="About" component={About} />
                 <Stack.Screen name="OperatorScreen" component={OperatorScreen} />
               </>
