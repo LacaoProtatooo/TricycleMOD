@@ -4,8 +4,8 @@ import {
   Text,
   StyleSheet,
   ScrollView,
-  SafeAreaView,
 } from "react-native";
+import { SafeAreaView } from "react-native-safe-area-context";
 import { Avatar } from 'react-native-paper';
 import { colors, spacing, fonts } from '../../components/common/theme';
 import { getUserCredentials } from '../../utils/userStorage';

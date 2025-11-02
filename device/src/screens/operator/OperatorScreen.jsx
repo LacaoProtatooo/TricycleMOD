@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import {
-  SafeAreaView,
   View,
   Text,
   StyleSheet,
@@ -13,6 +12,7 @@ import {
   KeyboardAvoidingView,
   Platform,
 } from 'react-native';
+import { SafeAreaView } from "react-native-safe-area-context";
 import { colors, spacing } from '../../components/common/theme';
 import { Ionicons } from '@expo/vector-icons';
 import Constants from 'expo-constants';
