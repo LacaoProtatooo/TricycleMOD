@@ -32,6 +32,19 @@ const AppDrawer = ({ closeDrawer, navigation }) => {
     }, [])
   );
 
+  // Helper function to safely navigate using the navigation ref
+  const navigateSafe = (routeName) => {
+    if (navigation?.isReady && navigation.isReady()) {
+      navigation.navigate(routeName);
+    } else if (navigation?.current?.isReady && navigation.current.isReady()) {
+      navigation.current.navigate(routeName);
+    } else if (navigation?.current) {
+      navigation.current.navigate(routeName);
+    } else {
+      console.warn('Navigation not ready yet');
+    }
+  };
+
   const renderIcon = (name, focused) => {
     return (
       <View style={styles.iconContainer}>
@@ -96,7 +109,7 @@ const AppDrawer = ({ closeDrawer, navigation }) => {
                 activeTintColor={colors.primary}
                 inactiveTintColor={colors.orangeShade8}
                 onPress={() => {
-                  navigation.navigate('Home');
+                  navigateSafe('Home');
                   closeDrawer();
                 }}
               />
@@ -112,7 +125,7 @@ const AppDrawer = ({ closeDrawer, navigation }) => {
                     activeTintColor={colors.primary}
                     inactiveTintColor={colors.orangeShade8}
                     onPress={() => {
-                      navigation.navigate('Login');
+                      navigateSafe('Login');
                       closeDrawer();
                     }}
                   />
@@ -124,7 +137,7 @@ const AppDrawer = ({ closeDrawer, navigation }) => {
                     activeTintColor={colors.primary}
                     inactiveTintColor={colors.orangeShade8}
                     onPress={() => {
-                      navigation.navigate('Signup');
+                      navigateSafe('Signup');
                       closeDrawer();
                     }}
                   />
@@ -136,7 +149,7 @@ const AppDrawer = ({ closeDrawer, navigation }) => {
                     activeTintColor={colors.primary}
                     inactiveTintColor={colors.orangeShade8}
                     onPress={() => {
-                      navigation.navigate('OperatorScreen');
+                      navigateSafe('OperatorScreen');
                       closeDrawer();
                     }}
                   />
@@ -148,7 +161,7 @@ const AppDrawer = ({ closeDrawer, navigation }) => {
                     activeTintColor={colors.primary}
                     inactiveTintColor={colors.orangeShade8}
                     onPress={() => {
-                      navigation.navigate('About');
+                      navigateSafe('About');
                       closeDrawer();
                     }}
                   />
@@ -166,7 +179,7 @@ const AppDrawer = ({ closeDrawer, navigation }) => {
                     activeTintColor={colors.primary}
                     inactiveTintColor={colors.orangeShade8}
                     onPress={() => {
-                      navigation.navigate('Account');
+                      navigateSafe('Account');
                       closeDrawer();
                     }}
                   />
@@ -179,7 +192,7 @@ const AppDrawer = ({ closeDrawer, navigation }) => {
                     activeTintColor={colors.primary}
                     inactiveTintColor={colors.orangeShade8}
                     onPress={() => {
-                      navigation.navigate('OperatorScreen');
+                      navigateSafe('OperatorScreen');
                       closeDrawer();
                     }}
                   />
@@ -192,7 +205,7 @@ const AppDrawer = ({ closeDrawer, navigation }) => {
                     activeTintColor={colors.primary}
                     inactiveTintColor={colors.orangeShade8}
                     onPress={() => {
-                      navigation.navigate('About');
+                      navigateSafe('About');
                       closeDrawer();
                     }}
                   />

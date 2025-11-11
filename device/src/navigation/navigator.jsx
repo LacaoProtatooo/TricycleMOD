@@ -6,7 +6,7 @@ import { View, StyleSheet, TouchableOpacity, ActivityIndicator, Modal, Text, Pre
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { Provider as PaperProvider } from 'react-native-paper';
 import { useSelector } from 'react-redux';
-import { createNavigationContainerRef } from '@react-navigation/native';
+import { createNavigationContainerRef, CommonActions } from '@react-navigation/native';
 import * as Notifications from 'expo-notifications';
 
 import { colors } from '../components/common/theme';
@@ -24,7 +24,7 @@ import AppDrawer from '../components/common/appdrawer';
 
 // Create Stack and navigation ref
 const Stack = createStackNavigator();
-const navigationRef = createNavigationContainerRef();
+export const navigationRef = createNavigationContainerRef();
 
 const Navigator = () => {
   const [modalVisible, setModalVisible] = useState(false);
@@ -55,7 +55,16 @@ const Navigator = () => {
 
   return (
     <PaperProvider>
-      <NavigationContainer ref={navigationRef}>
+      <NavigationContainer 
+        ref={navigationRef}
+        onReady={() => {
+          // Navigation container is ready
+          console.log('Navigation container ready');
+        }}
+        onStateChange={() => {
+          // Optional: track navigation state changes
+        }}
+      >
         <View style={{ flex: 1 }}>
           {/* Floating menu button */}
           <TouchableOpacity
@@ -66,34 +75,17 @@ const Navigator = () => {
           </TouchableOpacity>
 
           {/* Stack Navigator */}
-          <Stack.Navigator screenOptions={{ headerShown: false }}>
-            {user ? (
-              user.isAdmin ? (
-                // Admin Stack
-                <>
-                  <Stack.Screen name="Home" component={Home} />
-                  <Stack.Screen name="OperatorScreen" component={OperatorScreen} />
-                  <Stack.Screen name="About" component={About} />
-                </>
-              ) : (
-                // User Stack
-                <>
-                  <Stack.Screen name="Home" component={Home} />
-                  <Stack.Screen name="About" component={About} />
-                  <Stack.Screen name="OperatorScreen" component={OperatorScreen} />
-                  <Stack.Screen name="Account" component={Account} />
-                </>
-              )
-            ) : (
-              // Not logged in
-              <>
-                <Stack.Screen name="Login" component={Login} />
-                <Stack.Screen name="Signup" component={Signup} />
-                <Stack.Screen name="Home" component={Home} />
-                <Stack.Screen name="About" component={About} />
-                <Stack.Screen name="OperatorScreen" component={OperatorScreen} />
-              </>
-            )}
+          <Stack.Navigator 
+            screenOptions={{ headerShown: false }}
+            initialRouteName={user ? 'Home' : 'Login'}
+          >
+            {/* Always include all screens for navigation to work properly */}
+            <Stack.Screen name="Login" component={Login} />
+            <Stack.Screen name="Signup" component={Signup} />
+            <Stack.Screen name="Home" component={Home} />
+            <Stack.Screen name="About" component={About} />
+            <Stack.Screen name="OperatorScreen" component={OperatorScreen} />
+            <Stack.Screen name="Account" component={Account} />
           </Stack.Navigator>
 
           {/* Drawer Overlay */}

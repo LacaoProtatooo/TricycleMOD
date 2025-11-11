@@ -1,5 +1,5 @@
 import express from "express";
-import upload from "../utils/multer";
+import upload from '../utils/multer.js';
 import {
     getTricycles,
     getTricycle,
@@ -16,3 +16,5 @@ router.get("/:id", authUser, getTricycle);
 router.post("/", authUser, upload.array("images", 5), createTricycle);
 router.put("/:id", authUser, upload.array("images", 5), updateTricycle);
 router.delete("/:id", authUser, deleteTricycle);
+
+export default router;

@@ -4,6 +4,7 @@ import User from "../models/userModel.js";
 import { generateTokenAndSetCookie } from "../utils/generateTokenAndSetCookie.js";
 import { auth } from "../utils/firebase.js";
 import cloudinary from "../utils/cloudinaryConfig.js";
+import bcrypt from 'bcryptjs';
 
 // Signup 
 export const signup = async (req, res) => {
@@ -96,46 +97,72 @@ export const signup = async (req, res) => {
 
 // Login
 export const login = async (req, res) => {
-  const { email, password } = req.body;
+  const { email, password } = req.body || {};
 
   try {
-    const user = await User.findOne({ email });
+    if (!email || !password) {
+      return res.status(400).json({ success: false, message: 'Email and password required' });
+    }
+
+    // normalize and do case-insensitive lookup
+    const rawEmail = String(email).trim();
+    const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    const user = await User.findOne({ email: { $regex: `^${escapeRegExp(rawEmail)}$`, $options: 'i' } }).select('+password');
+
     if (!user) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Invalid credentials" });
+      console.warn(`Login failed — user not found for: ${rawEmail}`);
+      return res.status(400).json({ success: false, message: 'Invalid credentials' });
     }
 
-    const isPasswordValid = await user.comparePassword(password);
+    // compare password — use model helper if present, otherwise bcrypt fallback
+    let isPasswordValid = false;
+    try {
+      if (typeof user.comparePassword === 'function') {
+        isPasswordValid = await user.comparePassword(password);
+      } else {
+        isPasswordValid = await bcrypt.compare(String(password), user.password || '');
+      }
+    } catch (e) {
+      console.warn('Password compare error', e);
+    }
+
+    console.log(`Login attempt for ${user.email} — password match: ${isPasswordValid}`);
+    console.log(`User isVerified status: ${user.isVerified}`);
+
     if (!isPasswordValid) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Invalid credentials" });
+      console.warn(`Password validation failed for: ${user.email}`);
+      return res.status(400).json({ success: false, message: 'Invalid credentials' });
     }
 
-    if (!user.isVerified) {
-      return res
-        .status(400)
-        .json({ success: false, message: "Email not verified" });
+    // In development, allow unverified users to login. In production, require verification.
+    const isDevelopment = process.env.NODE_ENV !== 'production';
+    if (!user.isVerified && !isDevelopment) {
+      console.warn(`User not verified for: ${user.email}`);
+      return res.status(400).json({ success: false, message: 'Email not verified. Please verify your email before logging in.' });
+    }
+    
+    if (!user.isVerified && isDevelopment) {
+      console.log(`Development mode: Allowing login for unverified user: ${user.email}`);
     }
 
     // Generate JWT and set cookie
-    const token = generateTokenAndSetCookie(res, user);
+    try {
+      const token = generateTokenAndSetCookie(res, user);
+      console.log(`Token generated successfully for user: ${user.email}`);
 
-    res.status(200).json({
-      success: true,
-      message:
-        user.role === "operator"
-          ? "Logged in successfully as operator"
-          : "Logged in successfully as driver",
-      token,
-      user: {
-        ...user._doc,
-        password: undefined,
-      },
-    });
+      res.status(200).json({
+        success: true,
+        message: user.role === 'operator' ? 'Logged in successfully as operator' : 'Logged in successfully as driver',
+        token,
+        user: { ...user._doc, password: undefined },
+      });
+    } catch (tokenError) {
+      console.error('Token generation error:', tokenError);
+      return res.status(500).json({ success: false, message: 'Error generating authentication token' });
+    }
   } catch (error) {
-    res.status(400).json({ success: false, message: error.message });
+    console.error('login error', error);
+    res.status(400).json({ success: false, message: error.message || 'Login failed. Please try again.' });
   }
 };
 

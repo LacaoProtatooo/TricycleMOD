@@ -26,9 +26,14 @@ export const getTricycles = async (req, res) => {
     if (search) query.plateNumber = { $regex: search, $options: "i" };
     if (status) query.status = status;
 
+    // If user is authenticated and is an operator, only show their tricycles
+    if (req.user && req.user.role === 'operator') {
+      query.operator = req.user.id;
+    }
+
     const tricycles = await Tricycle.find(query)
-      .populate("operator", "name username")
-      .populate("driver", "name username");
+      .populate("operator", "firstname lastname username email")
+      .populate("driver", "firstname lastname username email phone image");
 
     res.status(200).json({
       success: true,
@@ -47,8 +52,8 @@ export const getTricycle = async (req, res) => {
 
   try {
     const tricycle = await Tricycle.findById(id)
-      .populate("operator", "name username")
-      .populate("driver", "name username");
+      .populate("operator", "firstname lastname username email")
+      .populate("driver", "firstname lastname username email phone image");
 
     if (!tricycle)
       return res.status(404).json({ success: false, message: "Tricycle not found" });
@@ -63,20 +68,38 @@ export const getTricycle = async (req, res) => {
 // ==================== CREATE TRICYCLE ====================
 export const createTricycle = async (req, res) => {
   try {
-    const { plateNumber, model, operator, driver, status } = req.body;
+    const { plateNumber, model, driver, status } = req.body;
 
     // Validate required fields
-    if (!plateNumber || !model || !operator) {
+    if (!plateNumber || !model) {
       return res.status(400).json({
         success: false,
-        message: "Plate number, model, and operator are required.",
+        message: "Plate number and model are required.",
       });
     }
 
-    // Validate operator existence
-    const operatorExists = await User.findById(operator);
+    // Get operator from authenticated user (if available) or from request body
+    const operatorId = req.user?.id || req.body.operator;
+    
+    if (!operatorId) {
+      return res.status(400).json({
+        success: false,
+        message: "Operator is required. Please login or provide operator ID.",
+      });
+    }
+
+    // Validate operator existence and role
+    const operatorExists = await User.findById(operatorId);
     if (!operatorExists) {
       return res.status(404).json({ success: false, message: "Operator not found" });
+    }
+
+    // If user is authenticated, verify they are an operator
+    if (req.user && req.user.role !== 'operator') {
+      return res.status(403).json({
+        success: false,
+        message: "Only operators can create tricycles",
+      });
     }
 
     // Upload multiple images to Cloudinary
@@ -100,7 +123,7 @@ export const createTricycle = async (req, res) => {
     const newTricycle = new Tricycle({
       plateNumber,
       model,
-      operator,
+      operator: operatorId,
       driver: driver || null,
       status: status || "unavailable",
       images: imageLinks,
@@ -108,10 +131,15 @@ export const createTricycle = async (req, res) => {
 
     await newTricycle.save();
 
+    // Populate operator and driver before returning
+    const populatedTricycle = await Tricycle.findById(newTricycle._id)
+      .populate("operator", "firstname lastname username email")
+      .populate("driver", "firstname lastname username email phone image");
+
     res.status(201).json({
       success: true,
       message: "Tricycle added successfully",
-      data: newTricycle,
+      data: populatedTricycle,
     });
   } catch (error) {
     console.error("Error creating tricycle:", error.message);
@@ -130,6 +158,16 @@ export const updateTricycle = async (req, res) => {
     const tricycle = await Tricycle.findById(id);
     if (!tricycle) {
       return res.status(404).json({ success: false, message: "Tricycle not found" });
+    }
+
+    // If user is authenticated and is an operator, verify ownership
+    if (req.user && req.user.role === 'operator') {
+      if (tricycle.operator.toString() !== req.user.id.toString()) {
+        return res.status(403).json({
+          success: false,
+          message: "You can only update your own tricycles",
+        });
+      }
     }
 
     const { plateNumber, model, operator, driver, status, existingImages = [] } = req.body;
@@ -161,7 +199,8 @@ export const updateTricycle = async (req, res) => {
     const updatedData = {
       plateNumber: plateNumber || tricycle.plateNumber,
       model: model || tricycle.model,
-      operator: operator || tricycle.operator,
+      // Operators cannot change the operator field - it's always their own
+      operator: (req.user && req.user.role === 'operator') ? req.user.id : (operator || tricycle.operator),
       driver: driver || tricycle.driver,
       status: status || tricycle.status,
       images: updatedImages,
@@ -169,7 +208,9 @@ export const updateTricycle = async (req, res) => {
 
     const updatedTricycle = await Tricycle.findByIdAndUpdate(id, updatedData, {
       new: true,
-    });
+    })
+      .populate("operator", "firstname lastname username email")
+      .populate("driver", "firstname lastname username email phone image");
 
     res.status(200).json({ success: true, data: updatedTricycle });
   } catch (error) {
@@ -189,6 +230,16 @@ export const deleteTricycle = async (req, res) => {
     const tricycle = await Tricycle.findById(id);
     if (!tricycle)
       return res.status(404).json({ success: false, message: "Tricycle not found" });
+
+    // If user is authenticated and is an operator, verify ownership
+    if (req.user && req.user.role === 'operator') {
+      if (tricycle.operator.toString() !== req.user.id.toString()) {
+        return res.status(403).json({
+          success: false,
+          message: "You can only delete your own tricycles",
+        });
+      }
+    }
 
     // Delete Cloudinary images
     if (tricycle.images && tricycle.images.length > 0) {

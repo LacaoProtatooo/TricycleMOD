@@ -33,7 +33,8 @@ export const adminOnly = async (req, res, next) => {
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
       req.user = await User.findById(decoded.id).select('-password');
 
-      if (req.user && req.user.isAdmin) {
+      // Check if user is an operator (admin) based on role
+      if (req.user && req.user.role === 'operator') {
         return next();
       } else {
         return res.status(403).json({ success: false, message: 'Not authorized as an admin' });

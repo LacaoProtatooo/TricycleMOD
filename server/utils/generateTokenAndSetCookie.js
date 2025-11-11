@@ -1,7 +1,9 @@
 import jwt from 'jsonwebtoken';
 
 export const generateTokenAndSetCookie = (res, user) => {
-  const token = jwt.sign({ id: user._id, isAdmin: user.isAdmin }, process.env.JWT_SECRET, {
+  // Use role to determine if user is admin (operator role is treated as admin)
+  const isAdmin = user.role === 'operator';
+  const token = jwt.sign({ id: user._id, isAdmin, role: user.role }, process.env.JWT_SECRET, {
     expiresIn: "7d",
   });
 

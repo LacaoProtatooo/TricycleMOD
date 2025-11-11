@@ -5,6 +5,8 @@ import cors from 'cors';
 // Route Imports
 import authRoutes from '../routes/authRoute.js';
 import loginRoutes from '../routes/loginRoute.js';
+import tricycleRoutes from '../routes/tricycleRoute.js';
+import operatorRoutes from '../routes/operatorRoute.js';
 
 const app = express();
 app.use(express.json());
@@ -31,6 +33,8 @@ app.use((req, res, next) => {
 // Router Connection || Dito ka maglagay donn ng mga routes, import mo din sa bandang taas
 app.use('/api/auth', authRoutes);
 app.use('/api/auth', loginRoutes);
+app.use('/api/tricycles', tricycleRoutes);
+app.use('/api/operator', operatorRoutes);
 
 
 // Fallback for unknown routes
