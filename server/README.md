@@ -58,3 +58,8 @@ Run Python
 - python -m pip install --upgrade pip;
 - python -m pip install paddleocr
 - py -m pip install -r server/ocr/requirements.txt
+
+python -m pip install --upgrade pip
+python -m pip install pytesseract pillow
+python -c "import pytesseract, shutil; print('pytesseract ok', pytesseract.get_tesseract_version()); print('tesseract in PATH:', bool(shutil.which('tesseract')))"
+Download: https://github.com/UB-Mannheim/tesseract/wiki

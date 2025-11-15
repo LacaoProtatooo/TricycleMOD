@@ -58,36 +58,68 @@ def extract_texts(obj, out):
     """
     Recursively extract candidate text lines from varied PaddleOCR outputs.
     Appends dicts with keys: text, confidence, box when possible.
+    Enhanced to capture all text more comprehensively.
     """
     if isinstance(obj, dict):
         if 'text' in obj or 'rec_text' in obj or 'transcription' in obj:
             text = obj.get('text') or obj.get('rec_text') or obj.get('transcription') or ''
-            conf = obj.get('confidence') or obj.get('score') or obj.get('prob') or obj.get('score_list')
-            box = obj.get('box') or obj.get('bbox') or obj.get('loc') or obj.get('box_points')
-            out.append({
-                'text': make_serializable(text),
-                'confidence': make_serializable(conf),
-                'box': make_serializable(box)
-            })
+            # Only add if text is not empty
+            if text and text.strip():
+                conf = obj.get('confidence') or obj.get('score') or obj.get('prob') or obj.get('score_list')
+                box = obj.get('box') or obj.get('bbox') or obj.get('loc') or obj.get('box_points')
+                out.append({
+                    'text': make_serializable(text),
+                    'confidence': make_serializable(conf),
+                    'box': make_serializable(box)
+                })
+            return
+        # Also check for arrays of texts/boxes
+        if 'texts' in obj and 'boxes' in obj:
+            texts = obj.get('texts', [])
+            boxes = obj.get('boxes', [])
+            for i, text in enumerate(texts):
+                if text and text.strip():
+                    box = boxes[i] if i < len(boxes) else None
+                    conf = obj.get('scores', [None])[i] if 'scores' in obj and i < len(obj.get('scores', [])) else None
+                    out.append({
+                        'text': make_serializable(text),
+                        'confidence': make_serializable(conf),
+                        'box': make_serializable(box)
+                    })
             return
         for v in obj.values():
             extract_texts(v, out)
     elif isinstance(obj, (list, tuple)):
+        # Handle PaddleOCR standard format: [[[x1,y1],[x2,y2],[x3,y3],[x4,y4]], (text, confidence)]
         if len(obj) >= 2:
             first, second = obj[0], obj[1]
-            if isinstance(second, (list, tuple)) and len(second) >= 1 and isinstance(second[0], str):
-                text = second[0]
-                conf = second[1] if len(second) > 1 else None
-                out.append({'text': make_serializable(text), 'confidence': make_serializable(conf), 'box': make_serializable(first)})
-                return
+            # Standard format: [bbox, (text, confidence)]
+            if isinstance(second, (list, tuple)) and len(second) >= 1:
+                if isinstance(second[0], str):
+                    text = second[0]
+                    if text and text.strip():  # Only add non-empty text
+                        conf = second[1] if len(second) > 1 else None
+                        out.append({'text': make_serializable(text), 'confidence': make_serializable(conf), 'box': make_serializable(first)})
+                    return
+                # Nested structure
+                if isinstance(second, (list, tuple)) and len(second) > 0:
+                    # Try to extract text from nested structure
+                    for item in second:
+                        extract_texts([first, item], out)
+                    return
+            # Direct text string
             if isinstance(second, str):
-                out.append({'text': make_serializable(second), 'confidence': None, 'box': make_serializable(first)})
+                if second and second.strip():  # Only add non-empty text
+                    out.append({'text': make_serializable(second), 'confidence': None, 'box': make_serializable(first)})
                 return
+            # Dict with text keys
             if isinstance(second, dict) and any(k in second for k in ('text', 'rec_text', 'transcription')):
                 text = second.get('text') or second.get('rec_text') or second.get('transcription') or ''
-                conf = second.get('confidence') or second.get('score')
-                out.append({'text': make_serializable(text), 'confidence': make_serializable(conf), 'box': make_serializable(first)})
+                if text and text.strip():  # Only add non-empty text
+                    conf = second.get('confidence') or second.get('score')
+                    out.append({'text': make_serializable(text), 'confidence': make_serializable(conf), 'box': make_serializable(first)})
                 return
+        # Recursively process all items
         for item in obj:
             extract_texts(item, out)
 
@@ -96,23 +128,35 @@ def preprocess_image(in_path, max_width=1600, contrast=1.2, enhance_sharpness=1.
     """
     Preprocess the image: resize (if large), enhance contrast/sharpness, optional grayscale.
     Returns path to temp preprocessed image.
+    Enhanced to preserve more detail for better OCR.
     """
     img = Image.open(in_path).convert('RGB')
     w, h = img.size
+    
+    # Only resize if significantly larger than max_width to preserve detail
     if max(w, h) > max_width:
         scale = max_width / float(max(w, h))
         new_size = (int(w * scale), int(h * scale))
+        # Use LANCZOS for better quality when downscaling
         img = img.resize(new_size, Image.LANCZOS)
+    
+    # Optional grayscale conversion (usually better to keep color for OCR)
     if to_grayscale:
         img = ImageOps.grayscale(img).convert('RGB')
+    
+    # Enhance contrast to make text more distinct
     if contrast != 1.0:
         img = ImageEnhance.Contrast(img).enhance(contrast)
+    
+    # Enhance sharpness to make text edges clearer
     if enhance_sharpness != 1.0:
         img = ImageEnhance.Sharpness(img).enhance(enhance_sharpness)
+    
+    # Save with high quality to preserve detail
     tmp = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg')
     tmp_path = tmp.name
     tmp.close()
-    img.save(tmp_path, quality=95)
+    img.save(tmp_path, quality=98, optimize=False)  # Higher quality, no optimization for speed
     return tmp_path
 
 
@@ -200,14 +244,15 @@ def crop_and_rerun_ocr(ocr, original_image_path, detections, crop_padding=6, ups
             if minx >= maxx or miny >= maxy:
                 continue
             crop = orig_img.crop((minx, miny, maxx, maxy))
-            # upscale
+            # upscale for better recognition
             cw, ch = crop.size
-            crop = crop.resize((int(cw * upscale), int(ch * upscale)), Image.LANCZOS)
+            if cw > 0 and ch > 0:  # Ensure valid dimensions
+                crop = crop.resize((int(cw * upscale), int(ch * upscale)), Image.LANCZOS)
             # save to temp and run OCR on crop
             tmpc = tempfile.NamedTemporaryFile(delete=False, suffix='.jpg')
             tmpc_path = tmpc.name
             tmpc.close()
-            crop.save(tmpc_path, quality=95)
+            crop.save(tmpc_path, quality=98, optimize=False)  # Higher quality
             try:
                 rec = None
                 # prefer predict where available
@@ -238,6 +283,38 @@ def crop_and_rerun_ocr(ocr, original_image_path, detections, crop_padding=6, ups
     return results
 
 
+def run_tesseract_fullpage(image_path):
+    """
+    Optional fallback using pytesseract to read the whole page as plain text.
+    Returns (list_of_items, error_str). list_of_items is [{'text':..., 'confidence':None, 'box':None}, ...]
+    """
+    try:
+        import pytesseract
+        import shutil
+        from PIL import ImageFilter
+    except Exception as e:
+        return None, f"pytesseract or PIL.ImageFilter not available: {e}"
+    # If tesseract.exe is not on PATH, set the full path here:
+    # pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+    if not shutil.which('tesseract'):
+        # If you know the installation path, uncomment and set it:
+        # pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+        return None, "tesseract executable not found in PATH"
+    try:
+        img = Image.open(image_path).convert('RGB')
+        # simple preprocessing to help Tesseract
+        gray = ImageOps.grayscale(img)
+        gray = gray.filter(ImageFilter.MedianFilter(size=3))
+        gray = ImageOps.autocontrast(gray)
+        # get full-page text (psm 1 = automatic page segmentation + OSD)
+        text = pytesseract.image_to_string(gray, lang='eng', config='--psm 1')
+        lines = [ln.strip() for ln in text.splitlines() if ln.strip()]
+        items = [{'text': make_serializable(ln), 'confidence': None, 'box': None} for ln in lines]
+        return items, None
+    except Exception as e:
+        return None, str(e)
+
+
 def main():
     if len(sys.argv) < 2:
         print(json.dumps({'error': 'No image path provided'}))
@@ -248,17 +325,24 @@ def main():
         print(json.dumps({'error': 'Image not found', 'path': img_path}))
         sys.exit(1)
 
-    # create OCR model (tweak params if desired)
-    ocr = PaddleOCR(use_textline_orientation=True, lang='en')
+    # create OCR model with correct modern parameters - optimized for maximum text detection
+    # Using only validated parameters to avoid compatibility issues
+    ocr = PaddleOCR(
+        lang='en',
+        text_det_thresh=0.2,  # Lower threshold to detect more text (was 0.3)
+        text_det_box_thresh=0.3,  # Lower box threshold to include more boxes (was 0.5)
+        text_det_unclip_ratio=2.0  # Expand detected boxes more to capture full text (was 1.8)
+    )
 
-    # preprocess full image to help detection
-    pre_path = preprocess_image(img_path, max_width=1600, contrast=1.25, enhance_sharpness=1.0, to_grayscale=False)
+    # preprocess full image to help detection - keep higher resolution for better text detection
+    pre_path = preprocess_image(img_path, max_width=3200, contrast=1.3, enhance_sharpness=1.1, to_grayscale=False)
 
     try:
         # detection + recognition on preprocessed image
         try:
-            raw_result = ocr.predict(pre_path)
+            raw_result = ocr.ocr(pre_path, cls=True)
         except Exception:
+            # fallback without cls
             raw_result = ocr.ocr(pre_path)
     except Exception as e:
         # cleanup
@@ -269,20 +353,97 @@ def main():
         print(json.dumps({'error': 'OCR failed', 'detail': str(e)}))
         sys.exit(3)
 
-    # Attempt to extract lines from raw_result
+    # DEBUG: Print raw result structure to stderr
+    import sys as _sys
+    _sys.stderr.write(f"\n=== DEBUG: Raw result type: {type(raw_result)} ===\n")
+    _sys.stderr.write(f"=== DEBUG: Raw result length: {len(raw_result) if isinstance(raw_result, (list, tuple)) else 'N/A'} ===\n")
+    _sys.stderr.write(f"=== DEBUG: Raw result: {str(raw_result)[:500]} ===\n\n")
+
+    # Handle None or empty results
+    if raw_result is None:
+        try:
+            os.unlink(pre_path)
+        except Exception:
+            pass
+        print(json.dumps({'error': 'OCR returned no results', 'detail': 'PaddleOCR returned None'}))
+        sys.exit(3)
+
+    # PaddleOCR standard format: list of detections where each is [bbox, (text, confidence)]
+    # For multi-page: [[page1_detections], [page2_detections], ...]
+    # For single page: [detection1, detection2, ...]
+    # Handle multi-page format by flattening
+    if isinstance(raw_result, (list, tuple)) and len(raw_result) > 0:
+        # Check if it's a list of pages (each page is a list of detections)
+        if isinstance(raw_result[0], (list, tuple)) and len(raw_result[0]) > 0:
+            # Check if first page's first element looks like a detection [bbox, text_info]
+            first_item = raw_result[0][0]
+            if isinstance(first_item, (list, tuple)) and len(first_item) >= 2:
+                # This is multi-page format, flatten it
+                flattened = []
+                for page in raw_result:
+                    if page is not None and isinstance(page, (list, tuple)):
+                        flattened.extend(page)
+                raw_result = flattened
+        # Handle case where first element is None (empty result)
+        elif raw_result[0] is None:
+            raw_result = []
+
+    # Attempt to extract lines from raw_result - this is the primary source
     extracted = []
     extract_texts(raw_result, extracted)
+    
+    _sys.stderr.write(f"=== DEBUG: Extracted {len(extracted)} lines from raw result ===\n")
+    
+    # Remove duplicates based on text content (keep first occurrence)
+    seen_texts = set()
+    unique_extracted = []
+    for item in extracted:
+        text = item.get('text', '').strip() if item.get('text') else ''
+        if text and text not in seen_texts:
+            seen_texts.add(text)
+            unique_extracted.append(item)
+    
+    _sys.stderr.write(f"=== DEBUG: After deduplication: {len(unique_extracted)} unique lines ===\n")
 
-    # If detection found bounding boxes (raw_result elements typically include bbox in first element),
-    # perform per-box crop + re-recognition from the original (higher res) image to improve accuracy.
-    # Use raw_result itself for detection coordinates if available.
+    # Normalize detections and perform per-box crop + re-recognition from the original (higher res) image
+    # This is optional enhancement - use extracted as primary source
+    crops_result = []
     try:
-        crops_result = crop_and_rerun_ocr(ocr, img_path, raw_result, crop_padding=6, upscale=2.0)
-    except Exception:
+        detections = flatten_detections(raw_result)
+        # fallback: if flatten_detections found nothing and raw_result looks like a list of boxes, use it directly
+        if not detections and isinstance(raw_result, (list, tuple)):
+            detections = list(raw_result)
+        
+        _sys.stderr.write(f"=== DEBUG: Found {len(detections)} detections for cropping ===\n")
+        
+        if detections:
+            crops_result = crop_and_rerun_ocr(ocr, img_path, detections, crop_padding=8, upscale=2.5)
+            _sys.stderr.write(f"=== DEBUG: Crop processing returned {len(crops_result)} results ===\n")
+    except Exception as ex:
+        _sys.stderr.write(f"=== DEBUG: Crop processing failed: {str(ex)} ===\n")
         crops_result = []
 
-    # Merge crop-based results if they exist; otherwise fall back to extracted
-    lines = crops_result if crops_result else extracted
+    # Merge results: use extracted as primary, supplement with crop results if they add new text
+    lines = unique_extracted.copy()
+    if crops_result:
+        extracted_texts = {item.get('text', '').strip() for item in lines if item.get('text')}
+        for crop_item in crops_result:
+            crop_text = crop_item.get('text', '').strip() if crop_item.get('text') else ''
+            if crop_text and crop_text not in extracted_texts:
+                lines.append(crop_item)
+                extracted_texts.add(crop_text)
+    
+    _sys.stderr.write(f"=== DEBUG: Final merged result: {len(lines)} total lines ===\n")
+
+    # If result is very small (1 line) try full-page fallback with Tesseract
+    if len(lines) <= 1:
+        _sys.stderr.write("=== DEBUG: PaddleOCR returned few lines, trying Tesseract full-page fallback ===\n")
+        t_lines, t_err = run_tesseract_fullpage(img_path)
+        if t_lines:
+            _sys.stderr.write(f"=== DEBUG: Tesseract returned {len(t_lines)} lines; replacing result ===\n")
+            lines = t_lines
+        else:
+            _sys.stderr.write(f"=== DEBUG: Tesseract fallback failed: {t_err} ===\n")
 
     # If still empty, return raw for debugging
     if not lines:
