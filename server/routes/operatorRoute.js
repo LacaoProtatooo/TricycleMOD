@@ -6,9 +6,11 @@ import {
   assignDriverToTricycle,
   unassignDriverFromTricycle,
   getDriverDetails,
+  scanReceipt,
 } from '../controllers/operatorController.js';
 import { authUser } from '../middleware/authMiddleware.js';
 import { operatorOnly } from '../middleware/operatorMiddleware.js';
+import upload from '../utils/multer.js';
 
 const router = express.Router();
 
@@ -33,6 +35,9 @@ router.post('/assign-driver', assignDriverToTricycle);
 
 // Unassign driver from tricycle
 router.post('/unassign-driver', unassignDriverFromTricycle);
+
+// Scan receipt image (multipart/form-data) - field name: `image`
+router.post('/scan-receipt', upload.single('image'), scanReceipt);
 
 export default router;
 

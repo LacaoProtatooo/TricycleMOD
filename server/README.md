@@ -6,9 +6,6 @@
    ```bash
    npm install
    ```
-
-2. **Environment Variables**
-   Create a `.env` file in the server directory with the following variables:
    
    ```env
    MONGO_URI=mongodb+srv://hinakagiyamaa:<db_password>@ubheat.fgqil.mongodb.net/?retryWrites=true&w=majority&appName=UBheat
@@ -19,7 +16,7 @@
 
    **Important**: Replace `<db_password>` with your actual MongoDB password.
 
-3. **Start the Server**
+4. **Start the Server**
    ```bash
    npm start
    ```
@@ -52,3 +49,12 @@ The User model includes the following fields:
 
 
 
+Run Python
+- cd server
+- py -3 -m venv .venv
+- .\.venv\Scripts\Activate;
+- pip install paddlepaddle -f https://www.paddlepaddle.org.cn/whl/windows/mkl/avx/stable.html
+- pip install paddleocr
+- python -m pip install --upgrade pip;
+- python -m pip install paddleocr
+- py -m pip install -r server/ocr/requirements.txt
