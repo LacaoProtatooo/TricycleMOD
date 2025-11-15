@@ -40,3 +40,7 @@ coverage/
 ### Package Lock Files
 package-lock.json
 yarn.lock
+
+.venv/
+pycache/
+*.pyc
