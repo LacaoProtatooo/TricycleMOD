@@ -7,6 +7,7 @@ import authRoutes from '../routes/authRoute.js';
 import loginRoutes from '../routes/loginRoute.js';
 import tricycleRoutes from '../routes/tricycleRoute.js';
 import operatorRoutes from '../routes/operatorRoute.js';
+import messageRoutes from '../routes/messageRoute.js';
 
 const app = express();
 app.use(express.json());
@@ -35,6 +36,7 @@ app.use('/api/auth', authRoutes);
 app.use('/api/auth', loginRoutes);
 app.use('/api/tricycles', tricycleRoutes);
 app.use('/api/operator', operatorRoutes);
+app.use('/api/messages', messageRoutes);
 
 
 // Fallback for unknown routes
