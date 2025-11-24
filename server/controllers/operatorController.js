@@ -338,59 +338,71 @@ export const scanReceipt = async (req, res) => {
       return res.status(500).json({ success: false, message: 'OCR script not found on server', tried: scriptCandidates });
     }
 
-    const trySpawn = (cmd) => {
+    // Build args to pass to the python script (include optional lang / no-cls)
+    const langArg = (req.body && req.body.lang) || (req.query && req.query.lang) || process.env.PADDLE_OCR_LANG || 'en';
+    const noClsFlag = (req.body && (req.body.noCls || req.body.no_cls || req.body.no_cls === true)) || (req.query && (req.query.noCls || req.query.no_cls));
+    const baseArgs = [scriptPath, filepath];
+    if (langArg) {
+      baseArgs.push('--lang', String(langArg));
+    }
+    if (noClsFlag) {
+      baseArgs.push('--no-cls');
+    }
+
+    const trySpawn = (cmd, args = baseArgs) => {
       return new Promise((resolve, reject) => {
-        // Quote paths for Windows to handle spaces and special characters
-        const quotedScriptPath = scriptPath.includes(' ') ? `"${scriptPath}"` : scriptPath;
-        const quotedFilePath = filepath.includes(' ') ? `"${filepath}"` : filepath;
-        
-        // Construct command - on Windows with shell, build full command string
-        const isWindows = process.platform === 'win32';
+        // Use argument array to avoid shell quoting issues; works on Windows and Unix
         let proc;
-        
-        if (isWindows) {
-          // On Windows, construct full command string for better compatibility
-          const fullCommand = `${cmd} ${quotedScriptPath} ${quotedFilePath}`;
-          proc = spawn(fullCommand, { 
-            shell: true,
-            cwd: process.cwd()
-          });
-        } else {
-          // On Unix, use array of arguments
-          proc = spawn(cmd, [scriptPath, filepath], { 
-            shell: false,
-            cwd: process.cwd()
-          });
+        try {
+          proc = spawn(cmd, args, { shell: false, cwd: process.cwd() });
+        } catch (e) {
+          return reject({ code: 'spawn_error', error: e, message: e.message, cmd });
         }
-        
+
         let out = '';
         let err = '';
         proc.stdout.on('data', (d) => { out += d.toString(); });
         proc.stderr.on('data', (d) => { err += d.toString(); });
-        
+
         // Add timeout to prevent hanging (30 seconds)
         const timeout = setTimeout(() => {
-          proc.kill();
-          reject({ code: 'timeout', error: 'Python script execution timed out', cmd });
+          try { proc.kill(); } catch (e) { /* ignore */ }
+          reject({ code: 'timeout', error: 'Python script execution timed out', cmd, args });
         }, 30000);
-        
+
         proc.on('error', (e) => {
           clearTimeout(timeout);
-          reject({ code: 'spawn_error', error: e, cmd, message: e.message });
+          reject({ code: 'spawn_error', error: e, cmd, message: e.message, args });
         });
-        
+
         proc.on('close', (code) => {
           clearTimeout(timeout);
-          resolve({ code, out, err, cmd });
+          resolve({ code, out, err, cmd, args });
         });
       });
     };
 
     // Try different Python commands based on platform
-    // Windows: try 'py', 'python', 'python3'
-    // Unix: try 'python3', 'python'
+    // Prefer the project's virtualenv python if present, then fall back to common system commands
     const isWindows = process.platform === 'win32';
     const pythonCommands = isWindows ? ['py', 'python', 'python3'] : ['python3', 'python'];
+
+    // Check for common virtualenv locations inside the project and prefer them
+    const venvCandidates = [
+      path.join(process.cwd(), '.venv', isWindows ? 'Scripts' : 'bin', isWindows ? 'python.exe' : 'python'),
+      path.join(process.cwd(), 'venv', isWindows ? 'Scripts' : 'bin', isWindows ? 'python.exe' : 'python')
+    ];
+    for (const vp of venvCandidates) {
+      try {
+        if (fs.existsSync(vp)) {
+          // Put the absolute venv python at the front if not already present
+          if (!pythonCommands.includes(vp)) pythonCommands.unshift(vp);
+          break; // prefer first found venv
+        }
+      } catch (e) {
+        // ignore
+      }
+    }
     
     let result = null;
     const attempts = [];

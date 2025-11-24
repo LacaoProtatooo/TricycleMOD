@@ -24,7 +24,7 @@ import { colors, spacing } from '../../components/common/theme';
 import { useAsyncSQLiteContext } from '../../utils/asyncSQliteProvider';
 import { getToken } from '../../utils/jwtStorage';
 
-const apiURL = Constants.expoConfig.extra?.BACKEND_URL || 'http://192.168.100.12:5000';
+const apiURL = Constants.expoConfig.extra?.BACKEND_URL || 'http://192.168.254.112:5000';
 
 const Chat = () => {
   const route = useRoute();

@@ -1,11 +1,17 @@
 #!/usr/bin/env python
-import sys
-import json
-import os
+import sys, os, json
+# Debug: print runtime python and environment for diagnosing import issues
+sys.stderr.write(json.dumps({
+    'debug_python': sys.executable,
+    'debug_sys_path': sys.path[:5],            # truncated
+    'debug_virtual_env': os.environ.get('VIRTUAL_ENV'),
+    'debug_path_env_contains_venv': '.venv' in os.environ.get('PATH', '')
+}) + "\n")
+
 import tempfile
 
 # This script requires paddleocr, paddlepaddle and Pillow installed in the same python environment.
-# Usage: python paddle_scan.py /path/to/image.jpg
+# Usage: python paddle_scan.py /path/to/image.jpg [--lang <lang>] [--no-cls]
 # Install deps in your server venv:
 # pip install paddleocr paddlepaddle pillow
 
@@ -294,12 +300,26 @@ def run_tesseract_fullpage(image_path):
         from PIL import ImageFilter
     except Exception as e:
         return None, f"pytesseract or PIL.ImageFilter not available: {e}"
-    # If tesseract.exe is not on PATH, set the full path here:
-    # pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
-    if not shutil.which('tesseract'):
-        # If you know the installation path, uncomment and set it:
-        # pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
-        return None, "tesseract executable not found in PATH"
+    # Prefer system PATH first
+    tpath = shutil.which('tesseract')
+    if not tpath:
+        # Try common Windows install locations as a fallback
+        candidates = [
+            r"C:\Program Files\Tesseract-OCR\tesseract.exe",
+            r"C:\Program Files (x86)\Tesseract-OCR\tesseract.exe",
+        ]
+        found = None
+        for c in candidates:
+            try:
+                if os.path.exists(c):
+                    found = c
+                    break
+            except Exception:
+                continue
+        if found:
+            pytesseract.pytesseract.tesseract_cmd = found
+        else:
+            return None, "tesseract executable not found in PATH or known install locations"
     try:
         img = Image.open(image_path).convert('RGB')
         # simple preprocessing to help Tesseract
@@ -325,10 +345,23 @@ def main():
         print(json.dumps({'error': 'Image not found', 'path': img_path}))
         sys.exit(1)
 
+    # Parse optional arguments: --lang / -l and --no-cls
+    lang = 'en'
+    use_cls = True
+    for i in range(2, len(sys.argv)):
+        a = sys.argv[i].lower()
+        if a in ('--lang', '-l') and i + 1 < len(sys.argv):
+            lang = sys.argv[i + 1]
+        if a == '--no-cls':
+            use_cls = False
+
+    # Debug chosen lang and cls usage
+    sys.stderr.write(json.dumps({'debug_chosen_lang': lang, 'debug_use_cls': use_cls}) + "\n")
+
     # create OCR model with correct modern parameters - optimized for maximum text detection
     # Using only validated parameters to avoid compatibility issues
     ocr = PaddleOCR(
-        lang='en',
+        lang=lang,
         text_det_thresh=0.2,  # Lower threshold to detect more text (was 0.3)
         text_det_box_thresh=0.3,  # Lower box threshold to include more boxes (was 0.5)
         text_det_unclip_ratio=2.0  # Expand detected boxes more to capture full text (was 1.8)
@@ -340,7 +373,10 @@ def main():
     try:
         # detection + recognition on preprocessed image
         try:
-            raw_result = ocr.ocr(pre_path, cls=True)
+            if use_cls:
+                raw_result = ocr.ocr(pre_path, cls=True)
+            else:
+                raw_result = ocr.ocr(pre_path)
         except Exception:
             # fallback without cls
             raw_result = ocr.ocr(pre_path)
@@ -448,7 +484,7 @@ def main():
     # If still empty, return raw for debugging
     if not lines:
         print(json.dumps({
-            'lines': [],
+            'lines': [], 
             'warning': 'No text lines extracted. Raw result included for debugging.',
             'raw': make_serializable(raw_result)
         }, ensure_ascii=False))
