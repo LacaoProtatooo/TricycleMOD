@@ -1,3 +1,5 @@
+// persistentLogin.js
+
 import React, { useEffect } from 'react';
 import { useDispatch } from 'react-redux';
 import { useAsyncSQLiteContext } from '../utils/asyncSQliteProvider';

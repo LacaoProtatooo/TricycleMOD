@@ -9,16 +9,19 @@ import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { colors } from '../../components/common/theme';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 // Import tab components
 import DashboardTab from '../dashboard/DashboardTab';
 import MapsTab from '../dashboard/MapsTab';
 import ProfileTab from '../dashboard/ProfileTab';
+import ChatMenu from '../message/chatMenu';
 
 const Tab = createBottomTabNavigator();
 
 const Home = () => {
   return (
+    <SafeAreaView style={{ flex: 1 }} edges={['bottom']}>
     <Tab.Navigator
       screenOptions={{
         tabBarActiveTintColor: colors.primary,
@@ -53,6 +56,15 @@ const Home = () => {
         }}
       />
       <Tab.Screen
+        name="Messages"
+        component={ChatMenu}
+        options={{ 
+          tabBarIcon: ({ color, size }) => (
+            <Ionicons name="chatbubble-ellipses-outline" size={size} color={color} />
+          ) 
+        }}
+      />
+      <Tab.Screen
         name="Profile"
         component={ProfileTab}
         options={{ 
@@ -62,6 +74,7 @@ const Home = () => {
         }}
       />
     </Tab.Navigator>
+    </SafeAreaView>
   );
 };
 

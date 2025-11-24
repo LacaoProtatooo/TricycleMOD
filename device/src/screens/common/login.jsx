@@ -23,6 +23,7 @@ import {
   GoogleSignin,
   GoogleSigninButton,
   isSuccessResponse,
+  statusCodes,
 } from '@react-native-google-signin/google-signin';
 import { signInWithCredential, GoogleAuthProvider } from 'firebase/auth';
 
@@ -80,32 +81,46 @@ const Login = () => {
   const handleGoogleSignIn = async () => {
     try {
       setIsSubmitting(true);
-      await GoogleSignin.hasPlayServices();
+
+      await GoogleSignin.hasPlayServices({ showPlayServicesUpdateDialog: true });
+
+      // Sign in and get response
       const response = await GoogleSignin.signIn();
 
-      if (isSuccessResponse(response)) {
-        const { idToken } = response.data;
-        const credential = GoogleAuthProvider.credential(idToken);
-        const userCredential = await signInWithCredential(auth, credential);
-        const firebaseIdToken = await userCredential.user.getIdToken();
-
-        dispatch(googleLogin({ firebaseIdToken, db }))
-          .unwrap()
-          .then((user) => {
-            Toasthelper.showSuccess('Google Login Successful');
-            navigateAfterLogin(user);
-          })
-          .catch((error) => {
-            Toasthelper.showError('Google Login Failed', error.message);
-          });
+      // Validate response
+      if (!isSuccessResponse(response)) {
+        throw new Error('Google sign-in was not successful');
       }
-      setIsSubmitting(false);
+
+      // Extract ID token
+      const { idToken } = response.data;
+      const credential = GoogleAuthProvider.credential(idToken);
+
+      // Sign into Firebase
+      const userCredential = await signInWithCredential(auth, credential);
+
+      // Get Firebase auth token
+      const firebaseIdToken = await userCredential.user.getIdToken();
+
+      // Send token to backend → Redux
+      dispatch(googleLogin({ firebaseIdToken, db }))
+        .unwrap()
+        .then((user) => {
+          Toasthelper.showSuccess('Google Login Successful');
+          navigateAfterLogin(user);
+        })
+        .catch((error) => {
+          Toasthelper.showError('Google Login Failed', error.message);
+        })
+        .finally(() => setIsSubmitting(false));
+
     } catch (error) {
-      setIsSubmitting(false);
       console.error('Google sign-in error:', error);
       Toasthelper.showError('Google Sign-In Failed', error.message || 'Authentication failed');
+      setIsSubmitting(false);
     }
   };
+
 
   const toggleShowPassword = () => {
     setShowPassword(!showPassword);

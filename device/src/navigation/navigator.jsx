@@ -18,6 +18,7 @@ import Login from '../screens/common/login';
 import Signup from '../screens/common/signup';
 import Account from '../screens/common/account';
 import OperatorScreen from '../screens/operator/OperatorScreen';
+import Chat from '../screens/message/chat';
 
 // Drawers
 import AppDrawer from '../components/common/appdrawer';
@@ -86,6 +87,7 @@ const Navigator = () => {
             <Stack.Screen name="About" component={About} />
             <Stack.Screen name="OperatorScreen" component={OperatorScreen} />
             <Stack.Screen name="Account" component={Account} />
+            <Stack.Screen name="Chat" component={Chat} />
           </Stack.Navigator>
 
           {/* Drawer Overlay */}

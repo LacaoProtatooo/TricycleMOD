@@ -4,7 +4,6 @@ import { Platform } from 'react-native';
 import { useDispatch } from 'react-redux';
 import { registerForPushNotificationsAsync } from '../../utils/notification';
 import { uploadNotifToken } from '../../redux/actions/userAction';
-import { GoogleSignin } from '@react-native-google-signin/google-signin';
 import { getUserCredentials } from '../../utils/userStorage';
 
 export default function NotificationHandler() {
@@ -28,11 +27,6 @@ export default function NotificationHandler() {
 
     fetchUser();
 
-    // Configure Google Sign-in (if needed)
-    GoogleSignin.configure({
-      webClientId: '75787064888-l1hip5a66fhr6h7bgoo36okvj8qncm35.apps.googleusercontent.com',
-      profileImageSize: 150,
-    });
   }, []);
 
   // Register for push notifications when the user is available
@@ -92,10 +86,12 @@ export default function NotificationHandler() {
     // Cleanup listeners
     return () => {
       if (notificationListener.current) {
-        Notifications.removeNotificationSubscription(notificationListener.current);
+        // Notifications.removeNotificationSubscription(notificationListener.current);
+        notificationListener.current.remove();
       }
       if (responseListener.current) {
-        Notifications.removeNotificationSubscription(responseListener.current);
+        // Notifications.removeNotificationSubscription(responseListener.current);
+         responseListener.current.remove();
       }
     };
   }, []);
