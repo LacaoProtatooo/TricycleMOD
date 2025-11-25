@@ -4,6 +4,254 @@ import fs from 'fs';
 import path from 'path';
 import { spawn } from 'child_process';
 
+const resolveOcrScriptPath = () => {
+  const scriptCandidates = [
+    path.join(process.cwd(), 'ocr', 'paddle_scan.py'),
+    path.join(process.cwd(), 'server', 'ocr', 'paddle_scan.py'),
+    path.join(process.cwd(), '..', 'server', 'ocr', 'paddle_scan.py'),
+  ];
+
+  for (const candidate of scriptCandidates) {
+    try {
+      if (fs.existsSync(candidate)) {
+        return { scriptPath: candidate, scriptCandidates };
+      }
+    } catch (error) {
+      // ignore fs permission errors and continue
+    }
+  }
+
+  return { scriptPath: null, scriptCandidates };
+};
+
+const runPaddleOcr = async ({ filepath, langArg, noClsFlag }) => {
+  const { scriptPath, scriptCandidates } = resolveOcrScriptPath();
+
+  if (!scriptPath) {
+    const err = new Error('OCR script not found on server');
+    err.meta = { scriptCandidates };
+    throw err;
+  }
+
+  const baseArgs = [scriptPath, filepath];
+  if (langArg) {
+    baseArgs.push('--lang', String(langArg));
+  }
+  if (noClsFlag) {
+    baseArgs.push('--no-cls');
+  }
+
+  const trySpawn = (cmd) =>
+    new Promise((resolve, reject) => {
+      let proc;
+      try {
+        proc = spawn(cmd, baseArgs, { shell: false, cwd: process.cwd() });
+      } catch (error) {
+        return reject({ code: 'spawn_error', error });
+      }
+
+      let out = '';
+      let err = '';
+      proc.stdout.on('data', (d) => {
+        out += d.toString();
+      });
+      proc.stderr.on('data', (d) => {
+        err += d.toString();
+      });
+
+      const timeout = setTimeout(() => {
+        try {
+          proc.kill();
+        } catch (_) {
+          // ignore
+        }
+        reject({ code: 'timeout', error: new Error('Python script execution timed out') });
+      }, 30000);
+
+      proc.on('error', (error) => {
+        clearTimeout(timeout);
+        reject({ code: 'spawn_error', error });
+      });
+
+      proc.on('close', (code) => {
+        clearTimeout(timeout);
+        resolve({ code, out, err, cmd, args: baseArgs });
+      });
+    });
+
+  const isWindows = process.platform === 'win32';
+  const pythonCommands = isWindows ? ['py', 'python', 'python3'] : ['python3', 'python'];
+  const venvCandidates = [
+    path.join(process.cwd(), '.venv', isWindows ? 'Scripts' : 'bin', isWindows ? 'python.exe' : 'python'),
+    path.join(process.cwd(), 'venv', isWindows ? 'Scripts' : 'bin', isWindows ? 'python.exe' : 'python'),
+  ];
+  for (const vp of venvCandidates) {
+    try {
+      if (fs.existsSync(vp) && !pythonCommands.includes(vp)) {
+        pythonCommands.unshift(vp);
+        break;
+      }
+    } catch (_) {
+      // ignore
+    }
+  }
+
+  const attempts = [];
+  let result = null;
+
+  for (const cmd of pythonCommands) {
+    try {
+      const attempt = await trySpawn(cmd);
+      attempts.push({
+        cmd,
+        code: attempt.code,
+        stderr: attempt.err,
+        hasOutput: Boolean(attempt.out && attempt.out.length > 0),
+      });
+
+      if (attempt.code === 0 && attempt.out && attempt.out.length > 0) {
+        result = attempt;
+        break;
+      }
+
+      if (!result && attempt.out && attempt.out.length > 0) {
+        result = attempt; // keep the most informative output even if exit code != 0
+      }
+    } catch (spawnErr) {
+      attempts.push({
+        cmd,
+        code: spawnErr.code || 'spawn_error',
+        error: spawnErr.error?.message || spawnErr.message || String(spawnErr),
+      });
+    }
+  }
+
+  if (!result || (result.code !== 0 && (!result.out || result.out.length === 0))) {
+    const err = new Error('Failed to execute OCR python');
+    err.meta = { attempts, scriptPath, platform: process.platform };
+    throw err;
+  }
+
+  if (result.out && result.out.length > 0) {
+    try {
+      const parsed = JSON.parse(result.out);
+      if (parsed.error) {
+        const err = new Error(parsed.error || 'OCR python reported an error');
+        err.meta = { detail: parsed, attempts, scriptPath, stderr: result.err };
+        throw err;
+      }
+      return parsed;
+    } catch (parseErr) {
+      const err = new Error('Invalid OCR output');
+      err.meta = {
+        parseError: parseErr.message || String(parseErr),
+        raw: result.out,
+        stderr: result.err,
+        attempts,
+        scriptPath,
+      };
+      throw err;
+    }
+  }
+
+  const err = new Error('OCR python returned no output');
+  err.meta = { attempts, scriptPath, stderr: result?.err };
+  throw err;
+};
+
+let cachedTesseract = null;
+const loadTesseract = async () => {
+  if (cachedTesseract) return cachedTesseract;
+  const mod = await import('tesseract.js');
+  cachedTesseract = mod.default || mod;
+  return cachedTesseract;
+};
+
+const normalizeTesseractLang = (langArg) => {
+  const map = {
+    en: 'eng',
+    eng: 'eng',
+    english: 'eng',
+    fil: 'fil',
+    filipino: 'fil',
+    tl: 'tgl',
+    tgl: 'tgl',
+    tagalog: 'tgl',
+    es: 'spa',
+    spa: 'spa',
+    spanish: 'spa',
+    fr: 'fra',
+    fra: 'fra',
+    french: 'fra',
+  };
+
+  if (!langArg) return 'eng';
+  const normalized = String(langArg).trim().toLowerCase();
+  if (map[normalized]) return map[normalized];
+  if (normalized.length === 3) return normalized;
+  return 'eng';
+};
+
+const runTesseractFallback = async (imagePath, langArg) => {
+  const Tesseract = await loadTesseract();
+  const lang = normalizeTesseractLang(langArg);
+
+  try {
+    const { data } = await Tesseract.recognize(imagePath, lang, { logger: () => {} });
+    const normalizeConfidence = (value) => {
+      if (typeof value !== 'number' || Number.isNaN(value)) return null;
+      return value > 1 ? value / 100 : value;
+    };
+
+    const lines = (data?.lines || [])
+      .map((line) => {
+        const text = line.text?.trim();
+        if (!text) return null;
+        const confidence = normalizeConfidence(line.confidence);
+        const box = line.bbox
+          ? [
+              [line.bbox.x0, line.bbox.y0],
+              [line.bbox.x1, line.bbox.y0],
+              [line.bbox.x1, line.bbox.y1],
+              [line.bbox.x0, line.bbox.y1],
+            ]
+          : null;
+        return { text, confidence, box };
+      })
+      .filter(Boolean);
+
+    if (!lines.length && data?.text) {
+      const fallbackLines = data.text
+        .split('\n')
+        .map((t) => t.trim())
+        .filter(Boolean)
+        .map((text) => ({ text, confidence: null, box: null }));
+      lines.push(...fallbackLines);
+    }
+
+    if (!lines.length) {
+      const err = new Error('Tesseract fallback returned no text');
+      err.meta = { lang };
+      throw err;
+    }
+
+    return { lines };
+  } catch (error) {
+    if (error.meta) throw error;
+    const err = new Error(error.message || 'Tesseract processing failed');
+    err.meta = { lang };
+    throw err;
+  }
+};
+
+const buildErrorPayload = (err) => {
+  if (!err) return null;
+  return {
+    message: err.message || String(err),
+    meta: err.meta || null,
+  };
+};
+
 // ==================== GET OPERATOR OVERVIEW ====================
 // Get all tricycles and drivers for the logged-in operator
 export const getOperatorOverview = async (req, res) => {
@@ -303,193 +551,75 @@ export const getDriverDetails = async (req, res) => {
 
 // ==================== SCAN RECEIPT (PaddleOCR via Python) ====================
 export const scanReceipt = async (req, res) => {
+  let filepath = null;
   try {
-    // multer stores file buffer in req.file (memoryStorage)
     if (!req.file) {
       return res.status(400).json({ success: false, message: 'No image uploaded' });
     }
 
-    // Create temporary file
     const uploadsDir = path.join(process.cwd(), 'tmp_uploads');
     if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
-    const filename = `receipt-${Date.now()}-${Math.random().toString(36).slice(2,8)}${path.extname(req.file.originalname) || '.jpg'}`;
-    const filepath = path.join(uploadsDir, filename);
+    const filename = `receipt-${Date.now()}-${Math.random().toString(36).slice(2, 8)}${path.extname(req.file.originalname) || '.jpg'}`;
+    filepath = path.join(uploadsDir, filename);
     fs.writeFileSync(filepath, req.file.buffer);
 
-    // Resolve python script path robustly (avoid duplicated folder names)
-    const scriptCandidates = [
-      path.join(process.cwd(), 'ocr', 'paddle_scan.py'),
-      path.join(process.cwd(), 'server', 'ocr', 'paddle_scan.py'),
-      path.join(process.cwd(), '..', 'server', 'ocr', 'paddle_scan.py'),
-    ];
-
-    let scriptPath = null;
-    for (const p of scriptCandidates) {
-      if (fs.existsSync(p)) {
-        scriptPath = p;
-        break;
-      }
-    }
-
-    if (!scriptPath) {
-      // cleanup temp file
-      try { fs.unlinkSync(filepath); } catch (e) { /* ignore */ }
-      console.error('PaddleOCR script not found. Tried:', scriptCandidates);
-      return res.status(500).json({ success: false, message: 'OCR script not found on server', tried: scriptCandidates });
-    }
-
-    // Build args to pass to the python script (include optional lang / no-cls)
     const langArg = (req.body && req.body.lang) || (req.query && req.query.lang) || process.env.PADDLE_OCR_LANG || 'en';
-    const noClsFlag = (req.body && (req.body.noCls || req.body.no_cls || req.body.no_cls === true)) || (req.query && (req.query.noCls || req.query.no_cls));
-    const baseArgs = [scriptPath, filepath];
-    if (langArg) {
-      baseArgs.push('--lang', String(langArg));
-    }
-    if (noClsFlag) {
-      baseArgs.push('--no-cls');
-    }
+    const noClsFlag =
+      (req.body && (req.body.noCls || req.body.no_cls || req.body.no_cls === true)) ||
+      (req.query && (req.query.noCls || req.query.no_cls));
 
-    const trySpawn = (cmd, args = baseArgs) => {
-      return new Promise((resolve, reject) => {
-        // Use argument array to avoid shell quoting issues; works on Windows and Unix
-        let proc;
-        try {
-          proc = spawn(cmd, args, { shell: false, cwd: process.cwd() });
-        } catch (e) {
-          return reject({ code: 'spawn_error', error: e, message: e.message, cmd });
-        }
+    let paddleResult = null;
+    let paddleError = null;
 
-        let out = '';
-        let err = '';
-        proc.stdout.on('data', (d) => { out += d.toString(); });
-        proc.stderr.on('data', (d) => { err += d.toString(); });
-
-        // Add timeout to prevent hanging (30 seconds)
-        const timeout = setTimeout(() => {
-          try { proc.kill(); } catch (e) { /* ignore */ }
-          reject({ code: 'timeout', error: 'Python script execution timed out', cmd, args });
-        }, 30000);
-
-        proc.on('error', (e) => {
-          clearTimeout(timeout);
-          reject({ code: 'spawn_error', error: e, cmd, message: e.message, args });
-        });
-
-        proc.on('close', (code) => {
-          clearTimeout(timeout);
-          resolve({ code, out, err, cmd, args });
-        });
-      });
-    };
-
-    // Try different Python commands based on platform
-    // Prefer the project's virtualenv python if present, then fall back to common system commands
-    const isWindows = process.platform === 'win32';
-    const pythonCommands = isWindows ? ['py', 'python', 'python3'] : ['python3', 'python'];
-
-    // Check for common virtualenv locations inside the project and prefer them
-    const venvCandidates = [
-      path.join(process.cwd(), '.venv', isWindows ? 'Scripts' : 'bin', isWindows ? 'python.exe' : 'python'),
-      path.join(process.cwd(), 'venv', isWindows ? 'Scripts' : 'bin', isWindows ? 'python.exe' : 'python')
-    ];
-    for (const vp of venvCandidates) {
-      try {
-        if (fs.existsSync(vp)) {
-          // Put the absolute venv python at the front if not already present
-          if (!pythonCommands.includes(vp)) pythonCommands.unshift(vp);
-          break; // prefer first found venv
-        }
-      } catch (e) {
-        // ignore
-      }
-    }
-    
-    let result = null;
-    const attempts = [];
-    
-    for (const cmd of pythonCommands) {
-      try {
-        const attempt = await trySpawn(cmd);
-        attempts.push({ cmd, ...attempt });
-        
-        // If successful (code 0) or got output, use this result
-        if (attempt.code === 0 || (attempt.out && attempt.out.length > 0)) {
-          result = attempt;
-          break;
-        }
-        // If non-zero exit but no output, try next command
-        // (might be command not found or script error)
-        continue;
-      } catch (spawnErr) {
-        attempts.push({ 
-          cmd, 
-          code: 'spawn_error', 
-          error: spawnErr.message || String(spawnErr),
-          err: String(spawnErr)
-        });
-        // Continue to next command
-        continue;
-      }
+    try {
+      paddleResult = await runPaddleOcr({ filepath, langArg, noClsFlag });
+    } catch (error) {
+      paddleError = error;
+      console.error('PaddleOCR execution failed:', error.message, error.meta || '');
     }
 
-    // If all commands failed
-    if (!result || (result.code !== 0 && (!result.out || result.out.length === 0))) {
-      // cleanup temp file
-      try { fs.unlinkSync(filepath); } catch (ex) { /* ignore */ }
-      
-      // Find the most informative error
-      const lastAttempt = attempts[attempts.length - 1];
-      const errorDetails = attempts.map(a => ({
-        command: a.cmd,
-        code: a.code,
-        error: a.error || a.err || 'No error message',
-        hasOutput: !!(a.out && a.out.length > 0)
-      }));
-      
-      console.error(`Failed to execute OCR python. All attempts:`, attempts);
-      
-      // Check if Python might not be installed
-      const allSpawnErrors = attempts.every(a => a.code === 'spawn_error' || !a.out);
-      const errorMsg = allSpawnErrors 
-        ? 'Python is not installed or not in PATH. Please install Python and ensure it is accessible.'
-        : (lastAttempt?.error || lastAttempt?.err || 'Unknown error');
-      
-      return res.status(500).json({ 
-        success: false, 
-        message: 'Failed to execute OCR python', 
-        error: errorMsg,
-        attempts: errorDetails,
-        scriptPath: scriptPath,
-        platform: process.platform,
-        hint: allSpawnErrors ? 'Install Python from python.org and ensure it is in your PATH' : 'Check if PaddleOCR is installed: pip install paddleocr'
+    if (paddleResult) {
+      return res.status(200).json({
+        success: true,
+        data: paddleResult,
+        meta: { engine: 'paddleocr', fallbackUsed: false },
       });
     }
 
-    // cleanup temp file
-    try { fs.unlinkSync(filepath); } catch (e) { /* ignore */ }
-
-    // If we have output, try to parse it (even if exit code is non-zero, might be error JSON)
-    if (result && result.out && result.out.length > 0) {
-      try {
-        const parsed = JSON.parse(result.out);
-        // Check if Python script returned an error in JSON
-        if (parsed.error) {
-          console.error('PaddleOCR python error', parsed);
-          return res.status(500).json({ success: false, message: 'OCR processing failed', error: parsed.error, detail: parsed.detail });
-        }
-        return res.status(200).json({ success: true, data: parsed });
-      } catch (e) {
-        console.error('Failed to parse OCR output', e, result && result.out);
-        return res.status(500).json({ success: false, message: 'Invalid OCR output', error: e.message, raw: result && result.out });
-      }
+    try {
+      const fallbackResult = await runTesseractFallback(filepath, langArg);
+      return res.status(200).json({
+        success: true,
+        data: fallbackResult,
+        meta: {
+          engine: 'tesseract.js',
+          fallbackUsed: true,
+          paddleError: paddleError?.message || 'PaddleOCR unavailable',
+        },
+      });
+    } catch (fallbackError) {
+      console.error('Tesseract fallback failed:', fallbackError.message, fallbackError.meta || '');
+      return res.status(500).json({
+        success: false,
+        message: 'OCR processing failed',
+        error: fallbackError.message,
+        detail: {
+          paddle: buildErrorPayload(paddleError),
+          fallback: buildErrorPayload(fallbackError),
+        },
+      });
     }
-
-    // If we got here, something went wrong
-    console.error('PaddleOCR python error - no output', result);
-    return res.status(500).json({ success: false, message: 'OCR processing failed', error: result?.err || 'No output from Python script' });
   } catch (error) {
     console.error('Error in scanReceipt:', error.message);
     res.status(500).json({ success: false, message: 'Server Error', error: error.message });
+  } finally {
+    if (filepath) {
+      try {
+        if (fs.existsSync(filepath)) fs.unlinkSync(filepath);
+      } catch (cleanupError) {
+        console.warn('Failed to cleanup temp OCR file:', cleanupError.message);
+      }
+    }
   }
 };
 
