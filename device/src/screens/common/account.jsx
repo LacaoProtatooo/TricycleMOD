@@ -187,6 +187,50 @@ const Account = () => {
     }
   };
 
+  const handleAutoFillAddress = () => {
+    if (!licenseData || !licenseData.address) {
+      Alert.alert("No License Data", "Please upload a license first to auto-fill address.");
+      return;
+    }
+
+    const rawAddress = licenseData.address;
+    let street = rawAddress;
+    let city = '';
+    let postalCode = '';
+    
+    // Extract Zip Code (4 digits)
+    const zipMatch = rawAddress.match(/\b\d{4}\b/);
+    if (zipMatch) {
+        postalCode = zipMatch[0];
+        street = street.replace(postalCode, '').replace(/,\s*$/, '').trim();
+    }
+
+    // Extract City (Look for "City")
+    const parts = street.split(',').map(p => p.trim());
+    const cityIndex = parts.findIndex(p => p.toLowerCase().includes('city'));
+    
+    if (cityIndex !== -1) {
+        city = parts[cityIndex];
+        // Street is everything before the city
+        if (cityIndex > 0) {
+            street = parts.slice(0, cityIndex).join(', ');
+        }
+    }
+
+    setEditedUser(prev => ({
+      ...prev,
+      address: {
+        ...prev.address,
+        street: street || rawAddress,
+        city: city || prev.address.city,
+        postalCode: postalCode || prev.address.postalCode,
+        country: 'Philippines'
+      }
+    }));
+    
+    Toasthelper.showSuccess('Address auto-filled from license');
+  };
+
   const renderAddress = () => {
     const { address } = currentUser;
     if (address && typeof address === 'object' && Object.keys(address).length > 0) {
@@ -566,7 +610,16 @@ const Account = () => {
                   placeholder="11-digit phone number"
                 />
 
-                <Text style={styles.sectionLabel}>Address Information</Text>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: spacing.medium, marginBottom: 8 }}>
+                  <Text style={{ fontSize: 16, fontWeight: '600', color: colors.orangeShade5 }}>Address Information</Text>
+                  {licenseData && (
+                    <TouchableOpacity onPress={handleAutoFillAddress}>
+                      <Text style={{ color: colors.primary, fontWeight: 'bold', fontSize: 14 }}>
+                        Auto-fill from License
+                      </Text>
+                    </TouchableOpacity>
+                  )}
+                </View>
                 
                 <TextInput
                   label="Street Address"
