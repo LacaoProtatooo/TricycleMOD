@@ -21,6 +21,9 @@ import Toasthelper from '../../components/common/toasthelper';
 import { colors, spacing, fonts } from '../../components/common/theme';
 import * as ImagePicker from "expo-image-picker";
 import { MaterialIcons, Ionicons } from '@expo/vector-icons';
+import axios from 'axios';
+import Constants from 'expo-constants';
+import { getToken } from '../../utils/jwtStorage';
 
 const Account = () => {
   const dispatch = useDispatch();
@@ -44,6 +47,25 @@ const Account = () => {
   const [capturedPhoto, setCapturedPhoto] = useState(null);
   const [modalVisible, setModalVisible] = useState(false);
 
+  // License State
+  const [licenseModalVisible, setLicenseModalVisible] = useState(false);
+  const [licenseLoading, setLicenseLoading] = useState(false);
+  const [licenseData, setLicenseData] = useState(null);
+  const [licenseForm, setLicenseForm] = useState({
+    licenseNumber: '',
+    name: '',
+    birthdate: '',
+    address: '',
+    sex: '',
+    bloodType: '',
+    restrictions: '',
+    expiryDate: '',
+    imageUrl: '',
+    rawOcrText: null
+  });
+
+  const BASE_URL = Constants.expoConfig.extra?.BACKEND_URL || 'http://192.168.254.111:5000';
+
   useEffect(() => {
     dispatch(fetchCurrentUser());
   }, [dispatch]);
@@ -59,6 +81,7 @@ const Account = () => {
         phone: currentUser.phone || '',
         image: currentUser.image || {}
       });
+      fetchLicense();
     }
   }, [currentUser]);
 
@@ -193,6 +216,143 @@ const Account = () => {
     );
   };
 
+  // License fetching and handling
+  useEffect(() => {
+    if (currentUser) {
+      fetchLicense();
+    }
+  }, [currentUser]);
+
+  const fetchLicense = async () => {
+    if (!currentUser?._id) return;
+    try {
+      const token = await getToken(db);
+      const response = await axios.get(`${BASE_URL}/api/license/${currentUser._id}`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (response.data.success && response.data.license) {
+        setLicenseData(response.data.license);
+      }
+    } catch (error) {
+      console.log("No license found or error fetching:", error.message);
+    }
+  };
+
+  const handleLicenseUpload = async (useCamera) => {
+    let result;
+    if (useCamera) {
+      const permission = await ImagePicker.requestCameraPermissionsAsync();
+      if (!permission.granted) return Alert.alert("Permission required", "Camera access needed.");
+      result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        quality: 1,
+      });
+    } else {
+      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (!permission.granted) return Alert.alert("Permission required", "Gallery access needed.");
+      result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        allowsEditing: true,
+        quality: 1,
+      });
+    }
+
+    if (!result.canceled && result.assets[0]) {
+      processLicenseImage(result.assets[0]);
+    }
+  };
+
+  const processLicenseImage = async (asset) => {
+    setLicenseLoading(true);
+    setLicenseModalVisible(true);
+    try {
+      const token = await getToken(db);
+      const formData = new FormData();
+      formData.append('userId', currentUser._id);
+      
+      const localUri = asset.uri;
+      const filename = localUri.split('/').pop();
+      const match = /\.(\w+)$/.exec(filename);
+      const type = match ? `image/${match[1]}` : `image`;
+      formData.append('licenseImage', { uri: localUri, name: filename, type });
+
+      const response = await axios.post(`${BASE_URL}/api/license/parse`, formData, {
+        headers: { 
+          'Content-Type': 'multipart/form-data',
+          Authorization: `Bearer ${token}` 
+        }
+      });
+
+      if (response.data.success) {
+        const data = response.data.data;
+        // Prefer the saved license data (which has mapped dates), fallback to parsedFields
+        const parsedFields = data.parsedFields || {};
+        
+        setLicenseForm({
+          licenseNumber: data.licenseNumber || parsedFields.licenseNumber || '',
+          name: data.name || parsedFields.name || '',
+          address: data.address || parsedFields.address || '',
+          sex: data.sex || parsedFields.sex || '',
+          bloodType: data.bloodType || parsedFields.bloodType || '',
+          restrictions: data.restrictions || parsedFields.restrictions || '',
+          imageUrl: data.imageUrl || '',
+          rawOcrText: data.rawOcrText,
+          
+          // Handle dates: Convert Date objects/strings to YYYY-MM-DD string for input
+          birthdate: data.birthdate && !isNaN(new Date(data.birthdate).getTime()) ? new Date(data.birthdate).toISOString().split('T')[0] : (parsedFields.birthdate || ''),
+          issuedDate: data.issuedDate && !isNaN(new Date(data.issuedDate).getTime()) ? new Date(data.issuedDate).toISOString().split('T')[0] : (parsedFields.issued || ''),
+          expiryDate: data.expiryDate && !isNaN(new Date(data.expiryDate).getTime()) ? new Date(data.expiryDate).toISOString().split('T')[0] : (parsedFields.expiry || '')
+        });
+      } else {
+        Alert.alert("Error", "Failed to process license image.");
+        setLicenseModalVisible(false);
+      }
+    } catch (error) {
+      console.error("License processing error:", error);
+      Alert.alert("Error", "Failed to upload and process license.");
+      setLicenseModalVisible(false);
+    } finally {
+      setLicenseLoading(false);
+    }
+  };
+
+  const saveLicense = async () => {
+    try {
+      setLicenseLoading(true);
+      const token = await getToken(db);
+      
+      // Basic validation
+      if (!licenseForm.licenseNumber || !licenseForm.name) {
+        Alert.alert("Validation Error", "License Number and Name are required.");
+        setLicenseLoading(false);
+        return;
+      }
+
+      const payload = {
+        userId: currentUser._id,
+        ...licenseForm
+      };
+
+      const response = await axios.post(`${BASE_URL}/api/license/save`, payload, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      if (response.data.success) {
+        Alert.alert("Success", "License saved successfully!");
+        setLicenseData(response.data.license);
+        setLicenseModalVisible(false);
+      } else {
+        Alert.alert("Error", response.data.message || "Failed to save license.");
+      }
+    } catch (error) {
+      console.error("Save license error:", error);
+      Alert.alert("Error", error.response?.data?.message || "Failed to save license.");
+    } finally {
+      setLicenseLoading(false);
+    }
+  };
+
   if (loading) {
     return (
       <View style={[styles.container, styles.centerContent]}>
@@ -319,6 +479,58 @@ const Account = () => {
                   <Text style={styles.ratingLabel}>Reviews</Text>
                 </View>
               </View>
+            </Card.Content>
+          </Card>
+        )}
+
+        {/* License Section */}
+        {!isEditing && role === 'driver' && (
+          <Card style={styles.contentCard}>
+            <Card.Content>
+              <View style={styles.sectionHeader}>
+                <MaterialIcons name="card-membership" size={20} color={colors.primary} />
+                <Title style={styles.sectionTitle}>Driver's License</Title>
+              </View>
+              
+              {licenseData ? (
+                <View style={styles.licenseContainer}>
+                  <View style={styles.licenseRow}>
+                    <Text style={styles.licenseLabel}>License No:</Text>
+                    <Text style={styles.licenseValue}>{licenseData.licenseNumber}</Text>
+                  </View>
+                  <View style={styles.licenseRow}>
+                    <Text style={styles.licenseLabel}>Expiry:</Text>
+                    <Text style={styles.licenseValue}>{new Date(licenseData.expiryDate).toLocaleDateString()}</Text>
+                  </View>
+                  <Button 
+                    mode="outlined" 
+                    onPress={() => {
+                      setLicenseForm({
+                        ...licenseData,
+                        birthdate: licenseData.birthdate ? new Date(licenseData.birthdate).toISOString().split('T')[0] : '',
+                        issuedDate: licenseData.issuedDate ? new Date(licenseData.issuedDate).toISOString().split('T')[0] : '',
+                        expiryDate: licenseData.expiryDate ? new Date(licenseData.expiryDate).toISOString().split('T')[0] : '',
+                      });
+                      setLicenseModalVisible(true);
+                    }}
+                    style={styles.updateLicenseButton}
+                  >
+                    Update License
+                  </Button>
+                </View>
+              ) : (
+                <View style={styles.noLicenseContainer}>
+                  <Text style={styles.noLicenseText}>No license uploaded yet.</Text>
+                  <Button 
+                    mode="contained" 
+                    onPress={() => setLicenseModalVisible(true)}
+                    style={styles.uploadLicenseButton}
+                    icon="upload"
+                  >
+                    Upload License
+                  </Button>
+                </View>
+              )}
             </Card.Content>
           </Card>
         )}
@@ -524,6 +736,117 @@ const Account = () => {
               <TouchableOpacity style={styles.modalCancelButton} onPress={() => setModalVisible(false)}>
                 <Text style={styles.modalCancelButtonText}>Cancel</Text>
               </TouchableOpacity>
+            </View>
+          </View>
+        </Modal>
+
+        {/* License Edit/Upload Modal */}
+        <Modal
+          animationType="slide"
+          transparent={true}
+          visible={licenseModalVisible}
+          onRequestClose={() => setLicenseModalVisible(false)}
+        >
+          <View style={styles.modalContainer}>
+            <View style={[styles.modalContent, { maxHeight: '90%' }]}>
+              <ScrollView>
+                <Text style={styles.modalTitle}>Driver's License</Text>
+                
+                {licenseLoading ? (
+                  <View style={{ alignItems: 'center', padding: 20 }}>
+                    <ActivityIndicator size="large" color={colors.primary} />
+                    <Text style={{ marginTop: 10 }}>Processing License...</Text>
+                  </View>
+                ) : (
+                  <>
+                    {/* Image Preview */}
+                    {licenseForm.imageUrl ? (
+                      <Image source={{ uri: licenseForm.imageUrl }} style={styles.licensePreview} resizeMode="contain" />
+                    ) : (
+                      <View style={styles.uploadButtons}>
+                        <Button mode="contained" onPress={() => handleLicenseUpload(true)} style={styles.uploadBtn} icon="camera">
+                          Take Photo
+                        </Button>
+                        <Button mode="outlined" onPress={() => handleLicenseUpload(false)} style={styles.uploadBtn} icon="image">
+                          Gallery
+                        </Button>
+                      </View>
+                    )}
+
+                    {/* Form Fields */}
+                    <TextInput
+                      label="License Number"
+                      value={licenseForm.licenseNumber}
+                      onChangeText={(text) => setLicenseForm({ ...licenseForm, licenseNumber: text })}
+                      style={styles.input}
+                    />
+                    <TextInput
+                      label="Name"
+                      value={licenseForm.name}
+                      onChangeText={(text) => setLicenseForm({ ...licenseForm, name: text })}
+                      style={styles.input}
+                    />
+                    <View style={styles.rowInputs}>
+                      <TextInput
+                        label="Birthdate (YYYY-MM-DD)"
+                        value={licenseForm.birthdate}
+                        onChangeText={(text) => setLicenseForm({ ...licenseForm, birthdate: text })}
+                        style={[styles.input, styles.halfInput]}
+                      />
+                      <TextInput
+                        label="Sex (M/F)"
+                        value={licenseForm.sex}
+                        onChangeText={(text) => setLicenseForm({ ...licenseForm, sex: text })}
+                        style={[styles.input, styles.halfInput]}
+                      />
+                    </View>
+                    <TextInput
+                      label="Address"
+                      value={licenseForm.address}
+                      onChangeText={(text) => setLicenseForm({ ...licenseForm, address: text })}
+                      style={styles.input}
+                      multiline
+                    />
+                    <View style={styles.rowInputs}>
+                      <TextInput
+                        label="Blood Type"
+                        value={licenseForm.bloodType}
+                        onChangeText={(text) => setLicenseForm({ ...licenseForm, bloodType: text })}
+                        style={[styles.input, styles.halfInput]}
+                      />
+                      <TextInput
+                        label="DL Codes"
+                        value={licenseForm.restrictions}
+                        onChangeText={(text) => setLicenseForm({ ...licenseForm, restrictions: text })}
+                        style={[styles.input, styles.halfInput]}
+                      />
+                    </View>
+                    <View style={styles.rowInputs}>
+                      
+                      <TextInput
+                        label="Expiry (YYYY-MM-DD)"
+                        value={licenseForm.expiryDate}
+                        onChangeText={(text) => setLicenseForm({ ...licenseForm, expiryDate: text })}
+                        style={[styles.input, styles.halfInput]}
+                      />
+                    </View>
+
+                    <View style={styles.modalActions}>
+                      <Button mode="contained" onPress={saveLicense} style={styles.saveButton}>
+                        Save License
+                      </Button>
+                      <Button mode="text" onPress={() => setLicenseModalVisible(false)}>
+                        Cancel
+                      </Button>
+                      {licenseForm.imageUrl && (
+                         <Button mode="text" onPress={() => setLicenseForm({ ...licenseForm, imageUrl: '' })}>
+                           Re-upload Image
+                         </Button>
+                      )}
+                    </View>
+                  </>
+                )}
+              </ScrollView>
             </View>
           </View>
         </Modal>
@@ -853,5 +1176,54 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     fontSize: 16,
     fontWeight: '500',
+  },
+  // License styles
+  licenseContainer: {
+    marginTop: 10,
+  },
+  licenseRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  licenseLabel: {
+    fontWeight: 'bold',
+    color: colors.orangeShade5,
+  },
+  licenseValue: {
+    color: colors.text,
+  },
+  noLicenseContainer: {
+    alignItems: 'center',
+    padding: 10,
+  },
+  noLicenseText: {
+    color: colors.orangeShade4,
+    marginBottom: 10,
+  },
+  uploadLicenseButton: {
+    backgroundColor: colors.primary,
+  },
+  updateLicenseButton: {
+    marginTop: 10,
+    borderColor: colors.primary,
+  },
+  licensePreview: {
+    width: '100%',
+    height: 200,
+    marginBottom: 20,
+    backgroundColor: '#f0f0f0',
+    borderRadius: 8,
+  },
+  uploadButtons: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    marginBottom: 20,
+  },
+  uploadBtn: {
+    width: '45%',
+  },
+  modalActions: {
+    marginTop: 20,
   },
 });

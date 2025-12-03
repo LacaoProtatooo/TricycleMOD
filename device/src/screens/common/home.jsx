@@ -14,7 +14,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 // Import tab components
 import DashboardTab from '../dashboard/DashboardTab';
 import MapsTab from '../dashboard/MapsTab';
-import ProfileTab from '../dashboard/ProfileTab';
+// Profile tab removed per request
 import ChatMenu from '../message/chatMenu';
 
 const Tab = createBottomTabNavigator();
@@ -64,15 +64,7 @@ const Home = () => {
           ) 
         }}
       />
-      <Tab.Screen
-        name="Profile"
-        component={ProfileTab}
-        options={{ 
-          tabBarIcon: ({ color, size }) => (
-            <Ionicons name="person-outline" size={size} color={color} />
-          ) 
-        }}
-      />
+      {/* Profile tab removed */}
     </Tab.Navigator>
     </SafeAreaView>
   );

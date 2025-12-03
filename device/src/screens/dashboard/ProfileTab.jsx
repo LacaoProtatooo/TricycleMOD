@@ -1,8 +1,3 @@
-import React from "react";
-import ProfileScreen from './ProfileScreen';
-
-// ProfileTab simply reuses the existing ProfileScreen component
-// This allows it to be used both as a tab and as a standalone screen
-const ProfileTab = ProfileScreen;
-
+// ProfileTab removed - kept file as placeholder to avoid accidental imports.
+const ProfileTab = null;
 export default ProfileTab;
