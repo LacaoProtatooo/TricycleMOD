@@ -24,6 +24,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { useAsyncSQLiteContext } from '../../utils/asyncSQliteProvider';
 import { getToken } from '../../utils/jwtStorage';
 import { useSelector } from 'react-redux';
+import ForumBoard from '../../components/forum/ForumBoard';
 
 const BACKEND = (Constants?.expoConfig?.extra?.BACKEND_URL) || (Constants?.manifest?.extra?.BACKEND_URL) || 'http://192.168.254.105:5000';
 const Tab = createBottomTabNavigator();
@@ -64,11 +65,6 @@ export default function OperatorScreen({ navigation }) {
 
   // Message selection modal (for shared drivers)
   const [messageSelectionModalVisible, setMessageSelectionModalVisible] = useState(false);
-
-  // forums (local fallback)
-  const [threads, setThreads] = useState([]);
-  const [newThreadText, setNewThreadText] = useState('');
-  const [posting, setPosting] = useState(false);
 
   // Load token and fetch data
   useEffect(() => {
@@ -320,17 +316,6 @@ export default function OperatorScreen({ navigation }) {
     }
 
     Alert.alert('No Driver', 'There is no driver assigned to this tricycle.');
-  };
-
-  // forums helpers
-  const postThread = async () => {
-    const text = newThreadText.trim();
-    if (!text) return Alert.alert('Required', 'Please enter thread content.');
-    setPosting(true);
-    // TODO: Implement forum posting to backend
-    setThreads((prev) => [{ id: `local-${Date.now()}`, text, author: 'operator', ts: new Date().toISOString() }, ...prev]);
-    setNewThreadText('');
-    setPosting(false);
   };
 
   // Tab screens
@@ -597,34 +582,7 @@ export default function OperatorScreen({ navigation }) {
           <Text style={styles.title}>Forums</Text>
           <Text style={styles.subtitle}>Post announcements or talk to all drivers</Text>
         </View>
-
-        <View style={{ padding: spacing.medium }}>
-          <TextInput
-            style={[styles.textInput, { height: 80 }]}
-            placeholder="Write an announcement or start a thread..."
-            multiline
-            value={newThreadText}
-            onChangeText={setNewThreadText}
-          />
-          <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 8 }}>
-            <TouchableOpacity style={[styles.modalBtn, { backgroundColor: colors.primary }]} onPress={postThread} disabled={posting}>
-              <Text style={styles.modalBtnText}>{posting ? 'Posting...' : 'Post'}</Text>
-            </TouchableOpacity>
-          </View>
-        </View>
-
-        <FlatList
-          data={threads}
-          keyExtractor={(t) => t.id}
-          renderItem={({ item }) => (
-            <View style={styles.threadItem}>
-              <Text style={{ fontWeight: '700' }}>{item.author || 'Operator'}</Text>
-              <Text style={{ color: colors.orangeShade5, marginTop: 4 }}>{item.text}</Text>
-              <Text style={{ color: '#999', marginTop: 6, fontSize: 12 }}>{new Date(item.ts || Date.now()).toLocaleString()}</Text>
-            </View>
-          )}
-          ListEmptyComponent={<Text style={{ padding: spacing.medium }}>No forum threads yet</Text>}
-        />
+        <ForumBoard token={token} backendUrl={BACKEND} />
       </SafeAreaView>
     );
   }

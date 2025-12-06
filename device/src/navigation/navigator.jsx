@@ -20,6 +20,7 @@ import Account from '../screens/common/account';
 import OperatorScreen from '../screens/operator/OperatorScreen';
 import Chat from '../screens/message/chat';
 import SickLeaveScreen from '../screens/common/SickLeaveScreen';
+import ForumScreen from '../screens/common/ForumScreen';
 
 // Drawers
 import AppDrawer from '../components/common/appdrawer';
@@ -151,6 +152,7 @@ const Navigator = () => {
             <Stack.Screen name="Account" component={Account} />
             <Stack.Screen name="Chat" component={Chat} />
             <Stack.Screen name="SickLeave" component={SickLeaveScreen} />
+            <Stack.Screen name="Forum" component={ForumScreen} />
           </Stack.Navigator>
 
           {/* Drawer Overlay with Animation */}

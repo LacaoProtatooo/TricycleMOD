@@ -187,6 +187,19 @@ const AppDrawer = ({ closeDrawer, navigation }) => {
                     }}
                   />
 
+                  <DrawerItem
+                    icon={({ focused }) => renderIcon('people-circle-outline', focused)}
+                    label="Forum"
+                    labelStyle={styles.drawerLabel}
+                    activeBackgroundColor={`${colors.ivory4}CC`}
+                    activeTintColor={colors.primary}
+                    inactiveTintColor={colors.orangeShade8}
+                    onPress={() => {
+                      navigateSafe('Forum');
+                      closeDrawer();
+                    }}
+                  />
+
                   {/* Only show Operator for operators */}
                   {user.role === 'operator' && (
                     <DrawerItem
