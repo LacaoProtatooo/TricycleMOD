@@ -71,7 +71,7 @@ const defaultSchedule = [
 	},
 ];
 
-const MaintenanceTracker = ({ tricycleId }) => {
+const MaintenanceTracker = ({ tricycleId, serverHistory }) => {
     const db = useAsyncSQLiteContext();
 	const [currentKm, setCurrentKm] = useState('');
 	const [data, setData] = useState({}); // { itemKey: lastServiceKm }
@@ -79,19 +79,44 @@ const MaintenanceTracker = ({ tricycleId }) => {
 	const [odometerKm, setOdometerKm] = useState(null);
 
 	useEffect(() => {
-		(async () => {
-			try {
-				const km = await AsyncStorage.getItem(KM_KEY);
-				const saved = await AsyncStorage.getItem(STORAGE_KEY);
-				if (km) setCurrentKm(km);
-				if (saved) setData(JSON.parse(saved));
-			} catch (e) {
-				console.warn('MaintenanceTracker load error', e);
-			} finally {
-				setLoaded(true);
-			}
-		})();
-	}, []);
+        loadData();
+	}, [tricycleId, serverHistory]);
+
+    const loadData = async () => {
+        try {
+            // 1. Calculate state from serverHistory
+            let serverState = {};
+            if (serverHistory && Array.isArray(serverHistory)) {
+                serverHistory.forEach(log => {
+                    if (serverState[log.itemKey] === undefined || log.lastServiceKm > serverState[log.itemKey]) {
+                        serverState[log.itemKey] = log.lastServiceKm;
+                    }
+                });
+            }
+
+            // 2. Load local cache (keyed by tricycleId)
+            const key = tricycleId ? `maintenance_data_${tricycleId}` : 'maintenance_data_local';
+            const saved = await AsyncStorage.getItem(key);
+            let localState = saved ? JSON.parse(saved) : {};
+
+            // 3. Merge (prefer server if available, or max?)
+            const merged = { ...localState };
+            Object.keys(serverState).forEach(k => {
+                if (merged[k] === undefined || serverState[k] > merged[k]) {
+                    merged[k] = serverState[k];
+                }
+            });
+            
+            setData(merged);
+            
+            const km = await AsyncStorage.getItem(KM_KEY);
+            if (km) setCurrentKm(km);
+        } catch (e) {
+            console.warn('MaintenanceTracker load error', e);
+        } finally {
+            setLoaded(true);
+        }
+    };
 
 	// load once and then poll AsyncStorage so odometer reflects realtime updates
 	useEffect(() => {
@@ -147,7 +172,10 @@ const MaintenanceTracker = ({ tricycleId }) => {
 		try {
 			const kmNum = parseInt(currentKm || '0', 10);
 			const next = { ...data, [itemKey]: kmNum };
-			await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next));
+            
+            // Save to dynamic key
+            const key = tricycleId ? `maintenance_data_${tricycleId}` : 'maintenance_data_local';
+			await AsyncStorage.setItem(key, JSON.stringify(next));
 			setData(next);
 
             // Sync to server

@@ -132,7 +132,10 @@ const DashboardTab = () => {
         <WeatherWidget />
 
         {/* Maintenance tracker */}
-        <MaintenanceTracker tricycleId={assignedTricycle?._id} />
+        <MaintenanceTracker 
+            tricycleId={assignedTricycle?._id} 
+            serverHistory={assignedTricycle?.maintenanceHistory}
+        />
 
       </ScrollView>
     </SafeAreaView>
