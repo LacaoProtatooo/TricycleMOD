@@ -57,22 +57,33 @@ const DashboardTab = () => {
           const trike = data.data[0];
           setAssignedTricycle(trike);
 
-          // Save context for background task
-          await AsyncStorage.setItem('active_tricycle_id', trike._id);
-          await AsyncStorage.setItem('auth_token_str', token);
+          // Check if we switched tricycles (or user logged in on a device with old data)
+          const storedTrikeId = await AsyncStorage.getItem('active_tricycle_id');
+          const serverOdo = trike.currentOdometer || 0;
 
-          // Sync odometer from server if available
-          if (trike.currentOdometer) {
+          if (storedTrikeId !== trike._id) {
+             // Different tricycle assigned. Overwrite local odometer with server value.
+             await AsyncStorage.setItem('active_tricycle_id', trike._id);
+             await AsyncStorage.setItem(KM_KEY, String(serverOdo));
+          } else {
+             // Same tricycle. Sync logic:
+             // If server is higher (e.g. updated elsewhere), take server.
+             // If local is higher (recent offline driving), keep local.
              const localKm = await AsyncStorage.getItem(KM_KEY);
              const localVal = localKm ? parseFloat(localKm) : 0;
-             // If server has a higher value (e.g. from previous driver), take it
-             if (trike.currentOdometer > localVal) {
-                 await AsyncStorage.setItem(KM_KEY, String(trike.currentOdometer));
+             
+             if (serverOdo > localVal) {
+                 await AsyncStorage.setItem(KM_KEY, String(serverOdo));
              }
           }
+          
+          await AsyncStorage.setItem('auth_token_str', token);
         } else {
             // Clear if no tricycle assigned
             await AsyncStorage.removeItem('active_tricycle_id');
+            // Optionally clear odometer or leave as is? 
+            // Better to clear or set to 0 to avoid confusion if they have no vehicle
+            await AsyncStorage.removeItem(KM_KEY);
         }
       }
     } catch (error) {
