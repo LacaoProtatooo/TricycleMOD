@@ -54,8 +54,8 @@ const userSchema = new mongoose.Schema({
     },
   role: {
     type: String,
-    enum: ['driver', 'operator'],
-    default: 'driver'
+    enum: ['guest','driver', 'operator'],
+    default: 'guest'
     },
   isVerified: {
       type: Boolean,

@@ -2,7 +2,7 @@
 import React, { useState, useCallback } from 'react';
 import { View, StyleSheet, Dimensions, TouchableOpacity } from 'react-native';
 import { DrawerContentScrollView, DrawerItem } from '@react-navigation/drawer';
-import { Avatar, Title, Caption, IconButton, Divider } from 'react-native-paper';
+import { Avatar, Text, IconButton, Divider } from 'react-native-paper';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { getUserCredentials } from '../../utils/userStorage';
@@ -67,13 +67,13 @@ const AppDrawer = ({ closeDrawer, navigation }) => {
         >
           <View style={styles.drawerContent}>
             {/* Close Button */}
-            <IconButton
+            {/* <IconButton
               icon="close"
               color={colors.orangeShade7}
               size={28}
               onPress={closeDrawer}
               style={styles.closeButton}
-            />
+            /> */}
 
             {/* USER INFO SECTION */}
             <View style={styles.userInfoSection}>
@@ -88,10 +88,12 @@ const AppDrawer = ({ closeDrawer, navigation }) => {
                   style={styles.avatar}
                 />
                 <View style={styles.userTextContainer}>
-                  <Title style={styles.title}>{user?.firstname || 'Guest'}</Title>
-                  <Caption style={styles.caption}>
+                  <Text variant="titleMedium" style={styles.title}>
+                    {user?.firstname || 'Guest'}
+                  </Text>
+                  <Text variant="bodySmall" style={styles.caption}>
                     @{user?.username || 'guest_user'}
-                  </Caption>
+                  </Text>
                 </View>
               </View>
             </View>
@@ -141,7 +143,8 @@ const AppDrawer = ({ closeDrawer, navigation }) => {
                       closeDrawer();
                     }}
                   />
-                  <DrawerItem
+                  {/* Comment ko lang since no need i access ng guest user ung operator interface */}
+                  {/* <DrawerItem
                     icon={({ focused }) => renderIcon('settings-outline', focused)}
                     label="Operator"
                     labelStyle={styles.drawerLabel}
@@ -152,7 +155,7 @@ const AppDrawer = ({ closeDrawer, navigation }) => {
                       navigateSafe('OperatorScreen');
                       closeDrawer();
                     }}
-                  />
+                  /> */}
                   <DrawerItem
                     icon={({ focused }) => renderIcon('alert-circle-outline', focused)}
                     label="About"
@@ -184,18 +187,21 @@ const AppDrawer = ({ closeDrawer, navigation }) => {
                     }}
                   />
 
-                  <DrawerItem
-                    icon={({ focused }) => renderIcon('settings-outline', focused)}
-                    label="Operator"
-                    labelStyle={styles.drawerLabel}
-                    activeBackgroundColor={`${colors.ivory4}CC`}
-                    activeTintColor={colors.primary}
-                    inactiveTintColor={colors.orangeShade8}
-                    onPress={() => {
-                      navigateSafe('OperatorScreen');
-                      closeDrawer();
-                    }}
-                  />
+                  {/* Only show Operator for operators */}
+                  {user.role === 'operator' && (
+                    <DrawerItem
+                      icon={({ focused }) => renderIcon('settings-outline', focused)}
+                      label="Operator"
+                      labelStyle={styles.drawerLabel}
+                      activeBackgroundColor={`${colors.ivory4}CC`}
+                      activeTintColor={colors.primary}
+                      inactiveTintColor={colors.orangeShade8}
+                      onPress={() => {
+                        navigateSafe('OperatorScreen');
+                        closeDrawer();
+                      }}
+                    />
+                  )}
 
                   <DrawerItem
                     icon={({ focused }) => renderIcon('alert-circle-outline', focused)}
@@ -216,8 +222,12 @@ const AppDrawer = ({ closeDrawer, navigation }) => {
 
             {/* APP VERSION FOOTER */}
             <View style={styles.footer}>
-              <Caption style={styles.versionText}>Tricycle MOD</Caption>
-              <Caption style={styles.versionText}>App Version 1.0.0</Caption>
+              <Text variant="bodySmall" style={styles.versionText}>
+                Tricycle MOD
+              </Text>
+              <Text variant="bodySmall" style={styles.versionText}>
+                App Version 0.0.1
+              </Text>
             </View>
           </View>
         </DrawerContentScrollView>

@@ -1,8 +1,8 @@
 // Navigator.jsx
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createStackNavigator } from '@react-navigation/stack';
-import { View, StyleSheet, TouchableOpacity, ActivityIndicator, Modal, Text, Pressable } from 'react-native';
+import { View, StyleSheet, TouchableOpacity, ActivityIndicator, Modal, Text, Pressable, Animated } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { Provider as PaperProvider } from 'react-native-paper';
 import { useSelector } from 'react-redux';
@@ -33,6 +33,10 @@ const Navigator = () => {
   const [drawerVisible, setDrawerVisible] = useState(false);
   const user = useSelector((state) => state.auth.user);
 
+  // Animation values
+  const slideAnim = useRef(new Animated.Value(-300)).current; // Start off-screen to the left
+  const overlayAnim = useRef(new Animated.Value(0)).current; // Start transparent
+
   useEffect(() => {
     const subscription = Notifications.addNotificationResponseReceivedListener(response => {
       const message = response?.notification?.request?.content?.body;
@@ -44,6 +48,57 @@ const Navigator = () => {
       subscription.remove();
     };
   }, []);
+
+  // Animate drawer when visibility changes
+  useEffect(() => {
+    if (drawerVisible) {
+      // Slide in and fade in overlay
+      Animated.parallel([
+        Animated.timing(slideAnim, {
+          toValue: 0,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+        Animated.timing(overlayAnim, {
+          toValue: 1,
+          duration: 300,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    } else {
+      // Slide out and fade out overlay
+      Animated.parallel([
+        Animated.timing(slideAnim, {
+          toValue: -300,
+          duration: 250,
+          useNativeDriver: true,
+        }),
+        Animated.timing(overlayAnim, {
+          toValue: 0,
+          duration: 250,
+          useNativeDriver: true,
+        }),
+      ]).start();
+    }
+  }, [drawerVisible, slideAnim, overlayAnim]);
+
+  const closeDrawer = () => {
+    // Animate out first, then hide
+    Animated.parallel([
+      Animated.timing(slideAnim, {
+        toValue: -300,
+        duration: 250,
+        useNativeDriver: true,
+      }),
+      Animated.timing(overlayAnim, {
+        toValue: 0,
+        duration: 250,
+        useNativeDriver: true,
+      }),
+    ]).start(() => {
+      setDrawerVisible(false);
+    });
+  };
 
   // While user state is undefined (e.g., during startup), show a spinner
   if (user === undefined) {
@@ -70,7 +125,13 @@ const Navigator = () => {
           {/* Floating menu button */}
           <TouchableOpacity
             style={styles.floatingButton}
-            onPress={() => setDrawerVisible(true)}
+            onPress={() => {
+              if (drawerVisible) {
+                closeDrawer();
+              } else {
+                setDrawerVisible(true);
+              }
+            }}
           >
             <Ionicons name="menu" size={30} color="#000" />
           </TouchableOpacity>
@@ -90,13 +151,38 @@ const Navigator = () => {
             <Stack.Screen name="Chat" component={Chat} />
           </Stack.Navigator>
 
-          {/* Drawer Overlay */}
+          {/* Drawer Overlay with Animation */}
           {drawerVisible && (
             <View style={styles.drawerOverlay}>
-              <AppDrawer
-                closeDrawer={() => setDrawerVisible(false)}
-                navigation={navigationRef}
-              />
+              <Animated.View
+                style={[
+                  styles.drawerContainer,
+                  {
+                    transform: [{ translateX: slideAnim }],
+                  },
+                ]}
+              >
+                <AppDrawer
+                  closeDrawer={closeDrawer}
+                  navigation={navigationRef}
+                />
+              </Animated.View>
+              
+              {/* Animated overlay background */}
+              <Animated.View
+                style={[
+                  styles.overlayBackground,
+                  {
+                    opacity: overlayAnim,
+                  },
+                ]}
+              >
+                <TouchableOpacity
+                  style={{ flex: 1 }}
+                  activeOpacity={1}
+                  onPress={closeDrawer}
+                />
+              </Animated.View>
             </View>
           )}
 
@@ -146,6 +232,22 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     zIndex: 998,
+  },
+  drawerContainer: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    bottom: 0,
+    zIndex: 1000,
+  },
+  overlayBackground: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    zIndex: 999,
   },
   modalOverlay: {
     flex: 1,
