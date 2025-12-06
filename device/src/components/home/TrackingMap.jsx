@@ -1,6 +1,6 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert } from 'react-native';
-import MapView, { Polyline, Marker, PROVIDER_GOOGLE } from 'react-native-maps';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, Easing } from 'react-native';
+import MapView, { Polyline, Marker, PROVIDER_GOOGLE, AnimatedRegion } from 'react-native-maps';
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -27,6 +27,25 @@ function haversineMeters(a, b) {
   return R * c;
 }
 
+function headingBetween(a, b) {
+  if (!a || !b) return 0;
+  const toRad = (deg) => (deg * Math.PI) / 180;
+  const toDeg = (rad) => (rad * 180) / Math.PI;
+  const φ1 = toRad(a.latitude);
+  const φ2 = toRad(b.latitude);
+  const λ1 = toRad(a.longitude);
+  const λ2 = toRad(b.longitude);
+  const y = Math.sin(λ2 - λ1) * Math.cos(φ2);
+  const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(λ2 - λ1);
+  return (toDeg(Math.atan2(y, x)) + 360) % 360;
+}
+
+function segmentDurationMs(meters) {
+  if (!meters || Number.isNaN(meters)) return 600;
+  const seconds = Math.min(Math.max(meters / 22, 0.4), 1.8);
+  return seconds * 1000;
+}
+
 export default function TrackingMap({ follow = true }) {
   const mapRef = useRef(null);
   const [region, setRegion] = useState(null);
@@ -35,6 +54,12 @@ export default function TrackingMap({ follow = true }) {
   const [odometerKm, setOdometerKm] = useState(0);
   const lastPosRef = useRef(null);
   const watchRef = useRef(null);
+  const reliveMarker = useRef(new AnimatedRegion({ latitude: 0, longitude: 0 })).current;
+  const [reliveActive, setReliveActive] = useState(false);
+  const [reliveProgress, setReliveProgress] = useState(0);
+  const reliveIndexRef = useRef(0);
+  const relivePathRef = useRef([]);
+  const reliveActiveRef = useRef(false);
 
   useEffect(() => {
     (async () => {
@@ -113,7 +138,7 @@ export default function TrackingMap({ follow = true }) {
           setSpeedKph(Math.round(kph * 10) / 10);
           lastPosRef.current = { coords: loc.coords, timestamp: loc.timestamp };
 
-          if (follow && mapRef.current) {
+          if (follow && !reliveActiveRef.current && mapRef.current) {
             mapRef.current.animateCamera({ center: { latitude, longitude } }, { duration: 300 });
           }
         }
@@ -127,6 +152,10 @@ export default function TrackingMap({ follow = true }) {
       }
     };
   }, [follow]);
+
+  useEffect(() => {
+    reliveActiveRef.current = reliveActive;
+  }, [reliveActive]);
 
   // start background tracking task
   async function startBackgroundTracking() {
@@ -177,6 +206,94 @@ export default function TrackingMap({ follow = true }) {
     }
   }
 
+  const stopReliveMode = useCallback((restoreCamera = true) => {
+    if (reliveMarker?.stopAnimation) {
+      reliveMarker.stopAnimation();
+    }
+    reliveActiveRef.current = false;
+    setReliveActive(false);
+    setReliveProgress(0);
+    reliveIndexRef.current = 0;
+    if (restoreCamera && positions.length) {
+      const last = positions[positions.length - 1];
+      mapRef.current?.animateCamera({ center: last, pitch: 0, heading: 0, zoom: 16 }, { duration: 600 });
+    }
+  }, [positions, reliveMarker]);
+
+  const animateReliveSegment = useCallback(() => {
+    if (!reliveActiveRef.current) return;
+    const path = relivePathRef.current;
+    const idx = reliveIndexRef.current;
+    if (!path || path.length < 2 || idx >= path.length - 1) {
+      stopReliveMode();
+      return;
+    }
+
+    const start = path[idx];
+    const end = path[idx + 1];
+    const meters = haversineMeters(start, end);
+    const duration = segmentDurationMs(meters);
+    const heading = headingBetween(start, end);
+
+    reliveMarker.timing({
+      latitude: end.latitude,
+      longitude: end.longitude,
+      duration,
+      easing: Easing.linear,
+      useNativeDriver: false,
+    }).start(({ finished }) => {
+      if (!finished || !reliveActiveRef.current) return;
+      reliveIndexRef.current += 1;
+      const totalSegments = Math.max(path.length - 1, 1);
+      setReliveProgress(reliveIndexRef.current / totalSegments);
+      requestAnimationFrame(animateReliveSegment);
+    });
+
+    mapRef.current?.animateCamera(
+      {
+        center: end,
+        heading,
+        pitch: 65,
+        zoom: 18,
+      },
+      { duration }
+    );
+  }, [reliveMarker, stopReliveMode]);
+
+  const startReliveMode = useCallback(() => {
+    if (positions.length < 2) {
+      Alert.alert('Relive mode', 'Record a short trip first before playing the 3D flyover.');
+      return;
+    }
+    if (reliveActiveRef.current) return;
+
+    const snapshot = [...positions];
+    relivePathRef.current = snapshot;
+    reliveIndexRef.current = 0;
+    if (reliveMarker?.stopAnimation) {
+      reliveMarker.stopAnimation();
+    }
+    if (reliveMarker?.setValue) {
+      reliveMarker.setValue(snapshot[0]);
+    }
+
+    setReliveProgress(0);
+    reliveActiveRef.current = true;
+    setReliveActive(true);
+
+    mapRef.current?.animateCamera(
+      {
+        center: snapshot[0],
+        pitch: 65,
+        heading: 0,
+        zoom: 18,
+      },
+      { duration: 600 }
+    );
+
+    requestAnimationFrame(animateReliveSegment);
+  }, [animateReliveSegment, positions, reliveMarker]);
+
   return (
     <View style={styles.container}>
       {region ? (
@@ -203,6 +320,14 @@ export default function TrackingMap({ follow = true }) {
               </Marker>
             </>
           )}
+
+          {reliveActive && (
+            <Marker.Animated coordinate={reliveMarker} anchor={{ x: 0.5, y: 0.5 }}>
+              <View style={styles.reliveMarker}>
+                <Ionicons name="navigate" size={18} color="#fff" />
+              </View>
+            </Marker.Animated>
+          )}
         </MapView>
       ) : (
         <View style={styles.loading}><Text>Getting location…</Text></View>
@@ -228,7 +353,25 @@ export default function TrackingMap({ follow = true }) {
             <Ionicons name="stop-outline" size={18} color="#fff" />
             <Text style={styles.bgBtnText}>Stop BG</Text>
           </TouchableOpacity>
+
+          <TouchableOpacity
+            onPress={reliveActive ? () => stopReliveMode() : startReliveMode}
+            style={[styles.bgBtn, { backgroundColor: '#0d6efd' }]}
+          >
+            <Ionicons name={reliveActive ? 'stop-circle-outline' : 'film-outline'} size={18} color="#fff" />
+            <Text style={styles.bgBtnText}>{reliveActive ? 'Stop Relive' : 'Relive 3D'}</Text>
+          </TouchableOpacity>
         </View>
+
+        {reliveActive && (
+          <View style={styles.relivePanel}>
+            <Text style={styles.reliveLabel}>3D Route Animation</Text>
+            <View style={styles.progressTrack}>
+              <View style={[styles.progressFill, { width: `${Math.min(Math.max(reliveProgress, 0), 1) * 100}%` }]} />
+            </View>
+            <Text style={styles.relivePercent}>{Math.round(reliveProgress * 100)}%</Text>
+          </View>
+        )}
 
         <TouchableOpacity
           style={styles.centerBtn}
@@ -256,6 +399,17 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     borderWidth: 2,
     borderColor: colors.ivory1,
+  },
+  reliveMarker: {
+    backgroundColor: '#0d6efd',
+    padding: 10,
+    borderRadius: 24,
+    borderWidth: 2,
+    borderColor: '#fff',
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+    elevation: 6,
   },
   hud: {
     position: 'absolute',
@@ -295,4 +449,31 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   bgBtnText: { color: '#fff', marginLeft: 6, fontWeight: '600' },
+  relivePanel: {
+    marginTop: spacing.small,
+    backgroundColor: '#fff',
+    borderRadius: 10,
+    padding: spacing.small,
+  },
+  reliveLabel: {
+    fontWeight: '600',
+    color: colors.orangeShade7,
+    marginBottom: 4,
+  },
+  progressTrack: {
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: colors.ivory2,
+    overflow: 'hidden',
+  },
+  progressFill: {
+    height: '100%',
+    backgroundColor: '#0d6efd',
+  },
+  relivePercent: {
+    textAlign: 'right',
+    marginTop: 4,
+    fontWeight: '700',
+    color: colors.primary,
+  },
 });
