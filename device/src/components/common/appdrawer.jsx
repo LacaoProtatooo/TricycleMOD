@@ -203,6 +203,22 @@ const AppDrawer = ({ closeDrawer, navigation }) => {
                     />
                   )}
 
+                  {/* Only show Sick Leave for drivers */}
+                  {user.role === 'driver' && (
+                    <DrawerItem
+                      icon={({ focused }) => renderIcon('medical-outline', focused)}
+                      label="Sick Leave"
+                      labelStyle={styles.drawerLabel}
+                      activeBackgroundColor={`${colors.ivory4}CC`}
+                      activeTintColor={colors.primary}
+                      inactiveTintColor={colors.orangeShade8}
+                      onPress={() => {
+                        navigateSafe('SickLeave');
+                        closeDrawer();
+                      }}
+                    />
+                  )}
+
                   <DrawerItem
                     icon={({ focused }) => renderIcon('alert-circle-outline', focused)}
                     label="About"

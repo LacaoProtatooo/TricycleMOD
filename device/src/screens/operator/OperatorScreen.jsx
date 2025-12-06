@@ -500,31 +500,92 @@ export default function OperatorScreen({ navigation }) {
   }
 
   function SickLeaveTab() {
-    // Placeholder for sick leave - can be implemented later
+    const [sickLeaves, setSickLeaves] = useState([]);
+    const [loadingSL, setLoadingSL] = useState(false);
+
+    useEffect(() => {
+        if (token) fetchSickLeaves();
+    }, [token]);
+
+    const fetchSickLeaves = async () => {
+        setLoadingSL(true);
+        try {
+            const res = await fetch(`${BACKEND}/api/sick-leave/operator`, {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            const data = await res.json();
+            if (data.success) {
+                setSickLeaves(data.data);
+            }
+        } catch (error) {
+            console.error('Error fetching sick leaves:', error);
+        } finally {
+            setLoadingSL(false);
+        }
+    };
+
     return (
       <SafeAreaView style={styles.container}>
         <View style={styles.header}>
           <Text style={styles.title}>Sick Leave Updates</Text>
+          <TouchableOpacity onPress={fetchSickLeaves} style={{ padding: 8 }}>
+            <Ionicons name="refresh" size={20} color={colors.primary} />
+          </TouchableOpacity>
         </View>
-        <View style={styles.emptyContainer}>
-          <Ionicons name="medical-outline" size={64} color={colors.orangeShade5} />
-          <Text style={styles.emptyText}>No sick leave updates</Text>
-        </View>
-      </SafeAreaView>
-    );
-  }
-
-  function MaintenanceTab() {
-    // Placeholder for maintenance - can be implemented later
-    return (
-      <SafeAreaView style={styles.container}>
-        <View style={styles.header}>
-          <Text style={styles.title}>Maintenance Updates</Text>
-        </View>
-        <View style={styles.emptyContainer}>
-          <Ionicons name="build-outline" size={64} color={colors.orangeShade5} />
-          <Text style={styles.emptyText}>No maintenance updates</Text>
-        </View>
+        
+        {loadingSL ? (
+            <ActivityIndicator color={colors.primary} style={{ marginTop: 20 }} />
+        ) : (
+            <FlatList
+                data={sickLeaves}
+                keyExtractor={item => item._id}
+                contentContainerStyle={{ padding: spacing.medium }}
+                ListEmptyComponent={
+                    <View style={styles.emptyContainer}>
+                        <Ionicons name="medical-outline" size={64} color={colors.orangeShade5} />
+                        <Text style={styles.emptyText}>No sick leave updates</Text>
+                    </View>
+                }
+                renderItem={({ item }) => (
+                    <View style={{ 
+                        backgroundColor: '#fff', 
+                        padding: 12, 
+                        borderRadius: 8, 
+                        marginBottom: 12,
+                        borderLeftWidth: 4,
+                        borderLeftColor: item.status === 'approved' ? 'green' : item.status === 'rejected' ? 'red' : 'orange',
+                        elevation: 2
+                    }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+                            {item.driver?.image?.url ? (
+                                <Image source={{ uri: item.driver.image.url }} style={{ width: 32, height: 32, borderRadius: 16, marginRight: 8 }} />
+                            ) : (
+                                <Ionicons name="person-circle" size={32} color="#ccc" style={{ marginRight: 8 }} />
+                            )}
+                            <View>
+                                <Text style={{ fontWeight: '700' }}>{item.driver?.firstname} {item.driver?.lastname}</Text>
+                                <Text style={{ fontSize: 12, color: '#666' }}>@{item.driver?.username}</Text>
+                            </View>
+                        </View>
+                        
+                        <Text style={{ fontWeight: '600', marginBottom: 4 }}>
+                            {new Date(item.startDate).toLocaleDateString()} - {new Date(item.endDate).toLocaleDateString()}
+                        </Text>
+                        <Text style={{ color: '#444', fontStyle: 'italic' }}>"{item.reason}"</Text>
+                        
+                        <View style={{ marginTop: 8, flexDirection: 'row', justifyContent: 'flex-end' }}>
+                            <Text style={{ 
+                                fontSize: 12, 
+                                fontWeight: '700', 
+                                color: item.status === 'approved' ? 'green' : item.status === 'rejected' ? 'red' : 'orange' 
+                            }}>
+                                {item.status.toUpperCase()}
+                            </Text>
+                        </View>
+                    </View>
+                )}
+            />
+        )}
       </SafeAreaView>
     );
   }
@@ -746,7 +807,6 @@ export default function OperatorScreen({ navigation }) {
         <Tab.Screen name="Drivers" component={DriversTab} />
         <Tab.Screen name="Receipt" component={ReceiptScannerTab} />
         <Tab.Screen name="Sick Leave" component={SickLeaveTab} />
-        <Tab.Screen name="Maintenance" component={MaintenanceTab} />
         <Tab.Screen name="Forums" component={ForumsTab} />
       </Tab.Navigator>
 
