@@ -3,7 +3,7 @@ import { createAsyncThunk } from '@reduxjs/toolkit';
 import Constants from 'expo-constants';
 import { storeToken, removeToken, getToken } from '../../utils/jwtStorage';
 import { removeUserCredentials, storeUserCredentials } from '../../utils/userStorage';
-const apiURL = Constants.expoConfig.extra?.BACKEND_URL || 'http://192.168.254.111:5000';
+const apiURL = Constants.expoConfig.extra?.BACKEND_URL || 'http://192.168.254.105:5000';
 
 export const loginUser = createAsyncThunk(
   'auth/login',

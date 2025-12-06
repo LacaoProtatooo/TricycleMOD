@@ -31,7 +31,7 @@ const Signup = () => {
 
   // API URL
   const { extra: { BACKEND_URL } = {} } = Constants.expoConfig;
-  const apiURL = BACKEND_URL || 'http://192.168.254.111:5000';
+  const apiURL = BACKEND_URL || 'http://192.168.254.105:5000';
 
   // Form field references for focus navigation
   const firstnameRef = useRef(null);

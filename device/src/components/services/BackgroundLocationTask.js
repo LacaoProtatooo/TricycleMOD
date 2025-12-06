@@ -1,5 +1,8 @@
 import * as TaskManager from 'expo-task-manager';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import Constants from 'expo-constants';
+
+const BACKEND = (Constants?.expoConfig?.extra?.BACKEND_URL) || (Constants?.manifest?.extra?.BACKEND_URL) || 'http://192.168.254.105:5000';
 
 // same key used elsewhere
 const KM_KEY = 'vehicle_current_km_v1';
@@ -38,6 +41,7 @@ TaskManager.defineTask(BG_TASK_NAME, async ({ data, error }) => {
     let lastPos = lastPosRaw ? JSON.parse(lastPosRaw) : null;
     let odometer = odometerRaw ? Number(odometerRaw) || 0 : 0;
     let lastTs = lastTsRaw ? Number(lastTsRaw) || 0 : 0;
+    let odometerChanged = false;
 
     for (const loc of locations) {
       // support multiple shapes: loc.coords or loc (some platforms)
@@ -62,6 +66,7 @@ TaskManager.defineTask(BG_TASK_NAME, async ({ data, error }) => {
         const dt = curTs && lastTs ? (curTs - lastTs) / 1000 : null;
         if (meters > 0.25 && (!dt || dt >= 0)) {
           odometer = +(odometer + meters / 1000).toFixed(3);
+          odometerChanged = true;
         }
       }
 
@@ -75,6 +80,25 @@ TaskManager.defineTask(BG_TASK_NAME, async ({ data, error }) => {
       AsyncStorage.setItem(LAST_TS_KEY, String(lastTs || Date.now())),
       AsyncStorage.setItem(KM_KEY, String(odometer)),
     ]);
+
+    // Sync to server if odometer changed
+    if (odometerChanged) {
+        const trikeId = await AsyncStorage.getItem('active_tricycle_id');
+        const token = await AsyncStorage.getItem('auth_token_str');
+        
+        if (trikeId && token) {
+            // Simple fire-and-forget fetch
+            fetch(`${BACKEND}/api/tricycles/${trikeId}/odometer`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({ odometer })
+            }).catch(err => console.warn('BG sync failed', err));
+        }
+    }
+
   } catch (e) {
     console.warn('BG task save error', e);
   }

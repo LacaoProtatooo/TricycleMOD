@@ -4,7 +4,7 @@ import Constants from 'expo-constants';
 import { getUserCredentials, storeUserCredentials } from '../../utils/userStorage';
 import { getToken } from '../../utils/jwtStorage';
 
-const apiURL = Constants.expoConfig.extra?.BACKEND_URL || 'http://192.168.254.111:5000';
+const apiURL = Constants.expoConfig.extra?.BACKEND_URL || 'http://192.168.254.105:5000';
 
 export const fetchCurrentUser = createAsyncThunk(
   'user/fetchCurrentUser',

@@ -294,6 +294,8 @@ export const getOperatorOverview = async (req, res) => {
       driver: tricycle.driver || null,
       status: tricycle.status,
       images: tricycle.images || [],
+      maintenanceHistory: tricycle.maintenanceHistory || [],
+      schedules: tricycle.schedules || [],
       createdAt: tricycle.createdAt,
       updatedAt: tricycle.updatedAt,
     }));

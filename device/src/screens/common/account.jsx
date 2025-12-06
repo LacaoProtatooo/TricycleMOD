@@ -64,7 +64,7 @@ const Account = () => {
     rawOcrText: null
   });
 
-  const BASE_URL = Constants.expoConfig.extra?.BACKEND_URL || 'http://192.168.254.111:5000';
+  const BASE_URL = Constants.expoConfig.extra?.BACKEND_URL || 'http://192.168.254.105:5000';
 
   useEffect(() => {
     dispatch(fetchCurrentUser());

@@ -3,7 +3,11 @@ import { View, Text, StyleSheet, TouchableOpacity, TextInput, ScrollView, Alert 
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, fonts } from '../../components/common/theme';
+import Constants from 'expo-constants';
+import { getToken } from '../../utils/jwtStorage';
+import { useAsyncSQLiteContext } from '../../utils/asyncSQliteProvider';
 
+const BACKEND = (Constants?.expoConfig?.extra?.BACKEND_URL) || (Constants?.manifest?.extra?.BACKEND_URL) || 'http://192.168.254.105:5000';
 const STORAGE_KEY = 'maintenance_data_v1';
 
 // same key used in BackgroundLocationTask
@@ -67,7 +71,8 @@ const defaultSchedule = [
 	},
 ];
 
-const MaintenanceTracker = (props) => {
+const MaintenanceTracker = ({ tricycleId }) => {
+    const db = useAsyncSQLiteContext();
 	const [currentKm, setCurrentKm] = useState('');
 	const [data, setData] = useState({}); // { itemKey: lastServiceKm }
 	const [loaded, setLoaded] = useState(false);
@@ -116,12 +121,37 @@ const MaintenanceTracker = (props) => {
 		}
 	};
 
+    // Function to save to server
+    const saveToServer = async (itemKey, lastServiceKm, notes) => {
+        if (!tricycleId || !db) return;
+        try {
+            const token = await getToken(db);
+            await fetch(`${BACKEND}/api/tricycles/${tricycleId}/maintenance`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    itemKey,
+                    lastServiceKm,
+                    notes
+                })
+            });
+        } catch (error) {
+            console.error("Failed to sync maintenance to server", error);
+        }
+    };
+
 	const markDone = async (itemKey) => {
 		try {
 			const kmNum = parseInt(currentKm || '0', 10);
 			const next = { ...data, [itemKey]: kmNum };
 			await AsyncStorage.setItem(STORAGE_KEY, JSON.stringify(next));
 			setData(next);
+
+            // Sync to server
+            await saveToServer(itemKey, kmNum, "Completed via app");
 		} catch (e) {
 			console.warn('markDone error', e);
 		}
@@ -148,6 +178,12 @@ const MaintenanceTracker = (props) => {
                 <Text style={styles.odometerLabel}>Odometer</Text>
                 <Text style={styles.odometerValue}>{odometerKm !== null ? `${odometerKm.toFixed(3)} km` : '—'}</Text>
             </View>
+
+            {!tricycleId && (
+                <Text style={{color: 'red', marginBottom: 10, fontSize: 12}}>
+                    No tricycle assigned. Data will be saved locally only.
+                </Text>
+            )}
 
 			<ScrollView
 				nestedScrollEnabled={true}

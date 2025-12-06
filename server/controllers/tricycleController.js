@@ -29,6 +29,11 @@ export const getTricycles = async (req, res) => {
     // If user is authenticated and is an operator, only show their tricycles
     if (req.user && req.user.role === 'operator') {
       query.operator = req.user.id;
+    } else if (req.user && req.user.role === 'driver') {
+      query.$or = [
+        { driver: req.user.id },
+        { 'schedules.driver': req.user.id }
+      ];
     }
 
     const tricycles = await Tricycle.find(query)
@@ -255,6 +260,130 @@ export const deleteTricycle = async (req, res) => {
     res.status(200).json({ success: true, message: "Tricycle deleted successfully" });
   } catch (error) {
     console.error("Error deleting tricycle:", error.message);
+    res.status(500).json({ success: false, message: "Server Error" });
+  }
+};
+
+// ==================== ADD MAINTENANCE LOG ====================
+export const addMaintenanceLog = async (req, res) => {
+  const { id } = req.params;
+  const { itemKey, lastServiceKm, notes } = req.body;
+
+  try {
+    const tricycle = await Tricycle.findById(id);
+    if (!tricycle) {
+      return res.status(404).json({ success: false, message: "Tricycle not found" });
+    }
+
+    const newLog = {
+      itemKey,
+      lastServiceKm,
+      completedBy: req.user ? req.user.id : null,
+      completedAt: new Date(),
+      notes
+    };
+
+    tricycle.maintenanceHistory.push(newLog);
+    
+    // Update odometer if the service km is higher than current
+    if (lastServiceKm > (tricycle.currentOdometer || 0)) {
+        tricycle.currentOdometer = lastServiceKm;
+    }
+
+    await tricycle.save();
+
+    res.status(200).json({ success: true, data: tricycle });
+  } catch (error) {
+    console.error("Error adding maintenance log:", error.message);
+    res.status(500).json({ success: false, message: "Server Error" });
+  }
+};
+
+// ==================== UPDATE ODOMETER ====================
+export const updateOdometer = async (req, res) => {
+  const { id } = req.params;
+  const { odometer } = req.body;
+
+  try {
+    const tricycle = await Tricycle.findById(id);
+    if (!tricycle) {
+      return res.status(404).json({ success: false, message: "Tricycle not found" });
+    }
+
+    // Allow driver or operator to update
+    // (Add more strict checks if needed, e.g. only assigned driver)
+
+    tricycle.currentOdometer = odometer;
+    await tricycle.save();
+
+    res.status(200).json({ success: true, data: tricycle });
+  } catch (error) {
+    console.error("Error updating odometer:", error.message);
+    res.status(500).json({ success: false, message: "Server Error" });
+  }
+};
+
+// ==================== ASSIGN DRIVER ====================
+export const assignDriver = async (req, res) => {
+  const { id } = req.params;
+  const { driverId } = req.body;
+
+  try {
+    const tricycle = await Tricycle.findById(id);
+    if (!tricycle) {
+      return res.status(404).json({ success: false, message: "Tricycle not found" });
+    }
+
+    // Verify operator ownership
+    if (req.user && req.user.role === 'operator' && tricycle.operator.toString() !== req.user.id) {
+      return res.status(403).json({ success: false, message: "Not authorized" });
+    }
+
+    tricycle.driver = driverId;
+    // Clear schedules if exclusive assignment is made
+    tricycle.schedules = []; 
+    
+    await tricycle.save();
+    
+    const updatedTricycle = await Tricycle.findById(id)
+        .populate("operator", "firstname lastname username email")
+        .populate("driver", "firstname lastname username email phone image");
+
+    res.status(200).json({ success: true, data: updatedTricycle });
+  } catch (error) {
+    console.error("Error assigning driver:", error.message);
+    res.status(500).json({ success: false, message: "Server Error" });
+  }
+};
+
+// ==================== UPDATE SCHEDULE ====================
+export const updateSchedule = async (req, res) => {
+  const { id } = req.params;
+  const { schedules } = req.body; // Array of schedule objects
+
+  try {
+    const tricycle = await Tricycle.findById(id);
+    if (!tricycle) {
+      return res.status(404).json({ success: false, message: "Tricycle not found" });
+    }
+
+    // Verify operator ownership
+    if (req.user && req.user.role === 'operator' && tricycle.operator.toString() !== req.user.id) {
+      return res.status(403).json({ success: false, message: "Not authorized" });
+    }
+
+    tricycle.schedules = schedules;
+    
+    await tricycle.save();
+
+    const updatedTricycle = await Tricycle.findById(id)
+        .populate("operator", "firstname lastname username email")
+        .populate("driver", "firstname lastname username email phone image")
+        .populate("schedules.driver", "firstname lastname username email");
+
+    res.status(200).json({ success: true, data: updatedTricycle });
+  } catch (error) {
+    console.error("Error updating schedule:", error.message);
     res.status(500).json({ success: false, message: "Server Error" });
   }
 };
