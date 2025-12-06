@@ -264,17 +264,25 @@ export const getOperatorOverview = async (req, res) => {
     const tricycles = await Tricycle.find({ operator: operatorId })
       .populate('driver', 'firstname lastname username email phone image')
       .populate('operator', 'firstname lastname username email')
+      .populate('schedules.driver', 'firstname lastname username email')
       .sort({ createdAt: -1 });
 
     // Get all available drivers (drivers not assigned to any tricycle)
-    const assignedDriverIds = tricycles
-      .map((t) => t.driver)
-      .filter((driver) => driver !== null && driver !== undefined)
-      .map((driver) => (driver._id ? driver._id.toString() : driver.toString()));
+    // Note: Drivers in schedules are also considered "assigned" for that slot, 
+    // but might be available for other slots. For simplicity, let's exclude anyone attached to a tricycle.
+    const assignedDriverIds = new Set();
+    tricycles.forEach(t => {
+        if (t.driver) assignedDriverIds.add(t.driver._id.toString());
+        if (t.schedules && t.schedules.length > 0) {
+            t.schedules.forEach(s => {
+                if (s.driver) assignedDriverIds.add(s.driver._id.toString());
+            });
+        }
+    });
 
     const availableDrivers = await User.find({
       role: 'driver',
-      _id: { $nin: assignedDriverIds },
+      _id: { $nin: Array.from(assignedDriverIds) },
     }).select('firstname lastname username email phone image rating numReviews');
 
     // Get all drivers (for reference)
@@ -283,22 +291,30 @@ export const getOperatorOverview = async (req, res) => {
     );
 
     // Format tricycles with driver info
-    const formattedTricycles = tricycles.map((tricycle) => ({
-      id: tricycle._id,
-      plate: tricycle.plateNumber,
-      model: tricycle.model,
-      driverId: tricycle.driver?._id || null,
-      driverName: tricycle.driver
-        ? `${tricycle.driver.firstname} ${tricycle.driver.lastname}`
-        : 'Unassigned',
-      driver: tricycle.driver || null,
-      status: tricycle.status,
-      images: tricycle.images || [],
-      maintenanceHistory: tricycle.maintenanceHistory || [],
-      schedules: tricycle.schedules || [],
-      createdAt: tricycle.createdAt,
-      updatedAt: tricycle.updatedAt,
-    }));
+    const formattedTricycles = tricycles.map((tricycle) => {
+      let driverName = 'Unassigned';
+      if (tricycle.driver) {
+          driverName = `${tricycle.driver.firstname} ${tricycle.driver.lastname}`;
+      } else if (tricycle.schedules && tricycle.schedules.length > 0) {
+          driverName = `${tricycle.schedules.length} Drivers Scheduled`;
+      }
+
+      return {
+        id: tricycle._id,
+        plate: tricycle.plateNumber,
+        model: tricycle.model,
+        driverId: tricycle.driver?._id || null,
+        driverName: driverName,
+        driver: tricycle.driver || null,
+        status: tricycle.status,
+        images: tricycle.images || [],
+        maintenanceHistory: tricycle.maintenanceHistory || [],
+        schedules: tricycle.schedules || [],
+        currentOdometer: tricycle.currentOdometer || 0,
+        createdAt: tricycle.createdAt,
+        updatedAt: tricycle.updatedAt,
+      };
+    });
 
     res.status(200).json({
       success: true,
@@ -421,27 +437,55 @@ export const assignDriverToTricycle = async (req, res) => {
       });
     }
 
-    // Check if driver is already assigned to another tricycle
-    const existingAssignment = await Tricycle.findOne({
+    // Check if driver is already assigned to another tricycle (EXCLUSIVE assignment check)
+    const existingPrimaryAssignment = await Tricycle.findOne({
       driver: driverId,
       _id: { $ne: tricycleId },
     });
 
-    if (existingAssignment) {
+    if (existingPrimaryAssignment) {
       return res.status(400).json({
         success: false,
-        message: 'Driver is already assigned to another tricycle',
+        message: 'Driver is already exclusively assigned to another tricycle',
       });
     }
 
-    // Assign driver to tricycle
-    tricycle.driver = driverId;
+    const { schedule } = req.body;
+
+    if (schedule) {
+        // Shared Assignment Logic
+        const existingScheduleIndex = tricycle.schedules.findIndex(s => s.driver.toString() === driverId);
+        
+        const newScheduleEntry = {
+            driver: driverId,
+            days: schedule.days, 
+            startTime: schedule.startTime,
+            endTime: schedule.endTime
+        };
+
+        if (existingScheduleIndex >= 0) {
+            tricycle.schedules[existingScheduleIndex] = newScheduleEntry;
+        } else {
+            tricycle.schedules.push(newScheduleEntry);
+        }
+        
+        if (!tricycle.driver) {
+            tricycle.driver = driverId;
+        }
+
+    } else {
+        // Exclusive Assignment Logic
+        tricycle.schedules = []; 
+        tricycle.driver = driverId;
+    }
+
     await tricycle.save();
 
     // Populate and return updated tricycle
     const updatedTricycle = await Tricycle.findById(tricycleId)
       .populate('driver', 'firstname lastname username email phone image')
-      .populate('operator', 'firstname lastname username email');
+      .populate('operator', 'firstname lastname username email')
+      .populate('schedules.driver', 'firstname lastname username email phone image');
 
     res.status(200).json({
       success: true,
@@ -462,7 +506,7 @@ export const assignDriverToTricycle = async (req, res) => {
 export const unassignDriverFromTricycle = async (req, res) => {
   try {
     const operatorId = req.user.id;
-    const { tricycleId } = req.body;
+    const { tricycleId, driverId } = req.body;
 
     // User is already verified as operator by middleware
     if (!tricycleId) {
@@ -488,13 +532,29 @@ export const unassignDriverFromTricycle = async (req, res) => {
       });
     }
 
-    // Unassign driver
-    tricycle.driver = null;
+    if (driverId) {
+        // Remove specific driver from schedules
+        if (tricycle.schedules && tricycle.schedules.length > 0) {
+            tricycle.schedules = tricycle.schedules.filter(s => s.driver.toString() !== driverId);
+        }
+        
+        // If this driver was the primary one, remove them
+        if (tricycle.driver && tricycle.driver.toString() === driverId) {
+            tricycle.driver = null;
+        }
+    } else {
+        // Unassign ALL
+        tricycle.driver = null;
+        tricycle.schedules = [];
+    }
+
     await tricycle.save();
 
     // Populate and return updated tricycle
     const updatedTricycle = await Tricycle.findById(tricycleId)
-      .populate('operator', 'firstname lastname username email');
+      .populate('driver', 'firstname lastname username email phone image')
+      .populate('operator', 'firstname lastname username email')
+      .populate('schedules.driver', 'firstname lastname username email phone image');
 
     res.status(200).json({
       success: true,

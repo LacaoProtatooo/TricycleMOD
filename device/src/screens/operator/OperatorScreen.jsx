@@ -43,6 +43,8 @@ export default function OperatorScreen({ navigation }) {
   const [assignModalVisible, setAssignModalVisible] = useState(false);
   const [selectedTricycle, setSelectedTricycle] = useState(null);
   const [assigning, setAssigning] = useState(false);
+  const [assignmentType, setAssignmentType] = useState('exclusive'); // 'exclusive' or 'shared'
+  const [schedule, setSchedule] = useState({ days: [], startTime: '08:00', endTime: '17:00' });
 
   // Maintenance modal
   const [maintenanceModalVisible, setMaintenanceModalVisible] = useState(false);
@@ -50,14 +52,18 @@ export default function OperatorScreen({ navigation }) {
 
   // Add tricycle modal
   const [addTricycleModalVisible, setAddTricycleModalVisible] = useState(false);
-  const [newTricycle, setNewTricycle] = useState({ plateNumber: '', model: '' });
+  const [newTricycle, setNewTricycle] = useState({ plateNumber: '', model: '', currentOdometer: '' });
   const [creating, setCreating] = useState(false);
 
-  // messaging states (shared with Overview)
-  const [messages, setMessages] = useState({});
-  const [msgModalVisible, setMsgModalVisible] = useState(false);
-  const [messageText, setMessageText] = useState('');
-  const [sending, setSending] = useState(false);
+  // Details modal
+  const [detailsModalVisible, setDetailsModalVisible] = useState(false);
+
+  // Unassign modal
+  const [unassignModalVisible, setUnassignModalVisible] = useState(false);
+  const [tricycleToUnassign, setTricycleToUnassign] = useState(null);
+
+  // Message selection modal (for shared drivers)
+  const [messageSelectionModalVisible, setMessageSelectionModalVisible] = useState(false);
 
   // forums (local fallback)
   const [threads, setThreads] = useState([]);
@@ -143,13 +149,18 @@ export default function OperatorScreen({ navigation }) {
 
     setAssigning(true);
     try {
+      const payload = { tricycleId, driverId };
+      if (assignmentType === 'shared') {
+          payload.schedule = schedule;
+      }
+
       const res = await fetch(`${BACKEND}/api/operator/assign-driver`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`,
         },
-        body: JSON.stringify({ tricycleId, driverId }),
+        body: JSON.stringify(payload),
       });
 
       const data = await res.json();
@@ -169,12 +180,20 @@ export default function OperatorScreen({ navigation }) {
   };
 
   // Unassign driver from tricycle
-  const handleUnassignDriver = async (tricycleId) => {
+  const handleUnassignDriver = async (tricycle) => {
     if (!token) {
       Alert.alert('Error', 'No authentication token found');
       return;
     }
 
+    // Check if shared schedule
+    if (tricycle.schedules && tricycle.schedules.length > 0) {
+        setTricycleToUnassign(tricycle);
+        setUnassignModalVisible(true);
+        return;
+    }
+
+    // Exclusive assignment (legacy behavior)
     Alert.alert(
       'Confirm Unassign',
       'Are you sure you want to unassign this driver?',
@@ -183,32 +202,38 @@ export default function OperatorScreen({ navigation }) {
         {
           text: 'Unassign',
           style: 'destructive',
-          onPress: async () => {
-            try {
-              const res = await fetch(`${BACKEND}/api/operator/unassign-driver`, {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json',
-                  'Authorization': `Bearer ${token}`,
-                },
-                body: JSON.stringify({ tricycleId }),
-              });
-
-              const data = await res.json();
-              if (data.success) {
-                Alert.alert('Success', 'Driver unassigned successfully');
-                await fetchOperatorData(token);
-              } else {
-                Alert.alert('Error', data.message || 'Failed to unassign driver');
-              }
-            } catch (error) {
-              console.error('Error unassigning driver:', error);
-              Alert.alert('Error', 'Failed to unassign driver. Please try again.');
-            }
-          },
+          onPress: () => confirmUnassign(tricycle.id || tricycle._id)
         },
       ]
     );
+  };
+
+  const confirmUnassign = async (tricycleId, driverId = null) => {
+    try {
+        const payload = { tricycleId };
+        if (driverId) payload.driverId = driverId;
+
+        const res = await fetch(`${BACKEND}/api/operator/unassign-driver`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify(payload),
+        });
+
+        const data = await res.json();
+        if (data.success) {
+        Alert.alert('Success', 'Driver unassigned successfully');
+        setUnassignModalVisible(false);
+        await fetchOperatorData(token);
+        } else {
+        Alert.alert('Error', data.message || 'Failed to unassign driver');
+        }
+    } catch (error) {
+        console.error('Error unassigning driver:', error);
+        Alert.alert('Error', 'Failed to unassign driver. Please try again.');
+    }
   };
 
   // Create new tricycle
@@ -235,6 +260,7 @@ export default function OperatorScreen({ navigation }) {
           plateNumber: newTricycle.plateNumber,
           model: newTricycle.model,
           status: 'unavailable',
+          currentOdometer: newTricycle.currentOdometer ? parseFloat(newTricycle.currentOdometer) : 0,
         }),
       });
 
@@ -242,7 +268,7 @@ export default function OperatorScreen({ navigation }) {
       if (data.success) {
         Alert.alert('Success', 'Tricycle added successfully');
         setAddTricycleModalVisible(false);
-        setNewTricycle({ plateNumber: '', model: '' });
+        setNewTricycle({ plateNumber: '', model: '', currentOdometer: '' });
         await fetchOperatorData(token);
       } else {
         Alert.alert('Error', data.message || 'Failed to create tricycle');
@@ -268,22 +294,32 @@ export default function OperatorScreen({ navigation }) {
     setMaintenanceModalVisible(true);
   };
 
-  // messaging helpers
-  const openMessage = (tricycle) => {
+  // Open details modal
+  const openDetailsModal = (tricycle) => {
     setSelectedTricycle(tricycle);
-    setMessageText('');
-    setMsgModalVisible(true);
+    setDetailsModalVisible(true);
   };
 
-  const sendMessage = async () => {
-    if (!selectedTricycle) return;
-    const text = messageText.trim();
-    if (!text) return Alert.alert('Message required', 'Please enter a message.');
-    setSending(true);
-    // TODO: Implement message sending to backend
-    Alert.alert('Info', 'Message functionality coming soon');
-    setMsgModalVisible(false);
-    setSending(false);
+  // messaging helpers
+  const openMessage = (tricycle) => {
+    // Check for exclusive driver
+    if (tricycle.driver) {
+        navigation.navigate('Chat', {
+            userId: tricycle.driver._id || tricycle.driver.id,
+            userName: `${tricycle.driver.firstname} ${tricycle.driver.lastname}`,
+            userImage: tricycle.driver.image?.url
+        });
+        return;
+    }
+
+    // Check for shared drivers
+    if (tricycle.schedules && tricycle.schedules.length > 0) {
+        setSelectedTricycle(tricycle);
+        setMessageSelectionModalVisible(true);
+        return;
+    }
+
+    Alert.alert('No Driver', 'There is no driver assigned to this tricycle.');
   };
 
   // forums helpers
@@ -335,7 +371,6 @@ export default function OperatorScreen({ navigation }) {
           }
           renderItem={({ item }) => {
             const tricycle = item;
-            const last = (messages[tricycle.id] && messages[tricycle.id].length) ? messages[tricycle.id][messages[tricycle.id].length - 1] : null;
             const driverName = tricycle.driverName || (tricycle.driver ? `${tricycle.driver.firstname} ${tricycle.driver.lastname}` : 'Unassigned');
             const hasDriver = tricycle.driverId || tricycle.driver;
 
@@ -343,7 +378,7 @@ export default function OperatorScreen({ navigation }) {
               <View style={styles.itemWrap}>
                 <TouchableOpacity 
                   style={styles.item} 
-                  onPress={() => navigation?.navigate('Home', { vehicleId: tricycle.id })}
+                  onPress={() => openDetailsModal(tricycle)}
                 >
                   <View style={styles.iconWrap}>
                     <Ionicons name="car-sport-outline" size={28} color="#fff" />
@@ -372,7 +407,7 @@ export default function OperatorScreen({ navigation }) {
                       </TouchableOpacity>
                       <TouchableOpacity 
                         style={[styles.actionBtn, styles.unassignBtn]} 
-                        onPress={() => handleUnassignDriver(tricycle.id || tricycle._id)}
+                        onPress={() => handleUnassignDriver(tricycle)}
                       >
                         <Ionicons name="person-remove-outline" size={16} color="#fff" />
                         <Text style={styles.actionBtnText}>Unassign</Text>
@@ -402,14 +437,6 @@ export default function OperatorScreen({ navigation }) {
                     <Text style={styles.actionBtnText}>Logs</Text>
                   </TouchableOpacity>
                 </View>
-
-                {last && (
-                  <View style={styles.msgPreview}>
-                    <Text style={styles.msgPreviewText}>
-                      {last.from === 'operator' ? 'You: ' : ''}{last.text.length > 40 ? last.text.slice(0, 40) + '…' : last.text}
-                    </Text>
-                  </View>
-                )}
               </View>
             );
           }}
@@ -742,12 +769,20 @@ export default function OperatorScreen({ navigation }) {
               onChangeText={(text) => setNewTricycle({ ...newTricycle, model: text })}
               editable={!creating}
             />
+            <TextInput
+              style={styles.textInput}
+              placeholder="Initial Odometer (km)"
+              value={newTricycle.currentOdometer}
+              onChangeText={(text) => setNewTricycle({ ...newTricycle, currentOdometer: text })}
+              keyboardType="numeric"
+              editable={!creating}
+            />
             <View style={styles.modalActions}>
               <TouchableOpacity 
                 style={[styles.modalBtn, { backgroundColor: '#6c757d' }]} 
                 onPress={() => {
                   setAddTricycleModalVisible(false);
-                  setNewTricycle({ plateNumber: '', model: '' });
+                  setNewTricycle({ plateNumber: '', model: '', currentOdometer: '' });
                 }} 
                 disabled={creating}
               >
@@ -773,6 +808,84 @@ export default function OperatorScreen({ navigation }) {
             <Text style={styles.modalSub}>
               Select a driver for {selectedTricycle?.plate || selectedTricycle?.plateNumber || 'this tricycle'}
             </Text>
+
+            {/* Assignment Type Toggle */}
+            <View style={{ flexDirection: 'row', marginBottom: 16 }}>
+                <TouchableOpacity 
+                    style={{ 
+                        flex: 1, 
+                        padding: 10, 
+                        backgroundColor: assignmentType === 'exclusive' ? colors.primary : '#eee',
+                        alignItems: 'center',
+                        borderTopLeftRadius: 8,
+                        borderBottomLeftRadius: 8
+                    }}
+                    onPress={() => setAssignmentType('exclusive')}
+                >
+                    <Text style={{ color: assignmentType === 'exclusive' ? '#fff' : '#333', fontWeight: '600' }}>Exclusive</Text>
+                </TouchableOpacity>
+                <TouchableOpacity 
+                    style={{ 
+                        flex: 1, 
+                        padding: 10, 
+                        backgroundColor: assignmentType === 'shared' ? colors.primary : '#eee',
+                        alignItems: 'center',
+                        borderTopRightRadius: 8,
+                        borderBottomRightRadius: 8
+                    }}
+                    onPress={() => setAssignmentType('shared')}
+                >
+                    <Text style={{ color: assignmentType === 'shared' ? '#fff' : '#333', fontWeight: '600' }}>Shared Schedule</Text>
+                </TouchableOpacity>
+            </View>
+
+            {assignmentType === 'shared' && (
+                <View style={{ marginBottom: 16 }}>
+                    <Text style={{ marginBottom: 8, fontWeight: '600' }}>Schedule Days:</Text>
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
+                        {['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].map(day => (
+                            <TouchableOpacity 
+                                key={day}
+                                style={{
+                                    paddingHorizontal: 12,
+                                    paddingVertical: 6,
+                                    borderRadius: 16,
+                                    backgroundColor: schedule.days.includes(day) ? colors.primary : '#eee'
+                                }}
+                                onPress={() => {
+                                    const newDays = schedule.days.includes(day) 
+                                        ? schedule.days.filter(d => d !== day)
+                                        : [...schedule.days, day];
+                                    setSchedule({ ...schedule, days: newDays });
+                                }}
+                            >
+                                <Text style={{ color: schedule.days.includes(day) ? '#fff' : '#333', fontSize: 12 }}>{day}</Text>
+                            </TouchableOpacity>
+                        ))}
+                    </View>
+                    <View style={{ flexDirection: 'row', gap: 10, marginTop: 10 }}>
+                        <View style={{ flex: 1 }}>
+                            <Text style={{ fontSize: 12, marginBottom: 4 }}>Start Time</Text>
+                            <TextInput 
+                                style={[styles.textInput, { marginBottom: 0 }]} 
+                                value={schedule.startTime}
+                                onChangeText={(t) => setSchedule({...schedule, startTime: t})}
+                                placeholder="08:00"
+                            />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                            <Text style={{ fontSize: 12, marginBottom: 4 }}>End Time</Text>
+                            <TextInput 
+                                style={[styles.textInput, { marginBottom: 0 }]} 
+                                value={schedule.endTime}
+                                onChangeText={(t) => setSchedule({...schedule, endTime: t})}
+                                placeholder="17:00"
+                            />
+                        </View>
+                    </View>
+                </View>
+            )}
+
             <ScrollView style={styles.driverList}>
               {availableDrivers.length === 0 ? (
                 <Text style={styles.emptyText}>No available drivers</Text>
@@ -815,30 +928,64 @@ export default function OperatorScreen({ navigation }) {
         </KeyboardAvoidingView>
       </Modal>
 
-      {/* Message Modal */}
-      <Modal visible={msgModalVisible} animationType="slide" transparent>
-        <KeyboardAvoidingView style={styles.modalContainer} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      {/* Message Selection Modal (Shared Drivers) */}
+      <Modal visible={messageSelectionModalVisible} animationType="slide" transparent>
+        <View style={styles.modalContainer}>
           <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Message {selectedTricycle?.plate || selectedTricycle?.plateNumber || ''}</Text>
-            <Text style={styles.modalSub}>{selectedTricycle?.driverName || 'No driver assigned'}</Text>
-            <TextInput
-              style={styles.textInput}
-              placeholder="Type a private message..."
-              multiline
-              value={messageText}
-              onChangeText={setMessageText}
-              editable={!sending}
-            />
+            <Text style={styles.modalTitle}>Select Driver to Message</Text>
+            <Text style={styles.modalSub}>
+              Who do you want to message regarding {selectedTricycle?.plate || selectedTricycle?.plateNumber}?
+            </Text>
+
+            <ScrollView style={{ maxHeight: 300, marginVertical: 16 }}>
+                {selectedTricycle?.schedules && selectedTricycle.schedules.map((sch, idx) => (
+                    <TouchableOpacity 
+                        key={idx} 
+                        style={{ 
+                            flexDirection: 'row', 
+                            alignItems: 'center', 
+                            marginBottom: 12, 
+                            padding: 12, 
+                            backgroundColor: '#f9f9f9', 
+                            borderRadius: 8,
+                            borderWidth: 1,
+                            borderColor: '#eee'
+                        }}
+                        onPress={() => {
+                            setMessageSelectionModalVisible(false);
+                            navigation.navigate('Chat', {
+                                userId: sch.driver._id || sch.driver.id,
+                                userName: `${sch.driver.firstname} ${sch.driver.lastname}`,
+                                userImage: sch.driver.image?.url
+                            });
+                        }}
+                    >
+                        {sch.driver?.image?.url ? (
+                            <Image source={{ uri: sch.driver.image.url }} style={{ width: 40, height: 40, borderRadius: 20, marginRight: 12 }} />
+                        ) : (
+                            <Ionicons name="person-circle-outline" size={40} color={colors.orangeShade5} style={{ marginRight: 12 }} />
+                        )}
+                        <View style={{ flex: 1 }}>
+                            <Text style={{ fontWeight: '600', fontSize: 16 }}>{sch.driver?.firstname} {sch.driver?.lastname}</Text>
+                            <Text style={{ fontSize: 12, color: '#666' }}>
+                                {sch.days.join(', ')} • {sch.startTime}-{sch.endTime}
+                            </Text>
+                        </View>
+                        <Ionicons name="chatbubble-outline" size={20} color={colors.primary} />
+                    </TouchableOpacity>
+                ))}
+            </ScrollView>
+
             <View style={styles.modalActions}>
-              <TouchableOpacity style={[styles.modalBtn, { backgroundColor: '#6c757d' }]} onPress={() => setMsgModalVisible(false)} disabled={sending}>
+              <TouchableOpacity 
+                style={[styles.modalBtn, { backgroundColor: '#6c757d' }]} 
+                onPress={() => setMessageSelectionModalVisible(false)}
+              >
                 <Text style={styles.modalBtnText}>Cancel</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.modalBtn, { backgroundColor: colors.primary }]} onPress={sendMessage} disabled={sending}>
-                <Text style={styles.modalBtnText}>{sending ? 'Sending...' : 'Send'}</Text>
               </TouchableOpacity>
             </View>
           </View>
-        </KeyboardAvoidingView>
+        </View>
       </Modal>
 
       {/* Maintenance History Modal */}
@@ -888,6 +1035,164 @@ export default function OperatorScreen({ navigation }) {
                 onPress={() => setMaintenanceModalVisible(false)}
               >
                 <Text style={styles.modalBtnText}>Close</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Tricycle Details Modal */}
+      <Modal visible={detailsModalVisible} animationType="slide" transparent>
+        <View style={styles.modalContainer}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Vehicle Details</Text>
+            <Text style={styles.modalSub}>
+              {selectedTricycle?.plate || selectedTricycle?.plateNumber} • {selectedTricycle?.model}
+            </Text>
+
+            <View style={{ marginVertical: 16 }}>
+                <Text style={{ fontWeight: '700', marginBottom: 8, color: colors.orangeShade7 }}>Primary Driver</Text>
+                {selectedTricycle?.driver ? (
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
+                        {selectedTricycle.driver.image?.url ? (
+                            <Image source={{ uri: selectedTricycle.driver.image.url }} style={{ width: 40, height: 40, borderRadius: 20, marginRight: 12 }} />
+                        ) : (
+                            <Ionicons name="person-circle-outline" size={40} color={colors.orangeShade5} style={{ marginRight: 12 }} />
+                        )}
+                        <View>
+                            <Text style={{ fontWeight: '600' }}>{selectedTricycle.driver.firstname} {selectedTricycle.driver.lastname}</Text>
+                            <Text style={{ fontSize: 12, color: '#666' }}>@{selectedTricycle.driver.username}</Text>
+                        </View>
+                    </View>
+                ) : (
+                    <Text style={{ fontStyle: 'italic', color: '#999', marginBottom: 12 }}>No primary driver assigned</Text>
+                )}
+
+                <Text style={{ fontWeight: '700', marginBottom: 8, color: colors.orangeShade7, marginTop: 8 }}>Scheduled Drivers</Text>
+                {selectedTricycle?.schedules && selectedTricycle.schedules.length > 0 ? (
+                    <ScrollView style={{ maxHeight: 200 }}>
+                        {selectedTricycle.schedules.map((sch, idx) => (
+                            <View key={idx} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12, padding: 8, backgroundColor: '#f9f9f9', borderRadius: 8 }}>
+                                {sch.driver?.image?.url ? (
+                                    <Image source={{ uri: sch.driver.image.url }} style={{ width: 32, height: 32, borderRadius: 16, marginRight: 10 }} />
+                                ) : (
+                                    <Ionicons name="person-circle-outline" size={32} color={colors.orangeShade5} style={{ marginRight: 10 }} />
+                                )}
+                                <View style={{ flex: 1 }}>
+                                    <Text style={{ fontWeight: '600', fontSize: 14 }}>{sch.driver?.firstname} {sch.driver?.lastname}</Text>
+                                    <Text style={{ fontSize: 12, color: '#666' }}>
+                                        {sch.days.join(', ')} • {sch.startTime}-{sch.endTime}
+                                    </Text>
+                                </View>
+                            </View>
+                        ))}
+                    </ScrollView>
+                ) : (
+                    <Text style={{ fontStyle: 'italic', color: '#999' }}>No scheduled drivers</Text>
+                )}
+            </View>
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity 
+                style={[styles.modalBtn, { backgroundColor: '#6c757d' }]} 
+                onPress={() => setDetailsModalVisible(false)}
+              >
+                <Text style={styles.modalBtnText}>Close</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Unassign Driver Modal */}
+      <Modal visible={unassignModalVisible} animationType="slide" transparent>
+        <View style={styles.modalContainer}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Unassign Driver</Text>
+            <Text style={styles.modalSub}>
+              Select a driver to remove from {tricycleToUnassign?.plate || tricycleToUnassign?.plateNumber}
+            </Text>
+
+            <ScrollView style={{ maxHeight: 300, marginVertical: 16 }}>
+                {tricycleToUnassign?.schedules && tricycleToUnassign.schedules.map((sch, idx) => (
+                    <TouchableOpacity 
+                        key={idx} 
+                        style={{ 
+                            flexDirection: 'row', 
+                            alignItems: 'center', 
+                            marginBottom: 12, 
+                            padding: 12, 
+                            backgroundColor: '#f9f9f9', 
+                            borderRadius: 8,
+                            borderWidth: 1,
+                            borderColor: '#eee'
+                        }}
+                        onPress={() => {
+                            Alert.alert(
+                                'Confirm Unassign',
+                                `Remove ${sch.driver?.firstname} from schedule?`,
+                                [
+                                    { text: 'Cancel', style: 'cancel' },
+                                    { 
+                                        text: 'Remove', 
+                                        style: 'destructive', 
+                                        onPress: () => confirmUnassign(tricycleToUnassign._id || tricycleToUnassign.id, sch.driver?._id || sch.driver?.id) 
+                                    }
+                                ]
+                            );
+                        }}
+                    >
+                        {sch.driver?.image?.url ? (
+                            <Image source={{ uri: sch.driver.image.url }} style={{ width: 40, height: 40, borderRadius: 20, marginRight: 12 }} />
+                        ) : (
+                            <Ionicons name="person-circle-outline" size={40} color={colors.orangeShade5} style={{ marginRight: 12 }} />
+                        )}
+                        <View style={{ flex: 1 }}>
+                            <Text style={{ fontWeight: '600', fontSize: 16 }}>{sch.driver?.firstname} {sch.driver?.lastname}</Text>
+                            <Text style={{ fontSize: 12, color: '#666' }}>
+                                {sch.days.join(', ')} • {sch.startTime}-{sch.endTime}
+                            </Text>
+                        </View>
+                        <Ionicons name="trash-outline" size={20} color="#dc3545" />
+                    </TouchableOpacity>
+                ))}
+                
+                {/* Option to clear all/reset */}
+                <TouchableOpacity 
+                    style={{ 
+                        padding: 12, 
+                        backgroundColor: '#fee', 
+                        borderRadius: 8, 
+                        alignItems: 'center',
+                        marginTop: 8,
+                        borderWidth: 1,
+                        borderColor: '#fcc'
+                    }}
+                    onPress={() => {
+                        Alert.alert(
+                            'Confirm Clear All',
+                            'Remove ALL drivers from this tricycle?',
+                            [
+                                { text: 'Cancel', style: 'cancel' },
+                                { 
+                                    text: 'Clear All', 
+                                    style: 'destructive', 
+                                    onPress: () => confirmUnassign(tricycleToUnassign._id || tricycleToUnassign.id) 
+                                }
+                            ]
+                        );
+                    }}
+                >
+                    <Text style={{ color: '#dc3545', fontWeight: '600' }}>Unassign All Drivers</Text>
+                </TouchableOpacity>
+            </ScrollView>
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity 
+                style={[styles.modalBtn, { backgroundColor: '#6c757d' }]} 
+                onPress={() => setUnassignModalVisible(false)}
+              >
+                <Text style={styles.modalBtnText}>Cancel</Text>
               </TouchableOpacity>
             </View>
           </View>

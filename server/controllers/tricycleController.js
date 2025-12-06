@@ -73,7 +73,7 @@ export const getTricycle = async (req, res) => {
 // ==================== CREATE TRICYCLE ====================
 export const createTricycle = async (req, res) => {
   try {
-    const { plateNumber, model, driver, status } = req.body;
+    const { plateNumber, model, driver, status, currentOdometer } = req.body;
 
     // Validate required fields
     if (!plateNumber || !model) {
@@ -131,6 +131,7 @@ export const createTricycle = async (req, res) => {
       operator: operatorId,
       driver: driver || null,
       status: status || "unavailable",
+      currentOdometer: currentOdometer || 0,
       images: imageLinks,
     });
 
@@ -326,7 +327,7 @@ export const updateOdometer = async (req, res) => {
 // ==================== ASSIGN DRIVER ====================
 export const assignDriver = async (req, res) => {
   const { id } = req.params;
-  const { driverId } = req.body;
+  const { driverId, schedule } = req.body;
 
   try {
     const tricycle = await Tricycle.findById(id);
@@ -339,15 +340,31 @@ export const assignDriver = async (req, res) => {
       return res.status(403).json({ success: false, message: "Not authorized" });
     }
 
-    tricycle.driver = driverId;
-    // Clear schedules if exclusive assignment is made
-    tricycle.schedules = []; 
+    if (schedule) {
+        // Shared assignment: Add to schedules
+        // Check if driver is already in schedule
+        const existingIndex = tricycle.schedules.findIndex(s => s.driver.toString() === driverId);
+        if (existingIndex >= 0) {
+            tricycle.schedules[existingIndex] = { driver: driverId, ...schedule };
+        } else {
+            tricycle.schedules.push({ driver: driverId, ...schedule });
+        }
+        // If switching to shared mode, we might want to clear the exclusive driver
+        // or keep it as a fallback. Let's clear it to avoid ambiguity.
+        tricycle.driver = null;
+    } else {
+        // Exclusive assignment
+        tricycle.driver = driverId;
+        // Clear schedules if exclusive assignment is made
+        tricycle.schedules = []; 
+    }
     
     await tricycle.save();
     
     const updatedTricycle = await Tricycle.findById(id)
         .populate("operator", "firstname lastname username email")
-        .populate("driver", "firstname lastname username email phone image");
+        .populate("driver", "firstname lastname username email phone image")
+        .populate("schedules.driver", "firstname lastname username email");
 
     res.status(200).json({ success: true, data: updatedTricycle });
   } catch (error) {
