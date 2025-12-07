@@ -24,6 +24,7 @@
         "backgroundColor": "#ffffff"
       },
       "edgeToEdgeEnabled": true,
+      "googleServicesFile": "./google-services.json",
       "package": "com.company.tricyclemod",
       "permissions": [
         "ACCESS_FINE_LOCATION",

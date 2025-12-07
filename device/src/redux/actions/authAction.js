@@ -3,7 +3,32 @@ import { createAsyncThunk } from '@reduxjs/toolkit';
 import Constants from 'expo-constants';
 import { storeToken, removeToken, getToken } from '../../utils/jwtStorage';
 import { removeUserCredentials, storeUserCredentials } from '../../utils/userStorage';
+import { registerForPushNotificationsAsync } from '../../utils/notification';
+
 const apiURL = Constants.expoConfig.extra?.BACKEND_URL || 'http://192.168.254.105:5000';
+
+// Helper function to register FCM token after login
+const registerFCMToken = async (userId) => {
+  try {
+    const fcmToken = await registerForPushNotificationsAsync();
+    if (fcmToken && userId) {
+      console.log('📱 Registering FCM token after login...');
+      const res = await fetch(`${apiURL}/api/auth/store-fcm`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ FCMToken: fcmToken, userId }),
+      });
+      const data = await res.json();
+      if (data.success) {
+        console.log('✅ FCM token registered successfully on login');
+      } else {
+        console.error('❌ Failed to register FCM token:', data.message);
+      }
+    }
+  } catch (error) {
+    console.error('❌ Error registering FCM token:', error);
+  }
+};
 
 export const loginUser = createAsyncThunk(
   'auth/login',
@@ -12,17 +37,22 @@ export const loginUser = createAsyncThunk(
       const token = await getToken(db);
       const res = await fetch(`${apiURL}/api/auth/login`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json',
+        headers: { 
+          'Content-Type': 'application/json',
           ...(token && { Authorization: `Bearer ${token}` }),
-         },
+        },
         body: JSON.stringify({ email, password }),
       });
       const data = await res.json();
       if (data.success) {
-        // save JWT on sqlite
+        // Save JWT and user data
         await storeToken(db, data.token);
         await storeUserCredentials(data.user);
         console.log('User credentials stored successfully:', data.user);
+        
+        // Register FCM token immediately after login
+        registerFCMToken(data.user._id || data.user.id);
+        
         return data.user;
       } else {
         return thunkAPI.rejectWithValue(data.message);
@@ -80,10 +110,14 @@ export const googleLogin = createAsyncThunk(
       });
       const data = await res.json();
       if (data.success) {
-        // Store only the token locally 
+        // Store token and user data
         await storeToken(db, data.token);
         await storeUserCredentials(data.user);
         console.log('Google login successful:', data.user);
+        
+        // Register FCM token immediately after Google login
+        registerFCMToken(data.user._id || data.user.id);
+        
         return data.user;
       } else {
         return thunkAPI.rejectWithValue(data.message);
