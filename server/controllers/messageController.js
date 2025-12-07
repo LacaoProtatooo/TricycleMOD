@@ -1,6 +1,7 @@
 import Message from '../models/messageModel.js';
 import User from '../models/userModel.js';
 import mongoose from 'mongoose';
+import { messaging } from '../utils/firebase.js';
 
 // Generate conversation ID (consistent for both users)
 const getConversationId = (userId1, userId2) => {
@@ -50,6 +51,9 @@ export const sendMessage = async (req, res) => {
       });
     }
 
+    // Get sender info
+    const sender = await User.findById(senderId).select('firstname lastname image');
+
     // Create message
     const message = await Message.create({
       senderId: new mongoose.Types.ObjectId(senderId),
@@ -64,6 +68,51 @@ export const sendMessage = async (req, res) => {
     const populatedMessage = await Message.findById(message._id)
       .populate('senderId', 'firstname lastname image')
       .populate('receiverId', 'firstname lastname image');
+
+    // 🔔 SEND PUSH NOTIFICATION TO RECEIVER
+    if (receiver.FCMToken) {
+      try {
+        const notificationPayload = {
+          token: receiver.FCMToken,
+          notification: {
+            title: `${sender.firstname} ${sender.lastname}`,
+            body: text.length > 100 ? text.substring(0, 100) + '...' : text,
+          },
+          data: {
+            type: 'message',
+            senderId: senderId.toString(),
+            senderName: `${sender.firstname} ${sender.lastname}`,
+            senderImage: sender.image?.url || '',
+            messageId: message._id.toString(),
+            text: text,
+          },
+          android: {
+            priority: 'high',
+            notification: {
+              channelId: 'default',
+              sound: 'default',
+              priority: 'high',
+            },
+          },
+          apns: {
+            payload: {
+              aps: {
+                sound: 'default',
+                badge: 1,
+              },
+            },
+          },
+        };
+
+        await messaging.send(notificationPayload);
+        console.log('✅ Push notification sent to receiver');
+      } catch (notifError) {
+        console.error('❌ Failed to send push notification:', notifError);
+        // Don't fail the message send if notification fails
+      }
+    } else {
+      console.log('⚠️ Receiver has no FCM token registered');
+    }
 
     console.log('Message sent successfully');
 

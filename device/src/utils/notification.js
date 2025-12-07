@@ -1,6 +1,7 @@
 import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
-import { Alert } from 'react-native';
+import { Alert, Platform } from 'react-native';
+import Constants from 'expo-constants';
 
 export async function registerForPushNotificationsAsync() {
   if (!Device.isDevice) {
@@ -21,16 +22,30 @@ export async function registerForPushNotificationsAsync() {
     return null;
   }
 
-  const tokenData = await Notifications.getExpoPushTokenAsync();
-  console.log('Expo Push Token:', tokenData.data);
-  return tokenData.data;
+  // GET NATIVE FCM TOKEN (not Expo token)
+  let token;
+  if (Platform.OS === 'android') {
+    // For Android, get the FCM token directly
+    const projectId = Constants.expoConfig?.extra?.eas?.projectId || 
+                      Constants.easConfig?.projectId;
+    
+    token = (await Notifications.getDevicePushTokenAsync()).data;
+    console.log('Native FCM Token:', token);
+  } else {
+    // For iOS, get APNs token
+    token = (await Notifications.getDevicePushTokenAsync()).data;
+    console.log('APNs Token:', token);
+  }
+
+  return token;
 }
 
-// Optional: Set how notifications are displayed when app is foreground
+// Set notification handler
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
     shouldPlaySound: true,
-    shouldSetBadge: false,
+    shouldSetBadge: true, // Changed to true for better visibility
+    priority: Notifications.AndroidNotificationPriority.MAX,
   }),
 });

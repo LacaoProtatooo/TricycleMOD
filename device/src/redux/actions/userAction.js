@@ -88,7 +88,7 @@ export const uploadNotifToken = createAsyncThunk(
       const res = await fetch(`${apiURL}/api/auth/store-fcm`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token, id }),
+        body: JSON.stringify({ FCMToken: token, userId: id }),
       });
       const data = await res.json();
       console.log('Backend response:', data);

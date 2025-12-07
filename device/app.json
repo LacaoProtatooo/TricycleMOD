@@ -13,7 +13,7 @@
       "backgroundColor": "#ffffff"
     },
     "extra": {
-      "BACKEND_URL": "http://192.168.254.105:5000",
+      "BACKEND_URL": "http://192.168.100.12:5000",
       "eas": {
         "projectId": "9318ce3a-b5b0-461a-98bf-1cca498a078e"
       }
@@ -79,6 +79,13 @@
       [
         "expo-build-properties",
         {}
+      ],
+      [
+        "expo-notifications",
+        {
+          "icon": "./assets/reimu_marisa.png",
+          "color": "#ffffff"
+        }
       ]
     ],
     "owner": "protatooolacao"
