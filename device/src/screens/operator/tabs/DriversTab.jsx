@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, FlatList } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import DriverListItem from '../DriverListItem';
-import EmptyState from '../EmptyState';
+import EmptyState from '../../../components/common/EmptyState';
 import styles from '../operatorStyles';
 
 export default function DriversTab({ availableDrivers }) {

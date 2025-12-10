@@ -67,7 +67,11 @@ export default function AddTricycleModal({
               onPress={onSubmit} 
               disabled={creating}
             >
-              <Text style={styles.modalBtnText}>{creating ? 'Creating...' : 'Create'}</Text>
+              {creating ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <Text style={styles.modalBtnText}>Create</Text>
+              )}
             </TouchableOpacity>
           </View>
         </View>

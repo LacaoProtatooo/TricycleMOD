@@ -12,34 +12,15 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing } from '../../../components/common/theme';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import styles from '../operatorStyles';
-import EmptyState from '../EmptyState';
+import EmptyState from '../../../components/common/EmptyState';
+import ErrorDisplay from '../../../components/common/ErrorDisplay';
 
-export default function SickLeaveTab({ token, BACKEND }) {
-  const [sickLeaves, setSickLeaves] = useState([]);
-  const [loadingSL, setLoadingSL] = useState(false);
-
-  useEffect(() => {
-    if (token) fetchSickLeaves();
-  }, [token]);
-
-  const fetchSickLeaves = async () => {
-    setLoadingSL(true);
-    try {
-      const res = await fetch(`${BACKEND}/api/sick-leave/operator`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      const data = await res.json();
-      if (data.success) {
-        setSickLeaves(data.data);
-      }
-    } catch (error) {
-      console.error('Error fetching sick leaves:', error);
-      Alert.alert('Error', 'Failed to fetch sick leave data');
-    } finally {
-      setLoadingSL(false);
-    }
-  };
-
+export default function SickLeaveTab({ 
+  sickLeaves, 
+  loadingSickLeaves, 
+  errorSickLeaves, 
+  onRefresh 
+}) {
   const renderItem = ({ item }) => (
     <View style={sickLeaveStyles.card}>
       <View style={sickLeaveStyles.header}>
@@ -82,12 +63,16 @@ export default function SickLeaveTab({ token, BACKEND }) {
     <SafeAreaView style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.title}>Sick Leave Updates</Text>
-        <TouchableOpacity onPress={fetchSickLeaves} style={{ padding: 8 }}>
+        <TouchableOpacity onPress={onRefresh} style={{ padding: 8 }}>
           <Ionicons name="refresh" size={20} color={colors.primary} />
         </TouchableOpacity>
       </View>
       
-      {loadingSL ? (
+      {errorSickLeaves && (
+        <ErrorDisplay error={errorSickLeaves} onRetry={onRefresh} />
+      )}
+      
+      {loadingSickLeaves ? (
         <ActivityIndicator color={colors.primary} style={{ marginTop: 20 }} />
       ) : (
         <FlatList

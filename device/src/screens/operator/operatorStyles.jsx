@@ -23,43 +23,6 @@ export default StyleSheet.create({
     justifyContent: 'center',
   },
   
-  // Error display
-  errorContainer: {
-    padding: spacing.medium,
-    backgroundColor: '#fee',
-    marginHorizontal: spacing.medium,
-    borderRadius: 8,
-    marginBottom: spacing.small,
-  },
-  errorText: { color: '#c00', marginBottom: 8 },
-  retryButton: {
-    backgroundColor: colors.primary,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 8,
-    alignSelf: 'flex-start',
-  },
-  retryButtonText: { color: '#fff', fontWeight: '600' },
-  
-  // Empty state
-  emptyContainer: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: spacing.large,
-  },
-  emptyText: {
-    fontSize: 18,
-    fontWeight: '600',
-    color: colors.orangeShade7,
-    marginTop: spacing.medium,
-  },
-  emptySubtext: {
-    fontSize: 14,
-    color: colors.orangeShade5,
-    marginTop: spacing.small,
-    textAlign: 'center',
-  },
-  
   // Tricycle list item
   itemWrap: { marginBottom: spacing.small },
   item: {

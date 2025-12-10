@@ -1,114 +1,98 @@
+// This file now contains only helper functions that don't involve API calls
+// API calls have been moved to Redux actions
+
 import { Alert } from 'react-native';
 
-export const fetchOperatorData = async (authToken, BACKEND) => {
-  try {
-    const res = await fetch(`${BACKEND}/api/operator/overview`, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${authToken}`,
-      },
-    });
+export const validateTricycleData = (tricycleData) => {
+  const errors = [];
+  
+  if (!tricycleData.plateNumber?.trim()) {
+    errors.push('Plate number is required');
+  }
+  
+  if (!tricycleData.model?.trim()) {
+    errors.push('Model is required');
+  }
+  
+  if (tricycleData.currentOdometer && isNaN(parseFloat(tricycleData.currentOdometer))) {
+    errors.push('Odometer must be a valid number');
+  }
+  
+  return errors;
+};
 
-    if (!res.ok) {
-      const errorData = await res.json().catch(() => ({}));
-      throw new Error(errorData.message || `HTTP ${res.status}: ${res.statusText}`);
-    }
+export const formatScheduleDays = (days) => {
+  if (!days || days.length === 0) return 'No schedule';
+  return days.join(', ');
+};
 
-    const data = await res.json();
-    if (data.success) {
-      return data;
-    } else {
-      throw new Error(data.message || 'Failed to fetch data');
-    }
-  } catch (error) {
-    console.error('Error fetching operator data:', error);
-    throw error;
+export const formatScheduleTime = (schedule) => {
+  if (!schedule) return '';
+  return `${schedule.startTime} - ${schedule.endTime}`;
+};
+
+export const getDriverName = (driver) => {
+  if (!driver) return 'Unassigned';
+  return `${driver.firstname || ''} ${driver.lastname || ''}`.trim();
+};
+
+export const getDriverImage = (driver) => {
+  return driver?.image?.url || null;
+};
+
+export const getStatusColor = (status) => {
+  switch (status?.toLowerCase()) {
+    case 'active':
+    case 'available':
+    case 'approved':
+      return 'green';
+    case 'maintenance':
+    case 'pending':
+      return 'orange';
+    case 'unavailable':
+    case 'rejected':
+      return 'red';
+    default:
+      return 'gray';
   }
 };
 
-export const handleAssignDriver = async (token, BACKEND, payload) => {
-  try {
-    const res = await fetch(`${BACKEND}/api/operator/assign-driver`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
-      },
-      body: JSON.stringify(payload),
-    });
-
-    const data = await res.json();
-    if (data.success) {
-      Alert.alert('Success', 'Driver assigned successfully');
-      return { success: true };
-    } else {
-      Alert.alert('Error', data.message || 'Failed to assign driver');
-      return { success: false, error: data.message };
-    }
-  } catch (error) {
-    console.error('Error assigning driver:', error);
-    Alert.alert('Error', 'Failed to assign driver. Please try again.');
-    return { success: false, error: error.message };
-  }
+// Helper for FormData creation in receipt scanning
+export const createImageFormData = (imageUri, fieldName = 'image') => {
+  const formData = new FormData();
+  const uriParts = imageUri.split('/');
+  const name = uriParts[uriParts.length - 1];
+  
+  formData.append(fieldName, {
+    uri: imageUri,
+    name,
+    type: 'image/jpeg',
+  });
+  
+  return formData;
 };
 
-export const handleUnassignDriver = async (token, BACKEND, { tricycleId, driverId }) => {
-  try {
-    const payload = { tricycleId };
-    if (driverId) payload.driverId = driverId;
-
-    const res = await fetch(`${BACKEND}/api/operator/unassign-driver`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
-      },
-      body: JSON.stringify(payload),
-    });
-
-    const data = await res.json();
-    if (data.success) {
-      Alert.alert('Success', 'Driver unassigned successfully');
-      return { success: true };
-    } else {
-      Alert.alert('Error', data.message || 'Failed to unassign driver');
-      return { success: false, error: data.message };
-    }
-  } catch (error) {
-    console.error('Error unassigning driver:', error);
-    Alert.alert('Error', 'Failed to unassign driver. Please try again.');
-    return { success: false, error: error.message };
+// Helper for schedule validation
+export const validateSchedule = (schedule) => {
+  const errors = [];
+  
+  if (!schedule.days || schedule.days.length === 0) {
+    errors.push('At least one day must be selected');
   }
-};
-
-export const handleCreateTricycle = async (token, BACKEND, tricycleData) => {
-  try {
-    const res = await fetch(`${BACKEND}/api/tricycles`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-        plateNumber: tricycleData.plateNumber,
-        model: tricycleData.model,
-        status: 'unavailable',
-        currentOdometer: tricycleData.currentOdometer ? parseFloat(tricycleData.currentOdometer) : 0,
-      }),
-    });
-
-    const data = await res.json();
-    if (data.success) {
-      Alert.alert('Success', 'Tricycle added successfully');
-      return { success: true };
-    } else {
-      Alert.alert('Error', data.message || 'Failed to create tricycle');
-      return { success: false, error: data.message };
-    }
-  } catch (error) {
-    console.error('Error creating tricycle:', error);
-    Alert.alert('Error', 'Failed to create tricycle. Please try again.');
-    return { success: false, error: error.message };
+  
+  if (!schedule.startTime || !schedule.endTime) {
+    errors.push('Start and end times are required');
   }
+  
+  // Validate time format (simple check)
+  const timeRegex = /^([0-1]?[0-9]|2[0-3]):[0-5][0-9]$/;
+  if (schedule.startTime && !timeRegex.test(schedule.startTime)) {
+    errors.push('Start time must be in HH:MM format');
+  }
+  
+  if (schedule.endTime && !timeRegex.test(schedule.endTime)) {
+    errors.push('End time must be in HH:MM format');
+  }
+  
+  return errors;
 };

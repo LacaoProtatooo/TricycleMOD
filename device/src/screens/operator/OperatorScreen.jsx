@@ -1,9 +1,21 @@
 import React, { useEffect, useState } from 'react';
-import { useSelector } from 'react-redux';
+import { useSelector, useDispatch } from 'react-redux';
+import { Alert } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { useAsyncSQLiteContext } from '../../utils/asyncSQliteProvider';
 import { getToken } from '../../utils/jwtStorage';
 import Constants from 'expo-constants';
+
+// Redux Actions
+import { 
+  fetchOperatorData, 
+  assignDriver, 
+  unassignDriver, 
+  createTricycle,
+  fetchSickLeaves,
+  clearOperatorData,
+  clearErrors             // Missing on Operator Action Redux 
+} from '../../redux/actions/operatorAction';
 
 // Tab Components
 import OverviewTab from './tabs/OverviewTab';
@@ -21,34 +33,42 @@ import MessageSelectionModal from './modals/MessageSelectionModal';
 import UnassignDriverModal from './modals/UnassignDriverModal';
 
 // Helper Components
-import LoadingScreen from './LoadingScreen';
+import LoadingScreen from '../../components/common/LoadingScreen';
 
 // Utils
-import { 
-  fetchOperatorData, 
-  handleAssignDriver, 
-  handleUnassignDriver, 
-  handleCreateTricycle 
-} from './operatorHelpers';
+import { validateTricycleData, validateSchedule } from './operatorHelpers';
 
 const BACKEND = (Constants?.expoConfig?.extra?.BACKEND_URL) || (Constants?.manifest?.extra?.BACKEND_URL) || 'http://192.168.254.105:5000';
 const Tab = createBottomTabNavigator();
 
 export default function OperatorScreen({ navigation }) {
+  const dispatch = useDispatch();
   const db = useAsyncSQLiteContext();
+  
+  // Get state from Redux store
   const user = useSelector((state) => state.auth.user);
-  const [loading, setLoading] = useState(true);
+  const operatorState = useSelector((state) => state.operator);
+  
+  const {
+    tricycles = [],
+    drivers = [],
+    availableDrivers = [],
+    sickLeaves = [],
+    loading,
+    loadingSickLeaves,
+    assigning,
+    creating,
+    unassigning,
+    error
+  } = operatorState;
+
+  // Local state
   const [refreshing, setRefreshing] = useState(false);
-  const [drivers, setDrivers] = useState([]);
-  const [availableDrivers, setAvailableDrivers] = useState([]);
-  const [tricycles, setTricycles] = useState([]);
-  const [error, setError] = useState(null);
   const [token, setToken] = useState(null);
 
   // Modal states
   const [assignModalVisible, setAssignModalVisible] = useState(false);
   const [selectedTricycle, setSelectedTricycle] = useState(null);
-  const [assigning, setAssigning] = useState(false);
   const [assignmentType, setAssignmentType] = useState('exclusive');
   const [schedule, setSchedule] = useState({ days: [], startTime: '08:00', endTime: '17:00' });
 
@@ -57,18 +77,23 @@ export default function OperatorScreen({ navigation }) {
 
   const [addTricycleModalVisible, setAddTricycleModalVisible] = useState(false);
   const [newTricycle, setNewTricycle] = useState({ plateNumber: '', model: '', currentOdometer: '' });
-  const [creating, setCreating] = useState(false);
 
   const [detailsModalVisible, setDetailsModalVisible] = useState(false);
   const [unassignModalVisible, setUnassignModalVisible] = useState(false);
   const [tricycleToUnassign, setTricycleToUnassign] = useState(null);
   const [messageSelectionModalVisible, setMessageSelectionModalVisible] = useState(false);
 
+  // Load token and initialize
   useEffect(() => {
     if (db) {
       loadTokenAndFetchData();
     }
-  }, [db]);
+    
+    // Clear data when component unmounts
+    return () => {
+      dispatch(clearOperatorData());
+    };
+  }, [db, dispatch]);
 
   const loadTokenAndFetchData = async () => {
     try {
@@ -78,36 +103,31 @@ export default function OperatorScreen({ navigation }) {
         if (authToken) {
           await fetchData(authToken);
         } else {
-          setError('No authentication token found. Please login.');
-          setLoading(false);
+          dispatch(clearOperatorData());
         }
       }
     } catch (error) {
       console.error('Error loading token:', error);
-      setError('Failed to load authentication token');
-      setLoading(false);
+      dispatch(clearOperatorData());
     }
   };
 
   const fetchData = async (authToken) => {
+    if (!authToken) return;
+    
     try {
-      setLoading(true);
-      setError(null);
-      const data = await fetchOperatorData(authToken, BACKEND);
-      setTricycles(data.tricycles || []);
-      setDrivers(data.allDrivers || data.drivers || []);
-      setAvailableDrivers(data.availableDrivers || []);
+      dispatch(fetchOperatorData({ token: authToken, BACKEND }));
     } catch (e) {
       console.error('Error fetching operator data:', e);
-      setError(e.message || 'Failed to fetch operator data');
     } finally {
-      setLoading(false);
       setRefreshing(false);
     }
   };
 
   const onRefresh = async () => {
     setRefreshing(true);
+    dispatch(clearErrors());
+    
     if (token) {
       await fetchData(token);
     } else if (db) {
@@ -115,10 +135,19 @@ export default function OperatorScreen({ navigation }) {
     }
   };
 
-  const assignDriver = async (tricycleId, driverId) => {
+  const handleAssignDriver = async (tricycleId, driverId) => {
     if (!token) {
       Alert.alert('Error', 'No authentication token found');
       return;
+    }
+
+    // Validate schedule for shared assignment
+    if (assignmentType === 'shared') {
+      const scheduleErrors = validateSchedule(schedule);
+      if (scheduleErrors.length > 0) {
+        Alert.alert('Validation Error', scheduleErrors.join('\n'));
+        return;
+      }
     }
 
     const payload = { tricycleId, driverId };
@@ -126,14 +155,14 @@ export default function OperatorScreen({ navigation }) {
       payload.schedule = schedule;
     }
 
-    const result = await handleAssignDriver(token, BACKEND, payload);
-    if (result.success) {
-      setAssignModalVisible(false);
-      await fetchData(token);
-    }
+    dispatch(assignDriver({ token, BACKEND, payload }));
+    setAssignModalVisible(false);
+    
+    // Reset schedule
+    setSchedule({ days: [], startTime: '08:00', endTime: '17:00' });
   };
 
-  const unassignDriver = async (tricycle) => {
+  const handleUnassignDriver = async (tricycle) => {
     if (!token) {
       Alert.alert('Error', 'No authentication token found');
       return;
@@ -161,21 +190,20 @@ export default function OperatorScreen({ navigation }) {
   };
 
   const confirmUnassign = async (tricycleId, driverId = null) => {
-    try {
-      const result = await handleUnassignDriver(token, BACKEND, { tricycleId, driverId });
-      if (result.success) {
-        setUnassignModalVisible(false);
-        await fetchData(token);
-      }
-    } catch (error) {
-      console.error('Error unassigning driver:', error);
-      Alert.alert('Error', 'Failed to unassign driver. Please try again.');
+    if (!token) {
+      Alert.alert('Error', 'No authentication token found');
+      return;
     }
+
+    dispatch(unassignDriver({ token, BACKEND, tricycleId, driverId }));
+    setUnassignModalVisible(false);
   };
 
-  const createTricycle = async () => {
-    if (!newTricycle.plateNumber || !newTricycle.model) {
-      Alert.alert('Validation Error', 'Please fill in all required fields');
+  const handleCreateTricycle = async () => {
+    // Validate input
+    const validationErrors = validateTricycleData(newTricycle);
+    if (validationErrors.length > 0) {
+      Alert.alert('Validation Error', validationErrors.join('\n'));
       return;
     }
 
@@ -184,12 +212,11 @@ export default function OperatorScreen({ navigation }) {
       return;
     }
 
-    const result = await handleCreateTricycle(token, BACKEND, newTricycle);
-    if (result.success) {
-      setAddTricycleModalVisible(false);
-      setNewTricycle({ plateNumber: '', model: '', currentOdometer: '' });
-      await fetchData(token);
-    }
+    dispatch(createTricycle({ token, BACKEND, tricycleData: newTricycle }));
+    
+    // Close modal and reset form
+    setAddTricycleModalVisible(false);
+    setNewTricycle({ plateNumber: '', model: '', currentOdometer: '' });
   };
 
   const openMessage = (tricycle) => {
@@ -227,6 +254,12 @@ export default function OperatorScreen({ navigation }) {
     setDetailsModalVisible(true);
   };
 
+  const handleFetchSickLeaves = () => {
+    if (token) {
+      dispatch(fetchSickLeaves({ token, BACKEND }));
+    }
+  };
+
   if (loading && !refreshing) return <LoadingScreen />;
 
   return (
@@ -250,7 +283,7 @@ export default function OperatorScreen({ navigation }) {
               onRefresh={onRefresh}
               onAddTricycle={() => setAddTricycleModalVisible(true)}
               onOpenAssignModal={openAssignModal}
-              onUnassignDriver={unassignDriver}
+              onUnassignDriver={handleUnassignDriver}
               onOpenMessage={openMessage}
               onOpenMaintenance={openMaintenanceModal}
               onOpenDetails={openDetailsModal}
@@ -261,10 +294,25 @@ export default function OperatorScreen({ navigation }) {
           {() => <DriversTab availableDrivers={availableDrivers} />}
         </Tab.Screen>
         <Tab.Screen name="Receipt">
-          {() => <ReceiptScannerTab token={token} BACKEND={BACKEND} />}
+          {() => (
+            <ReceiptScannerTab 
+              token={token} 
+              BACKEND={BACKEND}
+              receiptResult={operatorState.receiptResult}
+              loadingReceipt={operatorState.loadingReceipt}
+              errorReceipt={operatorState.errorReceipt}
+            />
+          )}
         </Tab.Screen>
         <Tab.Screen name="Sick Leave">
-          {() => <SickLeaveTab token={token} BACKEND={BACKEND} />}
+          {() => (
+            <SickLeaveTab 
+              sickLeaves={sickLeaves}
+              loadingSickLeaves={loadingSickLeaves}
+              errorSickLeaves={operatorState.errorSickLeaves}
+              onRefresh={handleFetchSickLeaves}
+            />
+          )}
         </Tab.Screen>
         <Tab.Screen name="Forums">
           {() => <ForumsTab token={token} BACKEND={BACKEND} />}
@@ -278,7 +326,7 @@ export default function OperatorScreen({ navigation }) {
           setAddTricycleModalVisible(false);
           setNewTricycle({ plateNumber: '', model: '', currentOdometer: '' });
         }}
-        onSubmit={createTricycle}
+        onSubmit={handleCreateTricycle}
         newTricycle={newTricycle}
         setNewTricycle={setNewTricycle}
         creating={creating}
@@ -286,8 +334,12 @@ export default function OperatorScreen({ navigation }) {
 
       <AssignDriverModal
         visible={assignModalVisible}
-        onClose={() => setAssignModalVisible(false)}
-        onSubmit={assignDriver}
+        onClose={() => {
+          setAssignModalVisible(false);
+          // Reset schedule when closing
+          setSchedule({ days: [], startTime: '08:00', endTime: '17:00' });
+        }}
+        onSubmit={handleAssignDriver}
         availableDrivers={availableDrivers}
         selectedTricycle={selectedTricycle}
         assigning={assigning}

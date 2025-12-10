@@ -1,6 +1,5 @@
 import React from 'react';
 import { 
-  SafeAreaView, 
   View, 
   Text, 
   TouchableOpacity, 
@@ -9,10 +8,11 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing } from '../../../components/common/theme';
+import { SafeAreaView } from 'react-native-safe-area-context';
 import TricycleListItem from '../TricycleListItem';
-import ErrorDisplay from '../ErrorDisplay';
-import EmptyState from '../EmptyState';
-import LoadingScreen from '../LoadingScreen';
+import ErrorDisplay from '../../../components/common/ErrorDisplay';
+import EmptyState from '../../../components/common/EmptyState';
+import LoadingScreen from '../../../components/common/LoadingScreen';
 import styles from '../operatorStyles';
 
 export default function OverviewTab({
