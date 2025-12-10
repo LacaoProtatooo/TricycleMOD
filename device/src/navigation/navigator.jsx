@@ -34,10 +34,11 @@ const Navigator = () => {
   const [notificationData, setNotificationData] = useState(null);
   const [drawerVisible, setDrawerVisible] = useState(false);
   const user = useSelector((state) => state.auth.user);
+  const isLoading = useSelector((state) => state.auth.loading);
 
   // Animation values
-  const slideAnim = useRef(new Animated.Value(-300)).current; // Start off-screen to the left
-  const overlayAnim = useRef(new Animated.Value(0)).current; // Start transparent
+  const slideAnim = useRef(new Animated.Value(-300)).current;
+  const overlayAnim = useRef(new Animated.Value(0)).current;
 
   useEffect(() => {
     const subscription = Notifications.addNotificationResponseReceivedListener(response => {
@@ -51,10 +52,8 @@ const Navigator = () => {
     };
   }, []);
 
-  // Animate drawer when visibility changes
   useEffect(() => {
     if (drawerVisible) {
-      // Slide in and fade in overlay
       Animated.parallel([
         Animated.timing(slideAnim, {
           toValue: 0,
@@ -68,7 +67,6 @@ const Navigator = () => {
         }),
       ]).start();
     } else {
-      // Slide out and fade out overlay
       Animated.parallel([
         Animated.timing(slideAnim, {
           toValue: -300,
@@ -85,7 +83,6 @@ const Navigator = () => {
   }, [drawerVisible, slideAnim, overlayAnim]);
 
   const closeDrawer = () => {
-    // Animate out first, then hide
     Animated.parallel([
       Animated.timing(slideAnim, {
         toValue: -300,
@@ -102,11 +99,11 @@ const Navigator = () => {
     });
   };
 
-  // While user state is undefined (e.g., during startup), show a spinner
-  if (user === undefined) {
+  // Show loading spinner while verifying user on startup
+  if (isLoading && user === null) {
     return (
       <View style={styles.loader}>
-        <ActivityIndicator size="large" color="#000" />
+        <ActivityIndicator size="large" color={colors.primary || '#000'} />
       </View>
     );
   }
@@ -116,11 +113,7 @@ const Navigator = () => {
       <NavigationContainer 
         ref={navigationRef}
         onReady={() => {
-          // Navigation container is ready
           console.log('Navigation container ready');
-        }}
-        onStateChange={() => {
-          // Optional: track navigation state changes
         }}
       >
         <View style={{ flex: 1 }}>

@@ -2,9 +2,12 @@ import React, { useEffect, useState } from 'react';
 import { useSelector, useDispatch } from 'react-redux';
 import { Alert } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
+import { Ionicons } from '@expo/vector-icons';
 import { useAsyncSQLiteContext } from '../../utils/asyncSQliteProvider';
 import { getToken } from '../../utils/jwtStorage';
 import Constants from 'expo-constants';
+import { colors } from '../../components/common/theme';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 // Redux Actions
 import { 
@@ -13,8 +16,7 @@ import {
   unassignDriver, 
   createTricycle,
   fetchSickLeaves,
-  clearOperatorData,
-  clearErrors             // Missing on Operator Action Redux 
+  clearErrors
 } from '../../redux/actions/operatorAction';
 
 // Tab Components
@@ -44,6 +46,7 @@ const Tab = createBottomTabNavigator();
 export default function OperatorScreen({ navigation }) {
   const dispatch = useDispatch();
   const db = useAsyncSQLiteContext();
+  const insets = useSafeAreaInsets();
   
   // Get state from Redux store
   const user = useSelector((state) => state.auth.user);
@@ -85,35 +88,43 @@ export default function OperatorScreen({ navigation }) {
 
   // Load token and initialize
   useEffect(() => {
-    if (db) {
+    // Add proper check for db readiness
+    if (db && typeof db.prepareAsync === 'function') {
       loadTokenAndFetchData();
+    } else {
+      console.log('Database not ready yet, waiting...');
     }
-    
-    // Clear data when component unmounts
-    return () => {
-      dispatch(clearOperatorData());
-    };
-  }, [db, dispatch]);
+  }, [db]);
 
   const loadTokenAndFetchData = async () => {
     try {
-      if (db) {
-        const authToken = await getToken(db);
+      // Double check db is available
+      if (!db) {
+        console.error('Database is null in loadTokenAndFetchData');
+        return;
+      }
+
+      const authToken = await getToken(db);
+      
+      if (authToken) {
         setToken(authToken);
-        if (authToken) {
-          await fetchData(authToken);
-        } else {
-          dispatch(clearOperatorData());
-        }
+        await fetchData(authToken);
+      } else {
+        console.log('No auth token found');
+        setToken(null);
       }
     } catch (error) {
-      console.error('Error loading token:', error);
-      dispatch(clearOperatorData());
+      console.error('❌ Error loading token:', error);
+      // Set token to null to allow UI to render
+      setToken(null);
     }
   };
 
   const fetchData = async (authToken) => {
-    if (!authToken) return;
+    if (!authToken) {
+      console.log('No auth token provided to fetchData');
+      return;
+    }
     
     try {
       dispatch(fetchOperatorData({ token: authToken, BACKEND }));
@@ -132,6 +143,9 @@ export default function OperatorScreen({ navigation }) {
       await fetchData(token);
     } else if (db) {
       await loadTokenAndFetchData();
+    } else {
+      console.log('Cannot refresh: db not available');
+      setRefreshing(false);
     }
   };
 
@@ -260,20 +274,58 @@ export default function OperatorScreen({ navigation }) {
     }
   };
 
-  if (loading && !refreshing) return <LoadingScreen />;
+  // Show loading screen while database or token is being initialized
+  if (!db || (loading && !refreshing)) {
+    return <LoadingScreen />;
+  }
 
   return (
     <>
       <Tab.Navigator
         initialRouteName="Overview"
-        screenOptions={{
-          tabBarIndicatorStyle: { backgroundColor: colors.primary },
+        screenOptions={({ route }) => ({
+          tabBarIcon: ({ focused, color, size }) => {
+            let iconName;
+
+            switch (route.name) {
+              case 'Overview':
+                iconName = focused ? 'grid' : 'grid-outline';
+                break;
+              case 'Drivers':
+                iconName = focused ? 'people' : 'people-outline';
+                break;
+              case 'Receipt':
+                iconName = focused ? 'document-text' : 'document-text-outline';
+                break;
+              case 'Sick Leave':
+                iconName = focused ? 'medical' : 'medical-outline';
+                break;
+              case 'Forums':
+                iconName = focused ? 'chatbubbles' : 'chatbubbles-outline';
+                break;
+              default:
+                iconName = 'help-circle-outline';
+            }
+
+            return <Ionicons name={iconName} size={size} color={color} />;
+          },
           tabBarActiveTintColor: colors.primary,
-          tabBarLabelStyle: { fontWeight: '600' },
-          tabBarStyle: { backgroundColor: 'white' },
-        }}
+          tabBarInactiveTintColor: 'gray',
+          tabBarLabelStyle: { fontWeight: '600', fontSize: 11 },
+          tabBarStyle: { 
+            backgroundColor: 'white',
+            paddingBottom: insets.bottom > 0 ? insets.bottom : 8,
+            paddingTop: 8,
+            height: 60 + (insets.bottom > 0 ? insets.bottom : 8),
+            borderTopWidth: 1,
+            borderTopColor: '#e0e0e0',
+          },
+        })}
       >
-        <Tab.Screen name="Overview">
+        <Tab.Screen 
+          name="Overview"
+          options={{ headerShown: false }}
+        >
           {() => (
             <OverviewTab
               loading={loading}
@@ -290,10 +342,16 @@ export default function OperatorScreen({ navigation }) {
             />
           )}
         </Tab.Screen>
-        <Tab.Screen name="Drivers">
+        <Tab.Screen 
+          name="Drivers"
+          options={{ headerShown: false }}
+        >
           {() => <DriversTab availableDrivers={availableDrivers} />}
         </Tab.Screen>
-        <Tab.Screen name="Receipt">
+        <Tab.Screen 
+          name="Receipt"
+          options={{ headerShown: false }}
+        >
           {() => (
             <ReceiptScannerTab 
               token={token} 
@@ -304,7 +362,10 @@ export default function OperatorScreen({ navigation }) {
             />
           )}
         </Tab.Screen>
-        <Tab.Screen name="Sick Leave">
+        <Tab.Screen 
+          name="Sick Leave"
+          options={{ headerShown: false }}
+        >
           {() => (
             <SickLeaveTab 
               sickLeaves={sickLeaves}
@@ -314,7 +375,10 @@ export default function OperatorScreen({ navigation }) {
             />
           )}
         </Tab.Screen>
-        <Tab.Screen name="Forums">
+        <Tab.Screen 
+          name="Forums"
+          options={{ headerShown: false }}
+        >
           {() => <ForumsTab token={token} BACKEND={BACKEND} />}
         </Tab.Screen>
       </Tab.Navigator>
@@ -378,6 +442,3 @@ export default function OperatorScreen({ navigation }) {
     </>
   );
 }
-
-// Import styles
-import { colors } from '../../components/common/theme';

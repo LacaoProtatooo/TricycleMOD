@@ -15,6 +15,7 @@ import { colors, spacing } from '../../../components/common/theme';
 import styles from '../operatorStyles';
 import { createImageFormData } from '../operatorHelpers';
 import { scanReceipt } from '../../../redux/actions/operatorAction';
+import { clearReceiptResult } from '../../../redux/reducers/operatorReducer';
 import { useDispatch } from 'react-redux';
 
 export default function ReceiptScannerTab({ 
@@ -28,49 +29,71 @@ export default function ReceiptScannerTab({
   const [image, setImage] = useState(null);
 
   const pickImage = async () => {
-    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permission required', 'Permission to access media library is needed.');
-      return;
+    try {
+      // request permission
+      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission required', 'Permission to access media library is needed.');
+        return;
+      }
+
+      const result = await ImagePicker.launchImageLibraryAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 0.8,
+      });
+
+      console.log('Pick image result:', result);
+
+      // handle both old and new API shapes
+      if (result?.canceled === true) return; // user cancelled
+      let uri = null;
+      if (result?.assets && result.assets.length > 0) uri = result.assets[0].uri;
+      else if (result?.uri) uri = result.uri;
+
+      if (!uri) {
+        Alert.alert('No image selected');
+        return;
+      }
+
+      setImage(uri);
+      dispatch(clearReceiptResult());
+    } catch (error) {
+      console.error('Error picking image:', error);
+      Alert.alert('Error', 'Failed to pick image');
     }
-
-    const result = await ImagePicker.launchImageLibraryAsync({
-      mediaTypes: [ImagePicker.MediaType.Images], 
-      quality: 0.8,
-    });
-
-    if (result?.canceled === true) return;
-    const uri = result?.assets?.[0]?.uri || result?.uri;
-    if (!uri) {
-      Alert.alert('No image selected');
-      return;
-    }
-
-    setImage(uri);
-    dispatch(clearReceiptResult());
   };
 
   const takePhoto = async () => {
-    const { status } = await ImagePicker.requestCameraPermissionsAsync();
-    if (status !== 'granted') {
-      Alert.alert('Permission required', 'Permission to use camera is needed.');
-      return;
+    try {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission required', 'Permission to use camera is needed.');
+        return;
+      }
+
+      const result = await ImagePicker.launchCameraAsync({
+        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        quality: 0.8,
+      });
+
+      console.log('Take photo result:', result);
+
+      if (result?.canceled === true) return;
+      let uri = null;
+      if (result?.assets && result.assets.length > 0) uri = result.assets[0].uri;
+      else if (result?.uri) uri = result.uri;
+
+      if (!uri) {
+        Alert.alert('No image selected');
+        return;
+      }
+
+      setImage(uri);
+      dispatch(clearReceiptResult());
+    } catch (error) {
+      console.error('Error taking photo:', error);
+      Alert.alert('Error', 'Failed to take photo');
     }
-
-    const result = await ImagePicker.launchCameraAsync({
-      mediaTypes: [ImagePicker.MediaType.Images], 
-      quality: 0.8,
-    });
-
-    if (result?.canceled === true) return;
-    const uri = result?.assets?.[0]?.uri || result?.uri;
-    if (!uri) {
-      Alert.alert('No image selected');
-      return;
-    }
-
-    setImage(uri);
-    dispatch(clearReceiptResult());
   };
 
   const handleScanReceipt = async () => {
