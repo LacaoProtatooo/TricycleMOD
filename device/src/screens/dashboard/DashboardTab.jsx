@@ -16,6 +16,7 @@ import defaultAvatar from '../../../assets/ghost.png';
 import StatCard from '../../components/home/StatCard';
 import MaintenanceTracker from '../../components/home/MaintenanceTracker';
 import WeatherWidget from '../../components/home/WeatherWidget';
+import WeatherAdvisoryModal from '../../components/common/WeatherAdvisoryModal';
 import Constants from 'expo-constants';
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -100,6 +101,7 @@ const DashboardTab = () => {
 
   return (
     <SafeAreaView style={styles.container}>
+      <WeatherAdvisoryModal />
       <ScrollView
         style={{ flex: 1 }}
         contentContainerStyle={[styles.scrollContent, { flexGrow: 1 }]}
