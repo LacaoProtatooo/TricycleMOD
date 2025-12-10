@@ -302,6 +302,7 @@ export const getOperatorOverview = async (req, res) => {
       return {
         id: tricycle._id,
         plate: tricycle.plateNumber,
+        bodyNumber: tricycle.bodyNumber || '',
         model: tricycle.model,
         driverId: tricycle.driver?._id || null,
         driverName: driverName,

@@ -6,7 +6,8 @@ import {
   TextInput,
   TouchableOpacity,
   KeyboardAvoidingView,
-  Platform
+  Platform,
+  ActivityIndicator,
 } from 'react-native';
 import { colors, spacing } from '../../../components/common/theme';
 import styles from '../operatorStyles';
@@ -33,6 +34,14 @@ export default function AddTricycleModal({
             placeholder="Plate Number"
             value={newTricycle.plateNumber}
             onChangeText={(text) => setNewTricycle({ ...newTricycle, plateNumber: text.toUpperCase() })}
+            editable={!creating}
+          />
+
+          <TextInput
+            style={styles.textInput}
+            placeholder="Body Number"
+            value={newTricycle.bodyNumber}
+            onChangeText={(text) => setNewTricycle({ ...newTricycle, bodyNumber: text.toUpperCase() })}
             editable={!creating}
           />
           

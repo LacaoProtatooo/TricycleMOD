@@ -22,7 +22,9 @@ export default function TricycleDetailsModal({
         <View style={styles.modalContent}>
           <Text style={styles.modalTitle}>Vehicle Details</Text>
           <Text style={styles.modalSub}>
-            {selectedTricycle?.plate || selectedTricycle?.plateNumber} • {selectedTricycle?.model}
+            {selectedTricycle?.plate || selectedTricycle?.plateNumber}
+            {selectedTricycle?.bodyNumber ? ` • Body No.: ${selectedTricycle.bodyNumber}` : ''}
+            {` • ${selectedTricycle?.model}`}
           </Text>
 
           <View style={{ marginVertical: 16 }}>

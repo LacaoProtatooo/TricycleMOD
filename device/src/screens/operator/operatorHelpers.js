@@ -9,6 +9,10 @@ export const validateTricycleData = (tricycleData) => {
   if (!tricycleData.plateNumber?.trim()) {
     errors.push('Plate number is required');
   }
+
+  if (!tricycleData.bodyNumber?.trim()) {
+    errors.push('Body number is required');
+  }
   
   if (!tricycleData.model?.trim()) {
     errors.push('Model is required');

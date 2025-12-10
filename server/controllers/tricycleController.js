@@ -73,13 +73,13 @@ export const getTricycle = async (req, res) => {
 // ==================== CREATE TRICYCLE ====================
 export const createTricycle = async (req, res) => {
   try {
-    const { plateNumber, model, driver, status, currentOdometer } = req.body;
+    const { plateNumber, bodyNumber, model, driver, status, currentOdometer } = req.body;
 
     // Validate required fields
-    if (!plateNumber || !model) {
+    if (!plateNumber || !model || !bodyNumber) {
       return res.status(400).json({
         success: false,
-        message: "Plate number and model are required.",
+        message: "Plate number, body number, and model are required.",
       });
     }
 
@@ -127,6 +127,7 @@ export const createTricycle = async (req, res) => {
     // Create new tricycle
     const newTricycle = new Tricycle({
       plateNumber,
+      bodyNumber,
       model,
       operator: operatorId,
       driver: driver || null,
@@ -176,7 +177,7 @@ export const updateTricycle = async (req, res) => {
       }
     }
 
-    const { plateNumber, model, operator, driver, status, existingImages = [] } = req.body;
+    const { plateNumber, bodyNumber, model, operator, driver, status, existingImages = [] } = req.body;
 
     // Upload new images to Cloudinary (if any)
     let newImageLinks = [];
@@ -204,6 +205,7 @@ export const updateTricycle = async (req, res) => {
 
     const updatedData = {
       plateNumber: plateNumber || tricycle.plateNumber,
+      bodyNumber: bodyNumber || tricycle.bodyNumber,
       model: model || tricycle.model,
       // Operators cannot change the operator field - it's always their own
       operator: (req.user && req.user.role === 'operator') ? req.user.id : (operator || tricycle.operator),

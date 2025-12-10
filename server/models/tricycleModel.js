@@ -8,6 +8,12 @@ const tricycleSchema = new mongoose.Schema({
         uppercase: true,
         maxlength: [20, 'Plate number cannot exceed 20 characters']
     },
+    bodyNumber: {
+        type: String,
+        trim: true,
+        uppercase: true,
+        maxlength: [20, 'Body number cannot exceed 20 characters']
+    },
     model: {
         type: String,
         required: [true, 'Model is required'],

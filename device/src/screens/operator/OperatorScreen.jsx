@@ -79,7 +79,7 @@ export default function OperatorScreen({ navigation }) {
   const [selectedTricycleHistory, setSelectedTricycleHistory] = useState([]);
 
   const [addTricycleModalVisible, setAddTricycleModalVisible] = useState(false);
-  const [newTricycle, setNewTricycle] = useState({ plateNumber: '', model: '', currentOdometer: '' });
+  const [newTricycle, setNewTricycle] = useState({ plateNumber: '', bodyNumber: '', model: '', currentOdometer: '' });
 
   const [detailsModalVisible, setDetailsModalVisible] = useState(false);
   const [unassignModalVisible, setUnassignModalVisible] = useState(false);
@@ -230,7 +230,7 @@ export default function OperatorScreen({ navigation }) {
     
     // Close modal and reset form
     setAddTricycleModalVisible(false);
-    setNewTricycle({ plateNumber: '', model: '', currentOdometer: '' });
+    setNewTricycle({ plateNumber: '', bodyNumber: '', model: '', currentOdometer: '' });
   };
 
   const openMessage = (tricycle) => {
@@ -388,7 +388,7 @@ export default function OperatorScreen({ navigation }) {
         visible={addTricycleModalVisible}
         onClose={() => {
           setAddTricycleModalVisible(false);
-          setNewTricycle({ plateNumber: '', model: '', currentOdometer: '' });
+          setNewTricycle({ plateNumber: '', bodyNumber: '', model: '', currentOdometer: '' });
         }}
         onSubmit={handleCreateTricycle}
         newTricycle={newTricycle}

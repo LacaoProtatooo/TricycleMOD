@@ -26,6 +26,9 @@ export default function TricycleListItem({
         </View>
         <View style={styles.info}>
           <Text style={styles.plate}>{tricycle.plate || tricycle.plateNumber}</Text>
+          {!!tricycle.bodyNumber && (
+            <Text style={styles.meta}>Body No.: {tricycle.bodyNumber}</Text>
+          )}
           <Text style={styles.driver}>{driverName}</Text>
           <Text style={styles.meta}>
             {tricycle.status || 'unavailable'} • Model: {tricycle.model || 'N/A'}

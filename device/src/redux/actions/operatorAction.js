@@ -114,6 +114,7 @@ export const createTricycle = createAsyncThunk(
         },
         body: JSON.stringify({
           plateNumber: tricycleData.plateNumber,
+          bodyNumber: tricycleData.bodyNumber,
           model: tricycleData.model,
           status: 'unavailable',
           currentOdometer: tricycleData.currentOdometer ? parseFloat(tricycleData.currentOdometer) : 0,
