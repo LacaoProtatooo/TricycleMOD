@@ -52,7 +52,7 @@ function segmentDurationMs(meters) {
   return seconds * 1000;
 }
 
-export default function TrackingMap({ follow = true }) {
+export default function TrackingMap({ follow = true, onEnterTerminalZone }) {
   const mapRef = useRef(null);
   const [region, setRegion] = useState(null);
   const [positions, setPositions] = useState([]);
@@ -66,6 +66,12 @@ export default function TrackingMap({ follow = true }) {
   const reliveIndexRef = useRef(0);
   const relivePathRef = useRef([]);
   const reliveActiveRef = useRef(false);
+  const insideTerminalRef = useRef(null);
+  const onEnterRef = useRef(onEnterTerminalZone);
+
+  useEffect(() => {
+    onEnterRef.current = onEnterTerminalZone;
+  }, [onEnterTerminalZone]);
 
   useEffect(() => {
     (async () => {
@@ -146,6 +152,25 @@ export default function TrackingMap({ follow = true }) {
 
           if (follow && !reliveActiveRef.current && mapRef.current) {
             mapRef.current.animateCamera({ center: { latitude, longitude } }, { duration: 300 });
+          }
+
+          // Detect entry into any terminal geofence and notify once per entry
+          let inside = false;
+          for (const t of TERMINALS) {
+            const dist = haversineMeters(newPoint, { latitude: t.latitude, longitude: t.longitude });
+            if (dist <= t.radiusMeters) {
+              inside = true;
+              if (insideTerminalRef.current !== t.id) {
+                insideTerminalRef.current = t.id;
+                if (onEnterRef.current) {
+                  onEnterRef.current(t);
+                }
+              }
+              break;
+            }
+          }
+          if (!inside && insideTerminalRef.current) {
+            insideTerminalRef.current = null;
           }
         }
       );

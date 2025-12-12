@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { StyleSheet, View, TouchableOpacity, Text, Modal } from "react-native";
+import { StyleSheet, View, TouchableOpacity, Text, Modal, Alert } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing } from '../../components/common/theme';
@@ -70,7 +70,18 @@ const MapsTab = () => {
 
   return (
     <SafeAreaView style={styles.container}>
-      <TrackingMap />
+      <TrackingMap
+        onEnterTerminalZone={(terminal) => {
+          Alert.alert(
+            'Terminal zone',
+            `You are in ${terminal.name}. Join the queue.`,
+            [
+              { text: 'Close' },
+              { text: 'Open queue', onPress: () => setQueueVisible(true) },
+            ]
+          );
+        }}
+      />
 
       <View style={styles.fabContainer}>
         <TouchableOpacity style={styles.fab} onPress={() => setQueueVisible(true)}>
