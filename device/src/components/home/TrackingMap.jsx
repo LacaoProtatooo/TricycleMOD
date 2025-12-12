@@ -52,7 +52,7 @@ function segmentDurationMs(meters) {
   return seconds * 1000;
 }
 
-export default function TrackingMap({ follow = true, onEnterTerminalZone }) {
+export default function TrackingMap({ follow = true, onEnterTerminalZone, odometerSeed }) {
   const mapRef = useRef(null);
   const [region, setRegion] = useState(null);
   const [positions, setPositions] = useState([]);
@@ -68,10 +68,24 @@ export default function TrackingMap({ follow = true, onEnterTerminalZone }) {
   const reliveActiveRef = useRef(false);
   const insideTerminalRef = useRef(null);
   const onEnterRef = useRef(onEnterTerminalZone);
+  const seedRef = useRef(null);
 
   useEffect(() => {
     onEnterRef.current = onEnterTerminalZone;
   }, [onEnterTerminalZone]);
+
+  useEffect(() => {
+    const seed = typeof odometerSeed === 'number' && !Number.isNaN(odometerSeed) ? odometerSeed : null;
+    if (seed === null) return;
+    seedRef.current = seed;
+    setOdometerKm((prev) => {
+      if (seed > prev) {
+        AsyncStorage.setItem(KM_KEY, String(seed)).catch(() => {});
+        return seed;
+      }
+      return prev;
+    });
+  }, [odometerSeed]);
 
   useEffect(() => {
     (async () => {

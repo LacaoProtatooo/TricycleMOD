@@ -20,6 +20,7 @@ const MapsTab = () => {
   const [assignedTricycle, setAssignedTricycle] = useState(null);
   const [authToken, setAuthToken] = useState(null);
   const [queueVisible, setQueueVisible] = useState(false);
+  const [odometerSeed, setOdometerSeed] = useState(null);
 
   useEffect(() => {
     if (db) {
@@ -48,6 +49,8 @@ const MapsTab = () => {
         // Sync odometer like DashboardTab
         const storedTrikeId = await AsyncStorage.getItem('active_tricycle_id');
         const serverOdo = trike.currentOdometer || 0;
+        setOdometerSeed(serverOdo);
+
         if (storedTrikeId !== trike._id) {
           await AsyncStorage.setItem('active_tricycle_id', trike._id);
           await AsyncStorage.setItem(KM_KEY, String(serverOdo));
@@ -60,6 +63,7 @@ const MapsTab = () => {
         }
       } else {
         setAssignedTricycle(null);
+        setOdometerSeed(null);
         await AsyncStorage.removeItem('active_tricycle_id');
         await AsyncStorage.removeItem(KM_KEY);
       }
@@ -71,6 +75,7 @@ const MapsTab = () => {
   return (
     <SafeAreaView style={styles.container}>
       <TrackingMap
+        odometerSeed={odometerSeed}
         onEnterTerminalZone={(terminal) => {
           Alert.alert(
             'Terminal zone',
