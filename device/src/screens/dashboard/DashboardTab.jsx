@@ -17,7 +17,6 @@ import StatCard from '../../components/home/StatCard';
 import MaintenanceTracker from '../../components/home/MaintenanceTracker';
 import WeatherWidget from '../../components/home/WeatherWidget';
 import WeatherAdvisoryModal from '../../components/common/WeatherAdvisoryModal';
-import QueueCard from '../../components/home/QueueCard';
 import Constants from 'expo-constants';
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -137,14 +136,6 @@ const DashboardTab = () => {
 
         {/* NEW: Weather for today + following hours */}
         <WeatherWidget />
-
-        {/* Queueing at terminal */}
-        <QueueCard
-          token={assignedTricycle ? authToken : null}
-          BACKEND={BACKEND}
-          assignedTricycle={assignedTricycle}
-          userId={user?._id || user?.id}
-        />
 
         {/* Maintenance tracker */}
         <MaintenanceTracker 
