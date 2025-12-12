@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity, Alert, Easing } from 'react-native';
-import MapView, { Polyline, Marker, PROVIDER_GOOGLE, AnimatedRegion } from 'react-native-maps';
+import MapView, { Polyline, Marker, PROVIDER_GOOGLE, AnimatedRegion, Circle } from 'react-native-maps';
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -12,6 +12,12 @@ import '../../components/services/BackgroundLocationTask';
 import { BG_TASK_NAME } from '../../components/services/BackgroundLocationTask';
 
 const KM_KEY = 'vehicle_current_km_v1';
+
+const TERMINALS = [
+  { id: 'terminal-1', name: 'Terminal 1', latitude: 14.511445966700096, longitude: 121.03384457224557, radiusMeters: 120 },
+  { id: 'terminal-2', name: 'Terminal 2', latitude: 14.513932064735052, longitude: 121.04019584947487, radiusMeters: 120 },
+  { id: 'terminal-3', name: 'Terminal 3', latitude: 14.514534704611194, longitude: 121.04273098634214, radiusMeters: 120 },
+];
 
 function haversineMeters(a, b) {
   if (!a || !b) return 0;
@@ -306,6 +312,26 @@ export default function TrackingMap({ follow = true }) {
           followsUserLocation={false}
           showsMyLocationButton={true}
         >
+          {TERMINALS.map((t) => (
+            <React.Fragment key={t.id}>
+              <Circle
+                center={{ latitude: t.latitude, longitude: t.longitude }}
+                radius={t.radiusMeters}
+                strokeColor="rgba(255,102,0,0.6)"
+                fillColor="rgba(255,102,0,0.15)"
+              />
+              <Marker
+                coordinate={{ latitude: t.latitude, longitude: t.longitude }}
+                title={t.name}
+                description={t.id}
+              >
+                <View style={styles.terminalMarker}>
+                  <Ionicons name="flag" size={16} color="#fff" />
+                </View>
+              </Marker>
+            </React.Fragment>
+          ))}
+
           {positions.length > 0 && (
             <>
               <Polyline
@@ -399,6 +425,13 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     borderWidth: 2,
     borderColor: colors.ivory1,
+  },
+  terminalMarker: {
+    backgroundColor: '#f97316',
+    padding: 6,
+    borderRadius: 14,
+    borderWidth: 2,
+    borderColor: '#fff',
   },
   reliveMarker: {
     backgroundColor: '#0d6efd',

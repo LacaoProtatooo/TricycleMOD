@@ -11,6 +11,7 @@ import messageRoutes from '../routes/messageRoute.js';
 import licenseRoutes from '../routes/licenseRoute.js';
 import sickLeaveRoutes from '../routes/sickLeaveRoute.js';
 import forumRoutes from '../routes/forumRoute.js';
+import queueRoutes from '../routes/queueRoute.js';
 
 const app = express();
 app.use(express.json());
@@ -43,6 +44,7 @@ app.use('/api/messages', messageRoutes);
 app.use('/api/license', licenseRoutes);
 app.use('/api/sick-leave', sickLeaveRoutes);
 app.use('/api/forum', forumRoutes);
+app.use('/api/queue', queueRoutes);
 
 
 // Fallback for unknown routes

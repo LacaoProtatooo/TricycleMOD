@@ -17,6 +17,7 @@ import StatCard from '../../components/home/StatCard';
 import MaintenanceTracker from '../../components/home/MaintenanceTracker';
 import WeatherWidget from '../../components/home/WeatherWidget';
 import WeatherAdvisoryModal from '../../components/common/WeatherAdvisoryModal';
+import QueueCard from '../../components/home/QueueCard';
 import Constants from 'expo-constants';
 
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -29,6 +30,7 @@ const DashboardTab = () => {
   const [user, setUser] = useState(null);
   const [assignedTricycle, setAssignedTricycle] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [authToken, setAuthToken] = useState(null);
   const [stats, setStats] = useState({
     rating: 0
   });
@@ -47,6 +49,7 @@ const DashboardTab = () => {
       
       const token = await getToken(db);
       if (token) {
+        setAuthToken(token);
         // Fetch assigned tricycle
         const res = await fetch(`${BACKEND}/api/tricycles`, {
           headers: { 'Authorization': `Bearer ${token}` }
@@ -86,6 +89,8 @@ const DashboardTab = () => {
             // Better to clear or set to 0 to avoid confusion if they have no vehicle
             await AsyncStorage.removeItem(KM_KEY);
         }
+      } else {
+        setAuthToken(null);
       }
     } catch (error) {
       console.error('Error fetching data:', error);
@@ -132,6 +137,14 @@ const DashboardTab = () => {
 
         {/* NEW: Weather for today + following hours */}
         <WeatherWidget />
+
+        {/* Queueing at terminal */}
+        <QueueCard
+          token={assignedTricycle ? authToken : null}
+          BACKEND={BACKEND}
+          assignedTricycle={assignedTricycle}
+          userId={user?._id || user?.id}
+        />
 
         {/* Maintenance tracker */}
         <MaintenanceTracker 
