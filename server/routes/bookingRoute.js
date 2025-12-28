@@ -11,6 +11,7 @@ import {
   rateDriver,
   getNearbyBookings,
   getDriverBookings,
+  reportBooking,
 } from '../controllers/bookingController.js';
 import { protect, authorize, requireVerified, requireDriverLicense } from '../middleware/authMiddleware.js';
 
@@ -37,5 +38,6 @@ router.post('/:id/driver-respond', protect, authorize('driver'), requireDriverLi
 router.get('/:id', protect, getBookingDetails);
 router.post('/:id/complete', protect, completeTrip);
 router.post('/:id/cancel', protect, cancelBooking);
+router.post('/:id/report', protect, reportBooking);
 
 export default router;

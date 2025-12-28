@@ -197,6 +197,36 @@ const bookingSchema = new mongoose.Schema({
     default: null,
   },
   
+  // Reports filed against this booking
+  reports: [{
+    reportedBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+    },
+    reporterRole: {
+      type: String,
+      enum: ['user', 'driver'],
+    },
+    reportType: {
+      type: String,
+      enum: ['driver_cancelled', 'user_cancelled', 'inappropriate_behavior', 'fare_dispute', 'general'],
+      default: 'general',
+    },
+    reason: {
+      type: String,
+      default: '',
+    },
+    reportedAt: {
+      type: Date,
+      default: Date.now,
+    },
+    status: {
+      type: String,
+      enum: ['pending', 'reviewed', 'resolved', 'dismissed'],
+      default: 'pending',
+    },
+  }],
+  
 }, { timestamps: true });
 
 // Indexes for efficient queries

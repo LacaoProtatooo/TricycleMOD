@@ -6,6 +6,10 @@ import { registerForPushNotificationsAsync } from '../../utils/notification';
 import { uploadNotifToken } from '../../redux/actions/userAction';
 import { getUserCredentials } from '../../utils/userStorage';
 import { navigationRef } from '../../navigation/navigator'; // Import navigationRef
+import { 
+  updateBookingStatus, 
+  receiveDriverOffer 
+} from '../../redux/actions/bookingAction';
 
 export default function NotificationHandler() {
   const [expoPushToken, setExpoPushToken] = useState('');
@@ -94,7 +98,7 @@ export default function NotificationHandler() {
     notificationListener.current = Notifications.addNotificationReceivedListener(notification => {
       console.log('🔔 Foreground Notification Received:', JSON.stringify(notification, null, 2));
       
-      const { type, senderName, text, announcementType } = notification.request.content.data || {};
+      const { type, senderName, text, announcementType, bookingId, offerAmount } = notification.request.content.data || {};
       
       if (type === 'message') {
         console.log(`💬 New message from ${senderName}: ${text}`);
@@ -102,6 +106,46 @@ export default function NotificationHandler() {
       } else if (type === 'announcement') {
         console.log(`📢 New announcement (${announcementType}): ${notification.request.content.title}`);
         // The notification will show automatically, user can tap to see more
+      } else if (type === 'driver_offer') {
+        // Driver made a counter offer
+        console.log(`💰 Driver offer received: ₱${offerAmount} for booking ${bookingId}`);
+        dispatch(receiveDriverOffer({
+          bookingId,
+          amount: parseFloat(offerAmount),
+          offeredAt: new Date().toISOString(),
+        }));
+      } else if (type === 'booking_accepted') {
+        // Driver accepted at user's fare
+        console.log(`✅ Booking accepted: ${bookingId}`);
+        dispatch(updateBookingStatus({
+          _id: bookingId,
+          status: 'accepted',
+          acceptedAt: new Date().toISOString(),
+        }));
+      } else if (type === 'offer_accepted') {
+        // User accepted driver's counter offer (for driver side)
+        console.log(`✅ Offer accepted: ${bookingId}`);
+        dispatch(updateBookingStatus({
+          _id: bookingId,
+          status: 'accepted',
+          acceptedAt: new Date().toISOString(),
+        }));
+      } else if (type === 'booking_cancelled') {
+        // Booking was cancelled
+        console.log(`❌ Booking cancelled: ${bookingId}`);
+        dispatch(updateBookingStatus({
+          _id: bookingId,
+          status: 'cancelled',
+          cancelledAt: new Date().toISOString(),
+        }));
+      } else if (type === 'trip_completed') {
+        // Trip was completed
+        console.log(`✅ Trip completed: ${bookingId}`);
+        dispatch(updateBookingStatus({
+          _id: bookingId,
+          status: 'completed',
+          completedAt: new Date().toISOString(),
+        }));
       }
     });
 
@@ -141,6 +185,10 @@ export default function NotificationHandler() {
           // Fallback to inbox if no announcementId
           console.log('🚀 Navigating to notifications inbox');
           navigationRef.navigate('NotificationInbox');
+        } else if (['driver_offer', 'booking_accepted', 'offer_accepted', 'booking_cancelled', 'trip_completed', 'new_booking'].includes(data?.type)) {
+          // Navigate to booking screen for booking-related notifications
+          console.log('🚀 Navigating to booking screen for:', data.type);
+          navigationRef.navigate('Booking');
         }
       } else {
         console.warn('Navigation not ready yet');

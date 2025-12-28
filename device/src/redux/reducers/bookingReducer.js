@@ -209,9 +209,15 @@ const bookingReducer = (state = initialState, action) => {
 
     // Real-time Updates
     case BOOKING_TYPES.UPDATE_BOOKING_STATUS:
+      // Merge with existing booking data if available, or use the new data
       return {
         ...state,
-        currentBooking: action.payload,
+        currentBooking: state.currentBooking && action.payload._id === state.currentBooking._id
+          ? {
+              ...state.currentBooking,
+              ...action.payload,
+            }
+          : action.payload,
       };
     case BOOKING_TYPES.RECEIVE_DRIVER_OFFER:
       return {

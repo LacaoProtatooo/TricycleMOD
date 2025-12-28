@@ -861,3 +861,63 @@ export const getDriverBookings = async (req, res) => {
     });
   }
 };
+
+/**
+ * Report a booking incident (e.g., driver cancelled after accepting)
+ * POST /api/booking/:id/report
+ */
+export const reportBooking = async (req, res) => {
+  try {
+    const { reason, reportType } = req.body;
+    const userId = req.user._id;
+    const booking = await Booking.findById(req.params.id);
+
+    if (!booking) {
+      return res.status(404).json({
+        success: false,
+        message: 'Booking not found',
+      });
+    }
+
+    // Check authorization - only user or driver of this booking can report
+    const isUser = booking.user.toString() === userId.toString();
+    const isDriver = booking.driver && booking.driver.toString() === userId.toString();
+
+    if (!isUser && !isDriver) {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized to report this booking',
+      });
+    }
+
+    // Add report to booking
+    if (!booking.reports) {
+      booking.reports = [];
+    }
+
+    booking.reports.push({
+      reportedBy: userId,
+      reporterRole: isUser ? 'user' : 'driver',
+      reportType: reportType || 'general',
+      reason: reason || '',
+      reportedAt: new Date(),
+    });
+
+    await booking.save();
+
+    // Optionally notify admins about the report
+    console.log(`📋 New booking report: ${booking._id} by ${isUser ? 'user' : 'driver'} - ${reportType}: ${reason}`);
+
+    res.status(200).json({
+      success: true,
+      message: 'Report submitted successfully',
+    });
+  } catch (error) {
+    console.error('Error reporting booking:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to submit report',
+      error: error.message,
+    });
+  }
+};

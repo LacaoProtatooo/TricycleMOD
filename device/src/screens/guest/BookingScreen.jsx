@@ -110,9 +110,16 @@ const BookingScreen = ({ navigation }) => {
   const [selectedRating, setSelectedRating] = useState(0);
   const [ratingComment, setRatingComment] = useState('');
   
+  // Cancellation report modal
+  const [showCancellationModal, setShowCancellationModal] = useState(false);
+  const [cancellationDetails, setCancellationDetails] = useState(null);
+  const [reportReason, setReportReason] = useState('');
+  const [isReporting, setIsReporting] = useState(false);
+  
   // Trip tracking
   const [distanceToDestination, setDistanceToDestination] = useState(null);
   const watchRef = useRef(null);
+  const pollingRef = useRef(null);
 
   const [region, setRegion] = useState({
     latitude: SERVICE_AREA.center.latitude,
@@ -131,8 +138,40 @@ const BookingScreen = ({ navigation }) => {
       if (watchRef.current) {
         watchRef.current.remove();
       }
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+      }
     };
   }, [db, user]);
+
+  // Polling for booking status updates when waiting or in active trip
+  useEffect(() => {
+    const shouldPoll = [
+      BOOKING_STATUS.WAITING_FOR_DRIVER,
+      BOOKING_STATUS.OFFER_RECEIVED,
+      BOOKING_STATUS.TRIP_ACTIVE,
+    ].includes(bookingStatus);
+
+    if (shouldPoll && db && user) {
+      // Start polling every 5 seconds
+      pollingRef.current = setInterval(() => {
+        dispatch(getActiveBooking(db));
+      }, 5000);
+    } else {
+      // Stop polling when not needed
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+        pollingRef.current = null;
+      }
+    }
+
+    return () => {
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+        pollingRef.current = null;
+      }
+    };
+  }, [bookingStatus, db, user, dispatch]);
 
   // Handle errors
   useEffect(() => {
@@ -176,8 +215,27 @@ const BookingScreen = ({ navigation }) => {
           setShowRatingModal(true);
           break;
         case 'cancelled':
+          // Show cancellation modal if booking was cancelled by driver (not by user)
+          if (currentBooking.cancelledBy === 'driver') {
+            setCancellationDetails({
+              driverName: currentBooking.driver 
+                ? `${currentBooking.driver.firstname} ${currentBooking.driver.lastname}`
+                : 'Driver',
+              reason: currentBooking.cancellationReason || 'No reason provided',
+              bookingId: currentBooking._id,
+              cancelledAt: currentBooking.cancelledAt,
+            });
+            setShowCancellationModal(true);
+          } else {
+            resetBooking();
+          }
+          break;
         case 'expired':
-          resetBooking();
+          Alert.alert(
+            'Booking Expired',
+            'Your booking has expired. No drivers responded in time.',
+            [{ text: 'OK', onPress: resetBooking }]
+          );
           break;
         default:
           break;
@@ -442,12 +500,63 @@ const BookingScreen = ({ navigation }) => {
     setSelectedRating(0);
     setRatingComment('');
     setDistanceToDestination(null);
+    setCancellationDetails(null);
+    setReportReason('');
     dispatch(resetBookingState());
     
     if (watchRef.current) {
       watchRef.current.remove();
       watchRef.current = null;
     }
+  };
+
+  // Handle cancellation report submission
+  const handleSubmitCancellationReport = async () => {
+    if (!reportReason.trim()) {
+      Alert.alert('Report Required', 'Please provide a reason for your report.');
+      return;
+    }
+
+    setIsReporting(true);
+    try {
+      const token = await getToken(db);
+      if (!token) {
+        throw new Error('No authentication token');
+      }
+
+      await axios.post(
+        `${API_URL}/${cancellationDetails.bookingId}/report`,
+        {
+          reason: reportReason.trim(),
+          reportType: 'driver_cancelled',
+        },
+        {
+          headers: { Authorization: `Bearer ${token}` },
+        }
+      );
+
+      Alert.alert(
+        'Report Submitted',
+        'Thank you for your feedback. We will review this incident.',
+        [{ text: 'OK' }]
+      );
+    } catch (error) {
+      console.error('Error submitting report:', error);
+      Alert.alert(
+        'Report Failed',
+        'Unable to submit your report. Please try again later.'
+      );
+    } finally {
+      setIsReporting(false);
+      setShowCancellationModal(false);
+      resetBooking();
+    }
+  };
+
+  // Dismiss cancellation modal without reporting
+  const handleDismissCancellation = () => {
+    setShowCancellationModal(false);
+    resetBooking();
   };
 
   // ==================== HISTORY FUNCTIONS ====================
@@ -1037,6 +1146,86 @@ const BookingScreen = ({ navigation }) => {
             />
           )}
         </SafeAreaView>
+      </Modal>
+
+      {/* Cancellation Report Modal */}
+      <Modal
+        visible={showCancellationModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={handleDismissCancellation}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.cancellationModal}>
+            <View style={styles.cancellationHeader}>
+              <Ionicons name="close-circle" size={50} color="#dc3545" />
+              <Text style={styles.cancellationTitle}>Booking Cancelled</Text>
+              <Text style={styles.cancellationSubtitle}>
+                Your booking was cancelled by the driver
+              </Text>
+            </View>
+
+            {cancellationDetails && (
+              <View style={styles.cancellationDetails}>
+                <View style={styles.cancellationDetailRow}>
+                  <Ionicons name="person-outline" size={18} color={colors.orangeShade5} />
+                  <Text style={styles.cancellationDetailLabel}>Driver:</Text>
+                  <Text style={styles.cancellationDetailValue}>
+                    {cancellationDetails.driverName}
+                  </Text>
+                </View>
+                <View style={styles.cancellationDetailRow}>
+                  <Ionicons name="chatbubble-outline" size={18} color={colors.orangeShade5} />
+                  <Text style={styles.cancellationDetailLabel}>Reason:</Text>
+                  <Text style={styles.cancellationDetailValue}>
+                    {cancellationDetails.reason}
+                  </Text>
+                </View>
+              </View>
+            )}
+
+            <View style={styles.reportSection}>
+              <Text style={styles.reportSectionTitle}>
+                Was there an issue? Report this incident
+              </Text>
+              <TextInput
+                style={styles.reportInput}
+                placeholder="Describe the issue (optional)"
+                placeholderTextColor={colors.orangeShade4}
+                multiline
+                numberOfLines={4}
+                value={reportReason}
+                onChangeText={setReportReason}
+              />
+            </View>
+
+            <View style={styles.cancellationButtons}>
+              <TouchableOpacity
+                style={styles.dismissButton}
+                onPress={handleDismissCancellation}
+              >
+                <Text style={styles.dismissButtonText}>Dismiss</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.reportButton,
+                  (!reportReason.trim() || isReporting) && styles.buttonDisabled,
+                ]}
+                onPress={handleSubmitCancellationReport}
+                disabled={!reportReason.trim() || isReporting}
+              >
+                {isReporting ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <>
+                    <Ionicons name="flag-outline" size={18} color="#fff" />
+                    <Text style={styles.reportButtonText}>Submit Report</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
       </Modal>
     </SafeAreaView>
   );
@@ -1650,6 +1839,105 @@ const styles = StyleSheet.create({
     right: 0,
     top: '50%',
     marginTop: -8,
+  },
+
+  // Cancellation Modal
+  cancellationModal: {
+    backgroundColor: colors.ivory1,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: spacing.large,
+    paddingBottom: 40,
+  },
+  cancellationHeader: {
+    alignItems: 'center',
+    marginBottom: spacing.large,
+  },
+  cancellationTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#dc3545',
+    marginTop: spacing.medium,
+  },
+  cancellationSubtitle: {
+    fontSize: 14,
+    color: colors.orangeShade5,
+    textAlign: 'center',
+    marginTop: spacing.small,
+  },
+  cancellationDetails: {
+    backgroundColor: colors.ivory4,
+    borderRadius: 12,
+    padding: spacing.medium,
+    marginBottom: spacing.medium,
+  },
+  cancellationDetailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing.small,
+  },
+  cancellationDetailLabel: {
+    fontSize: 14,
+    color: colors.orangeShade5,
+    marginLeft: spacing.small,
+    marginRight: spacing.small,
+  },
+  cancellationDetailValue: {
+    fontSize: 14,
+    color: colors.orangeShade7,
+    fontWeight: '600',
+    flex: 1,
+  },
+  reportSection: {
+    marginBottom: spacing.medium,
+  },
+  reportSectionTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.orangeShade6,
+    marginBottom: spacing.small,
+  },
+  reportInput: {
+    backgroundColor: colors.ivory4,
+    borderRadius: 12,
+    padding: spacing.medium,
+    fontSize: 14,
+    color: colors.orangeShade7,
+    textAlignVertical: 'top',
+    minHeight: 100,
+    borderWidth: 1,
+    borderColor: colors.ivory3,
+  },
+  cancellationButtons: {
+    flexDirection: 'row',
+    gap: spacing.small,
+  },
+  dismissButton: {
+    flex: 1,
+    backgroundColor: colors.ivory4,
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  dismissButtonText: {
+    color: colors.orangeShade6,
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  reportButton: {
+    flex: 1,
+    backgroundColor: '#dc3545',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    borderRadius: 12,
+  },
+  reportButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+    marginLeft: spacing.small,
   },
 });
 
