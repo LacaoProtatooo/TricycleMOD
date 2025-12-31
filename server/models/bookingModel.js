@@ -98,6 +98,7 @@ const bookingSchema = new mongoose.Schema({
       'offer_made',     // Driver made a counter offer
       'accepted',       // User accepted, trip is active
       'in_progress',    // Trip has started
+      'awaiting_confirmation', // Driver marked complete, waiting for user confirmation
       'completed',      // Trip completed successfully
       'cancelled',      // Booking was cancelled
       'expired',        // No driver accepted in time
@@ -143,12 +144,34 @@ const bookingSchema = new mongoose.Schema({
     default: null,
   },
   
+  // When driver marked the trip as complete
+  driverCompletedAt: {
+    type: Date,
+    default: null,
+  },
+  
   completedAt: {
     type: Date,
     default: null,
   },
   
   cancelledAt: {
+    type: Date,
+    default: null,
+  },
+  
+  // Completion dispute fields
+  completionDisputed: {
+    type: Boolean,
+    default: false,
+  },
+  
+  disputeReason: {
+    type: String,
+    default: '',
+  },
+  
+  disputedAt: {
     type: Date,
     default: null,
   },

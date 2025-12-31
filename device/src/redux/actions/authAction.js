@@ -88,6 +88,22 @@ export const logoutUser = createAsyncThunk(
   'auth/logout',
   async (db, thunkAPI) => {
     try {
+      // Mark user as offline before logging out
+      const token = await getToken(db);
+      if (token) {
+        try {
+          await fetch(`${apiURL}/api/activity/offline`, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${token}`,
+            },
+          });
+        } catch (e) {
+          console.log('Could not mark offline:', e.message);
+        }
+      }
+      
       await removeToken(db);
       await removeUserCredentials();
       console.log('User logged out successfully');

@@ -91,6 +91,8 @@ const DriverBookingScreen = ({ navigation }) => {
   const [viewMode, setViewMode] = useState(VIEW_MODE.LIST);
   const [showOfferModal, setShowOfferModal] = useState(false);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [showRoutePreviewModal, setShowRoutePreviewModal] = useState(false);
+  const [previewBooking, setPreviewBooking] = useState(null);
   const [counterOffer, setCounterOffer] = useState('');
   const [offerMessage, setOfferMessage] = useState('');
   const [tripHistory, setTripHistory] = useState([]);
@@ -121,6 +123,47 @@ const DriverBookingScreen = ({ navigation }) => {
     }
     return () => stopPolling();
   }, [isOnline, activeBooking, authToken, userLocation]);
+
+  // Poll for status changes when awaiting confirmation
+  useEffect(() => {
+    let awaitingPollInterval = null;
+    
+    if (activeBooking?.status === 'awaiting_confirmation' && authToken) {
+      // Poll every 3 seconds to check if user confirmed
+      awaitingPollInterval = setInterval(async () => {
+        try {
+          const response = await axios.get(
+            `${API_URL}/driver?status=awaiting_confirmation,completed`,
+            { headers: { Authorization: `Bearer ${authToken}` } }
+          );
+          
+          if (response.data.success && response.data.bookings?.length > 0) {
+            const booking = response.data.bookings[0];
+            if (booking.status === 'completed') {
+              // User confirmed - reset state
+              Alert.alert(
+                'Trip Confirmed!',
+                'The passenger has confirmed the trip completion.',
+                [{ text: 'OK' }]
+              );
+              resetTripState();
+            }
+          } else {
+            // No awaiting confirmation booking found - might be completed or disputed
+            resetTripState();
+          }
+        } catch (error) {
+          console.error('Error polling awaiting confirmation:', error);
+        }
+      }, 3000);
+    }
+    
+    return () => {
+      if (awaitingPollInterval) {
+        clearInterval(awaitingPollInterval);
+      }
+    };
+  }, [activeBooking?.status, authToken]);
 
   const initializeScreen = async () => {
     try {
@@ -290,9 +333,9 @@ const DriverBookingScreen = ({ navigation }) => {
     if (!currentToken) return;
 
     try {
-      // Check for accepted or in_progress bookings in one call
+      // Check for accepted, in_progress, or awaiting_confirmation bookings in one call
       const response = await axios.get(
-        `${API_URL}/driver?status=accepted,in_progress`,
+        `${API_URL}/driver?status=accepted,in_progress,awaiting_confirmation`,
         getAuthHeaders(currentToken)
       );
 
@@ -300,8 +343,8 @@ const DriverBookingScreen = ({ navigation }) => {
         const booking = response.data.bookings[0];
         setActiveBooking(booking);
         setIsOnline(true);
-        // If status is in_progress, passenger is already picked up
-        if (booking.status === 'in_progress') {
+        // If status is in_progress or awaiting_confirmation, passenger is already picked up
+        if (booking.status === 'in_progress' || booking.status === 'awaiting_confirmation') {
           setIsPickedUp(true);
         }
         startLocationTracking();
@@ -347,7 +390,7 @@ const DriverBookingScreen = ({ navigation }) => {
             setIsPickedUp(false);
             startLocationTracking();
             Alert.alert(
-              '🎉 Offer Accepted!',
+              'Offer Accepted!',
               'A passenger has accepted your offer. Navigate to the pickup location.',
               [{ text: 'OK' }]
             );
@@ -464,9 +507,22 @@ const DriverBookingScreen = ({ navigation }) => {
         { text: 'No', style: 'cancel' },
         {
           text: 'Yes, Start Trip',
-          onPress: () => {
-            setIsPickedUp(true);
-            Alert.alert('Trip Started', 'Navigate to the destination.');
+          onPress: async () => {
+            try {
+              const response = await axios.post(
+                `${API_URL}/${activeBooking._id}/start-trip`,
+                {},
+                getAuthHeaders()
+              );
+
+              if (response.data.success) {
+                setIsPickedUp(true);
+                setActiveBooking(response.data.booking);
+                Alert.alert('Trip Started', 'Navigate to the destination.');
+              }
+            } catch (error) {
+              Alert.alert('Error', error.response?.data?.message || 'Failed to start trip');
+            }
           },
         },
       ]
@@ -504,7 +560,7 @@ const DriverBookingScreen = ({ navigation }) => {
       if (response.data.success) {
         const fare = activeBooking.agreedFare || activeBooking.preferredFare;
         Alert.alert(
-          'Trip Completed! 🎉',
+          'Trip Completed!',
           `Fare collected: ₱${fare}\n\nThank you for completing the trip.`
         );
         resetTripState();
@@ -580,6 +636,16 @@ const DriverBookingScreen = ({ navigation }) => {
     setCounterOffer(booking.preferredFare?.toString() || '');
     setOfferMessage('');
     setShowOfferModal(true);
+  };
+
+  const openRoutePreview = (booking) => {
+    setPreviewBooking(booking);
+    setShowRoutePreviewModal(true);
+  };
+
+  const closeRoutePreview = () => {
+    setShowRoutePreviewModal(false);
+    setPreviewBooking(null);
   };
 
   const openHistoryModal = async () => {
@@ -668,6 +734,16 @@ const DriverBookingScreen = ({ navigation }) => {
             </Text>
           </View>
         </View>
+
+        {/* View Route Button */}
+        <TouchableOpacity
+          style={styles.viewRouteBtn}
+          onPress={() => openRoutePreview(item)}
+        >
+          <Ionicons name="map-outline" size={18} color={colors.primary} />
+          <Text style={styles.viewRouteBtnText}>View Route Details</Text>
+          <Ionicons name="chevron-forward" size={16} color={colors.primary} />
+        </TouchableOpacity>
 
         {/* Action buttons */}
         <View style={styles.cardActions}>
@@ -763,21 +839,38 @@ const DriverBookingScreen = ({ navigation }) => {
   // ==================== ACTIVE TRIP VIEW ====================
 
   if (activeBooking) {
+    const isAwaitingConfirmation = activeBooking.status === 'awaiting_confirmation';
+    
     return (
       <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
         {/* Header */}
         <View style={styles.activeTripHeader}>
           <View style={styles.headerLeft}>
-            <View style={styles.tripStatusBadge}>
-              <View style={styles.tripStatusDot} />
-              <Text style={styles.tripStatusText}>
-                {isPickedUp ? 'In Progress' : 'Pickup Passenger'}
+            <View style={[
+              styles.tripStatusBadge,
+              isAwaitingConfirmation && styles.awaitingBadge
+            ]}>
+              <View style={[
+                styles.tripStatusDot,
+                isAwaitingConfirmation && styles.awaitingDot
+              ]} />
+              <Text style={[
+                styles.tripStatusText,
+                isAwaitingConfirmation && styles.awaitingText
+              ]}>
+                {isAwaitingConfirmation 
+                  ? 'Awaiting Confirmation' 
+                  : isPickedUp 
+                    ? 'In Progress' 
+                    : 'Pickup Passenger'}
               </Text>
             </View>
           </View>
-          <TouchableOpacity style={styles.cancelIcon} onPress={handleCancelTrip}>
-            <Ionicons name="close" size={24} color="#dc3545" />
-          </TouchableOpacity>
+          {!isAwaitingConfirmation && (
+            <TouchableOpacity style={styles.cancelIcon} onPress={handleCancelTrip}>
+              <Ionicons name="close" size={24} color="#dc3545" />
+            </TouchableOpacity>
+          )}
         </View>
 
         {/* Map */}
@@ -868,7 +961,7 @@ const DriverBookingScreen = ({ navigation }) => {
                 <Text style={styles.distanceValue}>{formatDistance(distanceToPickup)}</Text>
               </View>
             )}
-            {distanceToDestination !== null && (
+            {distanceToDestination !== null && !isAwaitingConfirmation && (
               <View style={styles.distanceItem}>
                 <Ionicons name="flag" size={16} color={colors.primary} />
                 <Text style={styles.distanceLabel}>To Destination:</Text>
@@ -878,7 +971,18 @@ const DriverBookingScreen = ({ navigation }) => {
           </View>
 
           {/* Action buttons */}
-          {!isPickedUp ? (
+          {isAwaitingConfirmation ? (
+            <View style={styles.awaitingSection}>
+              <View style={styles.awaitingIcon}>
+                <Ionicons name="hourglass-outline" size={32} color={colors.primary} />
+              </View>
+              <Text style={styles.awaitingTitle}>Waiting for Passenger</Text>
+              <Text style={styles.awaitingMessage}>
+                You have completed the trip. Waiting for {activeBooking.user?.firstname || 'the passenger'} to confirm arrival.
+              </Text>
+              <ActivityIndicator size="small" color={colors.primary} style={{ marginTop: 12 }} />
+            </View>
+          ) : !isPickedUp ? (
             <TouchableOpacity style={styles.pickupBtn} onPress={handleConfirmPickup}>
               <Ionicons name="enter-outline" size={20} color="#fff" />
               <Text style={styles.pickupBtnText}>Confirm Passenger Pickup</Text>
@@ -897,7 +1001,7 @@ const DriverBookingScreen = ({ navigation }) => {
             </TouchableOpacity>
           )}
 
-          {isPickedUp && distanceToDestination > COMPLETION_RADIUS_METERS && (
+          {isPickedUp && !isAwaitingConfirmation && distanceToDestination > COMPLETION_RADIUS_METERS && (
             <Text style={styles.completionHint}>
               Navigate to destination to complete ({formatDistance(COMPLETION_RADIUS_METERS)} range)
             </Text>
@@ -1181,6 +1285,201 @@ const DriverBookingScreen = ({ navigation }) => {
         </View>
       </Modal>
 
+      {/* Route Preview Modal */}
+      <Modal
+        visible={showRoutePreviewModal}
+        transparent={false}
+        animationType="slide"
+        onRequestClose={closeRoutePreview}
+      >
+        <SafeAreaView style={styles.routePreviewContainer} edges={['top', 'bottom']}>
+          {previewBooking && (
+            <>
+              {/* Header */}
+              <View style={styles.routePreviewHeader}>
+                <TouchableOpacity onPress={closeRoutePreview} style={styles.routeBackBtn}>
+                  <Ionicons name="arrow-back" size={24} color={colors.orangeShade7 || '#333'} />
+                </TouchableOpacity>
+                <Text style={styles.routePreviewTitle}>Route Preview</Text>
+                <View style={{ width: 40 }} />
+              </View>
+
+              {/* Map showing route */}
+              <View style={styles.routeMapContainer}>
+                <MapView
+                  provider={PROVIDER_GOOGLE}
+                  style={styles.routePreviewMap}
+                  initialRegion={{
+                    latitude: (previewBooking.pickup.latitude + previewBooking.destination.latitude) / 2,
+                    longitude: (previewBooking.pickup.longitude + previewBooking.destination.longitude) / 2,
+                    latitudeDelta: Math.abs(previewBooking.pickup.latitude - previewBooking.destination.latitude) * 1.5 + 0.01,
+                    longitudeDelta: Math.abs(previewBooking.pickup.longitude - previewBooking.destination.longitude) * 1.5 + 0.01,
+                  }}
+                  showsUserLocation={true}
+                >
+                  {/* Driver's current location marker */}
+                  {userLocation && (
+                    <Marker
+                      coordinate={userLocation}
+                      title="Your Location"
+                    >
+                      <View style={styles.driverMarker}>
+                        <Ionicons name="bicycle" size={16} color="#fff" />
+                      </View>
+                    </Marker>
+                  )}
+
+                  {/* Pickup marker */}
+                  <Marker
+                    coordinate={previewBooking.pickup}
+                    title="Pickup Location"
+                    description={previewBooking.pickup.address || 'Passenger pickup point'}
+                  >
+                    <View style={styles.pickupMarkerLarge}>
+                      <Ionicons name="person" size={18} color="#fff" />
+                    </View>
+                  </Marker>
+
+                  {/* Destination marker */}
+                  <Marker
+                    coordinate={previewBooking.destination}
+                    title="Destination"
+                    description={previewBooking.destination.address || 'Drop-off point'}
+                  >
+                    <View style={styles.destinationMarkerLarge}>
+                      <Ionicons name="flag" size={18} color="#fff" />
+                    </View>
+                  </Marker>
+
+                  {/* Route line from driver to pickup */}
+                  {userLocation && (
+                    <Polyline
+                      coordinates={[userLocation, previewBooking.pickup]}
+                      strokeColor="#6c757d"
+                      strokeWidth={3}
+                      lineDashPattern={[8, 4]}
+                    />
+                  )}
+
+                  {/* Route line from pickup to destination */}
+                  <Polyline
+                    coordinates={[previewBooking.pickup, previewBooking.destination]}
+                    strokeColor={colors.primary}
+                    strokeWidth={4}
+                  />
+                </MapView>
+
+                {/* Map Legend */}
+                <View style={styles.mapLegend}>
+                  <View style={styles.legendItem}>
+                    <View style={[styles.legendDot, { backgroundColor: '#6c757d' }]} />
+                    <Text style={styles.legendText}>To Pickup</Text>
+                  </View>
+                  <View style={styles.legendItem}>
+                    <View style={[styles.legendDot, { backgroundColor: colors.primary }]} />
+                    <Text style={styles.legendText}>Trip Route</Text>
+                  </View>
+                </View>
+              </View>
+
+              {/* Trip Details Panel */}
+              <View style={styles.routeDetailsPanel}>
+                {/* Passenger Info */}
+                <View style={styles.routePassengerRow}>
+                  <View style={styles.avatarCircle}>
+                    <Ionicons name="person" size={22} color="#fff" />
+                  </View>
+                  <View style={styles.routePassengerInfo}>
+                    <Text style={styles.routePassengerName}>
+                      {previewBooking.user?.firstname || 'Passenger'} {previewBooking.user?.lastname || ''}
+                    </Text>
+                    {previewBooking.user?.rating > 0 && (
+                      <View style={styles.ratingBadge}>
+                        <Ionicons name="star" size={12} color={colors.starYellow || '#FFD700'} />
+                        <Text style={styles.ratingValue}>{previewBooking.user.rating.toFixed(1)}</Text>
+                      </View>
+                    )}
+                  </View>
+                  <View style={styles.routeFareBox}>
+                    <Text style={styles.routeFareLabel}>Offered Fare</Text>
+                    <Text style={styles.routeFareAmount}>₱{previewBooking.preferredFare}</Text>
+                  </View>
+                </View>
+
+                {/* Location Details */}
+                <View style={styles.routeLocationDetails}>
+                  <View style={styles.routeLocationRow}>
+                    <View style={styles.routeLocationIcon}>
+                      <View style={[styles.locationDot, { backgroundColor: '#28a745' }]} />
+                      <View style={styles.locationLine} />
+                    </View>
+                    <View style={styles.routeLocationInfo}>
+                      <Text style={styles.routeLocationLabel}>PICKUP</Text>
+                      <Text style={styles.routeLocationAddress} numberOfLines={2}>
+                        {previewBooking.pickup.address || `${previewBooking.pickup.latitude.toFixed(5)}, ${previewBooking.pickup.longitude.toFixed(5)}`}
+                      </Text>
+                      {userLocation && (
+                        <Text style={styles.routeLocationDistance}>
+                          {formatDistance(calculateDistance(
+                            userLocation.latitude,
+                            userLocation.longitude,
+                            previewBooking.pickup.latitude,
+                            previewBooking.pickup.longitude
+                          ))} from you
+                        </Text>
+                      )}
+                    </View>
+                  </View>
+                  <View style={styles.routeLocationRow}>
+                    <View style={styles.routeLocationIcon}>
+                      <View style={[styles.locationDot, { backgroundColor: colors.primary }]} />
+                    </View>
+                    <View style={styles.routeLocationInfo}>
+                      <Text style={styles.routeLocationLabel}>DESTINATION</Text>
+                      <Text style={styles.routeLocationAddress} numberOfLines={2}>
+                        {previewBooking.destination.address || `${previewBooking.destination.latitude.toFixed(5)}, ${previewBooking.destination.longitude.toFixed(5)}`}
+                      </Text>
+                      <Text style={styles.routeLocationDistance}>
+                        {formatDistance(calculateDistance(
+                          previewBooking.pickup.latitude,
+                          previewBooking.pickup.longitude,
+                          previewBooking.destination.latitude,
+                          previewBooking.destination.longitude
+                        ))} trip
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+
+                {/* Action Buttons */}
+                <View style={styles.routeActions}>
+                  <TouchableOpacity
+                    style={styles.routeAcceptBtn}
+                    onPress={() => {
+                      closeRoutePreview();
+                      handleAcceptBooking(previewBooking);
+                    }}
+                  >
+                    <Ionicons name="checkmark-circle" size={20} color="#fff" />
+                    <Text style={styles.routeAcceptBtnText}>Accept Booking</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity
+                    style={styles.routeCounterBtn}
+                    onPress={() => {
+                      closeRoutePreview();
+                      openOfferModal(previewBooking);
+                    }}
+                  >
+                    <Ionicons name="cash-outline" size={20} color={colors.primary} />
+                    <Text style={styles.routeCounterBtnText}>Counter Offer</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            </>
+          )}
+        </SafeAreaView>
+      </Modal>
+
       {/* Trip History Modal */}
       <Modal
         visible={showHistoryModal}
@@ -1188,7 +1487,7 @@ const DriverBookingScreen = ({ navigation }) => {
         animationType="slide"
         onRequestClose={() => setShowHistoryModal(false)}
       >
-        <SafeAreaView style={styles.historyModalContainer} edges={['top', 'bottom']}>
+        <SafeAreaView style={styles.historyModalContainer} edges={['top', 'bottom']}>>
           <View style={styles.historyModalHeader}>
             <Text style={styles.historyModalTitle}>Trip History</Text>
             <TouchableOpacity onPress={() => setShowHistoryModal(false)}>
@@ -1595,6 +1894,38 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     color: '#155724',
+  },
+  // Awaiting confirmation styles
+  awaitingBadge: {
+    backgroundColor: '#fff3cd',
+  },
+  awaitingDot: {
+    backgroundColor: '#856404',
+  },
+  awaitingText: {
+    color: '#856404',
+  },
+  awaitingSection: {
+    alignItems: 'center',
+    paddingVertical: spacing.medium || 16,
+    backgroundColor: '#fff3cd',
+    borderRadius: 12,
+    marginTop: 8,
+  },
+  awaitingIcon: {
+    marginBottom: 8,
+  },
+  awaitingTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#856404',
+    marginBottom: 4,
+  },
+  awaitingMessage: {
+    fontSize: 13,
+    color: '#856404',
+    textAlign: 'center',
+    paddingHorizontal: 16,
   },
   cancelIcon: {
     padding: 8,
@@ -2008,6 +2339,259 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     color: '#fff',
+  },
+
+  // Route Preview Modal Styles
+  routePreviewContainer: {
+    flex: 1,
+    backgroundColor: '#fff',
+  },
+  routePreviewHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.medium || 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+    backgroundColor: '#fff',
+  },
+  routeBackBtn: {
+    padding: 8,
+  },
+  routePreviewTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.orangeShade7 || '#333',
+  },
+  routeMapContainer: {
+    flex: 1,
+    position: 'relative',
+  },
+  routePreviewMap: {
+    flex: 1,
+  },
+  driverMarker: {
+    backgroundColor: '#007bff',
+    padding: 8,
+    borderRadius: 20,
+    borderWidth: 2,
+    borderColor: '#fff',
+  },
+  pickupMarkerLarge: {
+    backgroundColor: '#28a745',
+    padding: 10,
+    borderRadius: 24,
+    borderWidth: 3,
+    borderColor: '#fff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
+    elevation: 5,
+  },
+  destinationMarkerLarge: {
+    backgroundColor: colors.primary,
+    padding: 10,
+    borderRadius: 24,
+    borderWidth: 3,
+    borderColor: '#fff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 3,
+    elevation: 5,
+  },
+  mapLegend: {
+    position: 'absolute',
+    top: 12,
+    left: 12,
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    borderRadius: 8,
+    padding: 8,
+    flexDirection: 'row',
+    gap: 12,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    elevation: 3,
+  },
+  legendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  legendDot: {
+    width: 12,
+    height: 4,
+    borderRadius: 2,
+  },
+  legendText: {
+    fontSize: 11,
+    color: '#666',
+  },
+  routeDetailsPanel: {
+    backgroundColor: '#fff',
+    paddingHorizontal: spacing.medium || 16,
+    paddingVertical: spacing.medium || 16,
+    borderTopWidth: 1,
+    borderTopColor: '#eee',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -3 },
+    shadowOpacity: 0.1,
+    shadowRadius: 5,
+    elevation: 10,
+  },
+  routePassengerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  avatarCircle: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  routePassengerInfo: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  routePassengerName: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.orangeShade7 || '#333',
+  },
+  ratingBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+    gap: 4,
+  },
+  ratingValue: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#666',
+  },
+  routeFareBox: {
+    backgroundColor: '#e8f5e9',
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  routeFareLabel: {
+    fontSize: 10,
+    color: '#388e3c',
+    fontWeight: '500',
+  },
+  routeFareAmount: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#28a745',
+  },
+  routeLocationDetails: {
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
+    paddingTop: 12,
+    marginBottom: 16,
+  },
+  routeLocationRow: {
+    flexDirection: 'row',
+    marginBottom: 12,
+  },
+  routeLocationIcon: {
+    width: 24,
+    alignItems: 'center',
+  },
+  locationDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+  },
+  locationLine: {
+    width: 2,
+    flex: 1,
+    backgroundColor: '#ddd',
+    marginTop: 4,
+    marginBottom: -8,
+  },
+  routeLocationInfo: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  routeLocationLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#999',
+    letterSpacing: 0.5,
+    marginBottom: 2,
+  },
+  routeLocationAddress: {
+    fontSize: 14,
+    color: colors.orangeShade7 || '#333',
+    lineHeight: 20,
+  },
+  routeLocationDistance: {
+    fontSize: 12,
+    color: colors.primary,
+    marginTop: 2,
+  },
+  routeActions: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  routeAcceptBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#28a745',
+    paddingVertical: 14,
+    borderRadius: 12,
+    gap: 8,
+  },
+  routeAcceptBtnText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  routeCounterBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#fff',
+    paddingVertical: 14,
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: colors.primary,
+    gap: 8,
+  },
+  routeCounterBtnText: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.primary,
+  },
+  viewRouteBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#f0f4f8',
+    paddingVertical: 10,
+    borderRadius: 8,
+    marginTop: 8,
+    gap: 6,
+  },
+  viewRouteBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#007bff',
   },
 });
 

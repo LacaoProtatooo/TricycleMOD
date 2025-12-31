@@ -12,6 +12,7 @@ import Toast from 'react-native-toast-message';
 import PersistentLogin from './src/utils/persistentLogin';
 
 import NotificationHandler from './src/components/common/NotificationHandler';
+import ActivityTracker from './src/components/common/ActivityTracker';
 import { fetchUnreadAnnouncements, markAnnouncementsAsRead } from './src/redux/actions/announcementAction';
 import AnnouncementModal from './src/components/common/announcementModal';
 
@@ -53,6 +54,7 @@ const AppContent = () => {
   return (
     <>
       <PersistentLogin />
+      <ActivityTracker />
       <Navigator/>
       <NotificationHandler />
       <Toast />

@@ -171,7 +171,7 @@ export const getBookingDetails = (bookingId, db) => async (dispatch) => {
 };
 
 /**
- * Get user's active booking (pending, offer_made, accepted, in_progress)
+ * Get user's active booking (pending, offer_made, accepted, in_progress, awaiting_confirmation)
  */
 export const getActiveBooking = (db) => async (dispatch) => {
   try {

@@ -69,7 +69,7 @@ export const createBooking = async (req, res) => {
     // Check if user already has an active booking
     const existingBooking = await Booking.findOne({
       user: userId,
-      status: { $in: ['pending', 'offer_made', 'accepted', 'in_progress'] },
+      status: { $in: ['pending', 'offer_made', 'accepted', 'in_progress', 'awaiting_confirmation'] },
     });
 
     if (existingBooking) {
@@ -444,12 +444,82 @@ export const respondToOffer = async (req, res) => {
 };
 
 /**
- * Complete the trip
+ * Start the trip (driver confirms passenger pickup)
+ * POST /api/booking/:id/start-trip
+ */
+export const startTrip = async (req, res) => {
+  try {
+    const driverId = req.user._id;
+    const booking = await Booking.findById(req.params.id);
+
+    if (!booking) {
+      return res.status(404).json({
+        success: false,
+        message: 'Booking not found',
+      });
+    }
+
+    // Only the assigned driver can start the trip
+    if (!booking.driver || booking.driver.toString() !== driverId.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized - only the assigned driver can start the trip',
+      });
+    }
+
+    // Can only start if status is 'accepted'
+    if (booking.status !== 'accepted') {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot start trip - current status is '${booking.status}'`,
+      });
+    }
+
+    // Update status to in_progress
+    booking.status = 'in_progress';
+    booking.startedAt = new Date();
+
+    await booking.save();
+
+    // Notify the passenger that the trip has started
+    const user = await User.findById(booking.user);
+    if (user && user.FCMToken) {
+      await sendNotification(
+        user.FCMToken,
+        '🚗 Trip Started!',
+        'Your driver has confirmed pickup. Have a safe trip!',
+        {
+          type: 'trip_started',
+          bookingId: booking._id.toString(),
+        }
+      );
+    }
+
+    await booking.populate('driver', 'firstname lastname rating image');
+    await booking.populate('user', 'firstname lastname rating image');
+
+    res.status(200).json({
+      success: true,
+      message: 'Trip started - passenger picked up',
+      booking,
+    });
+  } catch (error) {
+    console.error('Error starting trip:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to start trip',
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Complete the trip (Driver marks completion, requires user confirmation)
  * POST /api/booking/:id/complete
  */
 export const completeTrip = async (req, res) => {
   try {
-    const { userLat, userLon } = req.body;
+    const { userLat, userLon, driverLat, driverLon } = req.body;
     const userId = req.user._id;
     const booking = await Booking.findById(req.params.id);
 
@@ -471,91 +541,185 @@ export const completeTrip = async (req, res) => {
       });
     }
 
-    if (booking.status !== 'accepted' && booking.status !== 'in_progress') {
-      return res.status(400).json({
-        success: false,
-        message: 'Trip cannot be completed in current status',
-      });
-    }
-
-    // Verify location if provided (within 300m of destination)
-    if (userLat && userLon) {
-      const distance = calculateDistance(
-        userLat,
-        userLon,
-        booking.destination.latitude,
-        booking.destination.longitude
-      );
-
-      if (distance > 300) {
+    // Driver completing the trip
+    if (isDriver) {
+      if (booking.status !== 'in_progress') {
         return res.status(400).json({
           success: false,
-          message: `You must be within 300m of destination to complete. Current distance: ${Math.round(distance)}m`,
+          message: 'Trip must be in progress to complete',
         });
       }
 
-      booking.completionLocation = { latitude: userLat, longitude: userLon };
-    }
+      // Verify driver is near destination (within 300m)
+      if (driverLat && driverLon) {
+        const distance = calculateDistance(
+          driverLat,
+          driverLon,
+          booking.destination.latitude,
+          booking.destination.longitude
+        );
 
-    // Mark completion based on who is completing
-    if (isUser) {
-      booking.userConfirmedCompletion = true;
-    }
-    if (isDriver) {
-      booking.driverConfirmedCompletion = true;
-    }
-
-    // Complete if both confirmed or if user confirms (primary confirmation)
-    if (booking.userConfirmedCompletion) {
-      booking.status = 'completed';
-      booking.completedAt = new Date();
-
-      // Update user's trip count
-      await User.findByIdAndUpdate(booking.user, { $inc: { tripCount: 1 } });
-
-      // Notify the other party
-      if (isUser && booking.driver) {
-        const driver = await User.findById(booking.driver);
-        if (driver && driver.FCMToken) {
-          await sendNotification(
-            driver.FCMToken,
-            '✅ Trip Completed!',
-            'The passenger has confirmed trip completion',
-            {
-              type: 'trip_completed',
-              bookingId: booking._id.toString(),
-            }
-          );
+        if (distance > 300) {
+          return res.status(400).json({
+            success: false,
+            message: `You must be within 300m of destination to complete. Current distance: ${Math.round(distance)}m`,
+          });
         }
-      } else if (isDriver) {
-        const user = await User.findById(booking.user);
-        if (user && user.FCMToken) {
-          await sendNotification(
-            user.FCMToken,
-            '✅ Trip Completed!',
-            'The driver has marked the trip as completed',
-            {
-              type: 'trip_completed',
-              bookingId: booking._id.toString(),
-            }
-          );
-        }
+
+        booking.completionLocation = { latitude: driverLat, longitude: driverLon };
       }
+
+      // Mark driver completion and set status to awaiting user confirmation
+      booking.driverConfirmedCompletion = true;
+      booking.driverCompletedAt = new Date();
+      booking.status = 'awaiting_confirmation';
+
+      await booking.save();
+      await booking.populate('driver', 'firstname lastname rating image');
+      await booking.populate('user', 'firstname lastname rating image');
+
+      // Notify user to confirm completion
+      const user = await User.findById(booking.user);
+      if (user && user.FCMToken) {
+        await sendNotification(
+          user.FCMToken,
+          '🏁 Trip Completed by Driver',
+          'Your driver has marked the trip as complete. Please confirm arrival.',
+          {
+            type: 'awaiting_confirmation',
+            bookingId: booking._id.toString(),
+          }
+        );
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: 'Trip marked complete. Awaiting passenger confirmation.',
+        booking,
+      });
     }
 
-    await booking.save();
-    await booking.populate('driver', 'firstname lastname rating image');
-
-    res.status(200).json({
-      success: true,
-      message: 'Trip completed successfully',
-      booking,
+    // User should not call this endpoint directly - use confirm-completion instead
+    return res.status(400).json({
+      success: false,
+      message: 'Please use the confirm-completion endpoint to confirm your trip',
     });
+
   } catch (error) {
     console.error('Error completing trip:', error);
     res.status(500).json({
       success: false,
       message: 'Failed to complete trip',
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * User confirms trip completion
+ * POST /api/booking/:id/confirm-completion
+ */
+export const confirmCompletion = async (req, res) => {
+  try {
+    const { confirmed, disputeReason } = req.body;
+    const userId = req.user._id;
+    const booking = await Booking.findById(req.params.id);
+
+    if (!booking) {
+      return res.status(404).json({
+        success: false,
+        message: 'Booking not found',
+      });
+    }
+
+    // Only the user (passenger) can confirm
+    if (booking.user.toString() !== userId.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: 'Only the passenger can confirm trip completion',
+      });
+    }
+
+    if (booking.status !== 'awaiting_confirmation') {
+      return res.status(400).json({
+        success: false,
+        message: 'Trip is not awaiting confirmation',
+      });
+    }
+
+    if (confirmed) {
+      // User confirms the trip is complete
+      booking.userConfirmedCompletion = true;
+      booking.status = 'completed';
+      booking.completedAt = new Date();
+
+      // Update user's trip count
+      await User.findByIdAndUpdate(booking.user, { $inc: { tripCount: 1 } });
+      
+      // Update driver's trip count
+      if (booking.driver) {
+        await User.findByIdAndUpdate(booking.driver, { $inc: { tripCount: 1 } });
+      }
+
+      await booking.save();
+      await booking.populate('driver', 'firstname lastname rating image');
+
+      // Notify driver that user confirmed
+      const driver = await User.findById(booking.driver);
+      if (driver && driver.FCMToken) {
+        await sendNotification(
+          driver.FCMToken,
+          '✅ Trip Confirmed!',
+          'The passenger has confirmed trip completion. Great job!',
+          {
+            type: 'trip_completed',
+            bookingId: booking._id.toString(),
+          }
+        );
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: 'Trip completed successfully',
+        booking,
+      });
+    } else {
+      // User disputes the completion
+      booking.completionDisputed = true;
+      booking.disputeReason = disputeReason || 'User did not confirm arrival';
+      booking.disputedAt = new Date();
+      // Keep status as awaiting_confirmation or change to disputed
+      // For now, we'll keep it awaiting and flag it for admin review
+      
+      await booking.save();
+      await booking.populate('driver', 'firstname lastname rating image');
+
+      // Notify driver about the dispute
+      const driver = await User.findById(booking.driver);
+      if (driver && driver.FCMToken) {
+        await sendNotification(
+          driver.FCMToken,
+          '⚠️ Completion Disputed',
+          'The passenger has disputed the trip completion. An admin will review.',
+          {
+            type: 'completion_disputed',
+            bookingId: booking._id.toString(),
+          }
+        );
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: 'Dispute submitted. An admin will review this trip.',
+        booking,
+      });
+    }
+
+  } catch (error) {
+    console.error('Error confirming completion:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to confirm completion',
       error: error.message,
     });
   }
@@ -773,7 +937,7 @@ export const getNearbyBookings = async (req, res) => {
 };
 
 /**
- * Get user's active booking (pending, offer_made, accepted, in_progress)
+ * Get user's active booking (pending, offer_made, accepted, in_progress, awaiting_confirmation)
  * GET /api/booking/active
  */
 export const getActiveBooking = async (req, res) => {
@@ -782,7 +946,7 @@ export const getActiveBooking = async (req, res) => {
 
     const activeBooking = await Booking.findOne({
       user: userId,
-      status: { $in: ['pending', 'offer_made', 'accepted', 'in_progress'] },
+      status: { $in: ['pending', 'offer_made', 'accepted', 'in_progress', 'awaiting_confirmation'] },
     })
     .populate('driver', 'firstname lastname rating image phone')
     .populate('tricycle', 'plateNumber')
@@ -921,3 +1085,261 @@ export const reportBooking = async (req, res) => {
     });
   }
 };
+
+/**
+ * Admin: Get all bookings with filters
+ * GET /api/booking/admin/all
+ */
+export const adminGetAllBookings = async (req, res) => {
+  try {
+    const {
+      page = 1,
+      limit = 20,
+      status,
+      search,
+      startDate,
+      endDate,
+      sortBy = 'createdAt',
+      sortOrder = 'desc',
+      disputed,
+    } = req.query;
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+    const query = {};
+
+    // Status filter
+    if (status && status !== 'all') {
+      query.status = status;
+    }
+
+    // Disputed filter
+    if (disputed === 'true') {
+      query.completionDisputed = true;
+    }
+
+    // Date range filter
+    if (startDate || endDate) {
+      query.createdAt = {};
+      if (startDate) {
+        query.createdAt.$gte = new Date(startDate);
+      }
+      if (endDate) {
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+        query.createdAt.$lte = end;
+      }
+    }
+
+    // Search filter (search in user/driver names)
+    let searchUserIds = [];
+    if (search) {
+      const searchRegex = new RegExp(search, 'i');
+      const matchingUsers = await User.find({
+        $or: [
+          { firstname: searchRegex },
+          { lastname: searchRegex },
+          { email: searchRegex },
+          { phone: searchRegex },
+        ],
+      }).select('_id');
+      searchUserIds = matchingUsers.map(u => u._id);
+      
+      if (searchUserIds.length > 0) {
+        query.$or = [
+          { user: { $in: searchUserIds } },
+          { driver: { $in: searchUserIds } },
+        ];
+      } else {
+        // No matching users, return empty result
+        return res.status(200).json({
+          success: true,
+          bookings: [],
+          total: 0,
+          page: parseInt(page),
+          pages: 0,
+          stats: await getBookingStats(),
+        });
+      }
+    }
+
+    // Sorting
+    const sort = {};
+    sort[sortBy] = sortOrder === 'asc' ? 1 : -1;
+
+    const bookings = await Booking.find(query)
+      .populate('user', 'firstname lastname email phone image rating')
+      .populate('driver', 'firstname lastname email phone image rating')
+      .populate('tricycle', 'plateNumber')
+      .sort(sort)
+      .skip(skip)
+      .limit(parseInt(limit));
+
+    const total = await Booking.countDocuments(query);
+    const stats = await getBookingStats();
+
+    res.status(200).json({
+      success: true,
+      bookings,
+      total,
+      page: parseInt(page),
+      pages: Math.ceil(total / parseInt(limit)),
+      stats,
+    });
+  } catch (error) {
+    console.error('Error fetching admin bookings:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch bookings',
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Helper function to get booking statistics
+ */
+const getBookingStats = async () => {
+  try {
+    const [statusCounts, todayStats, revenueStats, disputedCount] = await Promise.all([
+      // Count by status
+      Booking.aggregate([
+        { $group: { _id: '$status', count: { $sum: 1 } } },
+      ]),
+      // Today's bookings
+      Booking.aggregate([
+        {
+          $match: {
+            createdAt: {
+              $gte: new Date(new Date().setHours(0, 0, 0, 0)),
+            },
+          },
+        },
+        { $group: { _id: '$status', count: { $sum: 1 } } },
+      ]),
+      // Revenue stats (completed bookings)
+      Booking.aggregate([
+        { $match: { status: 'completed' } },
+        {
+          $group: {
+            _id: null,
+            totalRevenue: { $sum: '$agreedFare' },
+            avgFare: { $avg: '$agreedFare' },
+            totalTrips: { $sum: 1 },
+          },
+        },
+      ]),
+      // Disputed bookings count
+      Booking.countDocuments({ completionDisputed: true }),
+    ]);
+
+    // Format status counts
+    const statusMap = {};
+    statusCounts.forEach(s => {
+      statusMap[s._id] = s.count;
+    });
+
+    const todayMap = {};
+    todayStats.forEach(s => {
+      todayMap[s._id] = s.count;
+    });
+
+    return {
+      total: Object.values(statusMap).reduce((a, b) => a + b, 0),
+      pending: statusMap.pending || 0,
+      offer_made: statusMap.offer_made || 0,
+      accepted: statusMap.accepted || 0,
+      in_progress: statusMap.in_progress || 0,
+      awaiting_confirmation: statusMap.awaiting_confirmation || 0,
+      completed: statusMap.completed || 0,
+      cancelled: statusMap.cancelled || 0,
+      expired: statusMap.expired || 0,
+      disputed: disputedCount || 0,
+      todayTotal: Object.values(todayMap).reduce((a, b) => a + b, 0),
+      todayCompleted: todayMap.completed || 0,
+      totalRevenue: revenueStats[0]?.totalRevenue || 0,
+      avgFare: revenueStats[0]?.avgFare || 0,
+    };
+  } catch (error) {
+    console.error('Error getting booking stats:', error);
+    return null;
+  }
+};
+
+/**
+ * Admin: Get single booking details
+ * GET /api/booking/admin/:id
+ */
+export const adminGetBookingDetails = async (req, res) => {
+  try {
+    const booking = await Booking.findById(req.params.id)
+      .populate('user', 'firstname lastname email phone image rating createdAt')
+      .populate('driver', 'firstname lastname email phone image rating createdAt')
+      .populate('tricycle', 'plateNumber model color');
+
+    if (!booking) {
+      return res.status(404).json({
+        success: false,
+        message: 'Booking not found',
+      });
+    }
+
+    res.status(200).json({
+      success: true,
+      booking,
+    });
+  } catch (error) {
+    console.error('Error fetching booking details:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch booking details',
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Admin: Get booking statistics
+ * GET /api/booking/admin/stats
+ */
+export const adminGetBookingStats = async (req, res) => {
+  try {
+    const stats = await getBookingStats();
+
+    // Get revenue by day (last 7 days)
+    const sevenDaysAgo = new Date();
+    sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+
+    const dailyRevenue = await Booking.aggregate([
+      {
+        $match: {
+          status: 'completed',
+          completedAt: { $gte: sevenDaysAgo },
+        },
+      },
+      {
+        $group: {
+          _id: {
+            $dateToString: { format: '%Y-%m-%d', date: '$completedAt' },
+          },
+          revenue: { $sum: '$agreedFare' },
+          count: { $sum: 1 },
+        },
+      },
+      { $sort: { _id: 1 } },
+    ]);
+
+    res.status(200).json({
+      success: true,
+      stats,
+      dailyRevenue,
+    });
+  } catch (error) {
+    console.error('Error fetching booking stats:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch statistics',
+      error: error.message,
+    });
+  }
+};
+

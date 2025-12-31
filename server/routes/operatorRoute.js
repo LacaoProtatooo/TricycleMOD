@@ -13,14 +13,36 @@ import {
   updateReceipt,
   deleteReceipt,
   getExpenseSummary,
+  adminGetAllOperators,
+  adminGetOperatorDetails,
+  adminGetOperatorStats,
 } from '../controllers/operatorController.js';
-import { authUser } from '../middleware/authMiddleware.js';
+import {
+  getAdminNotifications,
+  getAdminNotificationCounts,
+  markNotificationAsRead,
+  markAllNotificationsAsRead,
+} from '../controllers/adminNotificationController.js';
+import { authUser, protect, authorize } from '../middleware/authMiddleware.js';
 import { operatorOnly } from '../middleware/operatorMiddleware.js';
 import upload from '../utils/multer.js';
 
 const router = express.Router();
 
-// All routes require authentication and operator role
+// ==================== ADMIN ROUTES ====================
+// Admin: Get all operators with tricycles and drivers
+router.get('/admin/all', protect, authorize('admin'), adminGetAllOperators);
+router.get('/admin/stats', protect, authorize('admin'), adminGetOperatorStats);
+router.get('/admin/:id', protect, authorize('admin'), adminGetOperatorDetails);
+
+// Admin notifications
+router.get('/admin/notifications/all', protect, authorize('admin'), getAdminNotifications);
+router.get('/admin/notifications/counts', protect, authorize('admin'), getAdminNotificationCounts);
+router.put('/admin/notifications/read/:notificationId', protect, authorize('admin'), markNotificationAsRead);
+router.put('/admin/notifications/read-all', protect, authorize('admin'), markAllNotificationsAsRead);
+
+// ==================== OPERATOR ROUTES ====================
+// All routes below require authentication and operator role
 router.use(authUser);
 router.use(operatorOnly);
 

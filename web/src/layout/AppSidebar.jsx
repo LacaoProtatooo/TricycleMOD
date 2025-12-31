@@ -15,6 +15,9 @@ import {
   TableIcon,
   UserCircleIcon,
   BoltIcon,
+  TaskIcon,
+  AlertIcon,
+  GroupIcon,
 } from "../icons";
 import { useSidebar } from "../context/SidebarContext";
 import SidebarWidget from "./SidebarWidget";
@@ -31,9 +34,29 @@ const navItems = [
     path: "/announcements",
   },
   {
+    icon: <GroupIcon />,
+    name: "Users",
+    path: "/users",
+  },
+  {
     icon: <UserCircleIcon />,
     name: "Drivers",
     path: "/drivers",
+  },
+  {
+    icon: <BoxCubeIcon />,
+    name: "Operators",
+    path: "/operators",
+  },
+  {
+    icon: <TaskIcon />,
+    name: "Bookings",
+    path: "/bookings",
+  },
+  {
+    icon: <AlertIcon />,
+    name: "Notifications",
+    path: "/notifications",
   },
   {
     icon: <CalenderIcon />,

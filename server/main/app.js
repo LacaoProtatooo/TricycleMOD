@@ -16,6 +16,8 @@ import lostFoundRoutes from '../routes/lostFoundRoute.js';
 import announcementRoute from '../routes/announcementRoute.js';
 import bookingRoutes from '../routes/bookingRoute.js';
 import trackingRoutes from '../routes/trackingRoute.js';
+import dashboardRoutes from '../routes/dashboardRoute.js';
+import userActivityRoutes from '../routes/userActivityRoute.js';
 
 
 const app = express();
@@ -67,6 +69,8 @@ app.use('/api/lost-found', lostFoundRoutes);
 app.use('/api/announcements', announcementRoute);
 app.use('/api/booking', bookingRoutes);
 app.use('/api/tracking', trackingRoutes);
+app.use('/api/dashboard', dashboardRoutes);
+app.use('/api/activity', userActivityRoutes);
 
 
 // Fallback for unknown routes

@@ -147,7 +147,7 @@ const MaintenanceTracker = ({ tricycleId, serverHistory }) => {
 			const itemNames = criticalItems.map(i => i.name).join(', ');
 			await Notifications.scheduleNotificationAsync({
 				content: {
-					title: '🚨 Critical Maintenance Required!',
+					title: 'Critical Maintenance Required!',
 					body: `The following items need immediate attention: ${itemNames}`,
 					data: { type: 'maintenance', items: criticalItems },
 					sound: 'default',
@@ -161,7 +161,7 @@ const MaintenanceTracker = ({ tricycleId, serverHistory }) => {
 			const itemNames = wornItems.map(i => i.name).join(', ');
 			await Notifications.scheduleNotificationAsync({
 				content: {
-					title: '⚠️ Maintenance Reminder',
+					title: 'Maintenance Reminder',
 					body: `These items are approaching maintenance due: ${itemNames}`,
 					data: { type: 'maintenance', items: wornItems },
 					sound: 'default',
@@ -346,7 +346,7 @@ const MaintenanceTracker = ({ tricycleId, serverHistory }) => {
 		await checkAndNotifyCriticalItems(data, odometerKm);
 		
 		if (criticalCount === 0 && wornCount === 0) {
-			Alert.alert('All Good! ✅', 'No critical or worn maintenance items at this time.');
+			Alert.alert('All Good!', 'No critical or worn maintenance items at this time.');
 		} else {
 			Alert.alert(
 				'Maintenance Status',

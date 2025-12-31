@@ -10,7 +10,11 @@ import SignIn from "./pages/AuthPages/SignIn";
 import SignUp from "./pages/AuthPages/SignUp";
 import NotFound from "./pages/OtherPage/NotFound";
 import UserProfiles from "./pages/UserProfiles";
+import Users from "./pages/Users";
 import Drivers from "./pages/Drivers";
+import Operators from "./pages/Operators";
+import Bookings from "./pages/Bookings";
+import Notifications from "./pages/Notifications";
 import Videos from "./pages/UiElements/Videos";
 import Images from "./pages/UiElements/Images";
 import Alerts from "./pages/UiElements/Alerts";
@@ -48,7 +52,11 @@ export default function App() {
 
               {/* Other Pages */}
               <Route path="/profile" element={<UserProfiles />} />
+              <Route path="/users" element={<Users />} />
               <Route path="/drivers" element={<Drivers />} />
+              <Route path="/operators" element={<Operators />} />
+              <Route path="/bookings" element={<Bookings />} />
+              <Route path="/notifications" element={<Notifications />} />
               <Route path="/calendar" element={<Calendar />} />
               <Route path="/announcements" element={<Announcements />} />
               <Route path="/blank" element={<Blank />} />

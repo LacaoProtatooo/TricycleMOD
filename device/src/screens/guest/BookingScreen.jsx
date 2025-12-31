@@ -67,6 +67,7 @@ const BOOKING_STATUS = {
   WAITING_FOR_DRIVER: 'waiting_for_driver',
   OFFER_RECEIVED: 'offer_received',
   TRIP_ACTIVE: 'trip_active',
+  AWAITING_CONFIRMATION: 'awaiting_confirmation',
   TRIP_COMPLETED: 'trip_completed',
   RATING: 'rating',
 };
@@ -110,6 +111,11 @@ const BookingScreen = ({ navigation }) => {
   const [selectedRating, setSelectedRating] = useState(0);
   const [ratingComment, setRatingComment] = useState('');
   
+  // Completion confirmation modal
+  const [showCompletionModal, setShowCompletionModal] = useState(false);
+  const [disputeReason, setDisputeReason] = useState('');
+  const [isConfirming, setIsConfirming] = useState(false);
+  
   // Cancellation report modal
   const [showCancellationModal, setShowCancellationModal] = useState(false);
   const [cancellationDetails, setCancellationDetails] = useState(null);
@@ -150,6 +156,7 @@ const BookingScreen = ({ navigation }) => {
       BOOKING_STATUS.WAITING_FOR_DRIVER,
       BOOKING_STATUS.OFFER_RECEIVED,
       BOOKING_STATUS.TRIP_ACTIVE,
+      BOOKING_STATUS.AWAITING_CONFIRMATION,
     ].includes(bookingStatus);
 
     if (shouldPoll && db && user) {
@@ -210,8 +217,13 @@ const BookingScreen = ({ navigation }) => {
           setBookingStatus(BOOKING_STATUS.TRIP_ACTIVE);
           startLocationTracking();
           break;
+        case 'awaiting_confirmation':
+          setBookingStatus(BOOKING_STATUS.AWAITING_CONFIRMATION);
+          setShowCompletionModal(true);
+          break;
         case 'completed':
           setBookingStatus(BOOKING_STATUS.TRIP_COMPLETED);
+          setShowCompletionModal(false);
           setShowRatingModal(true);
           break;
         case 'cancelled':
@@ -438,7 +450,7 @@ const BookingScreen = ({ navigation }) => {
     if (distance > COMPLETION_RADIUS_METERS) {
       // Show warning but allow completion
       Alert.alert(
-        '⚠️ Not at Destination',
+        'Not at Destination',
         `You are ${Math.round(distance)}m away from your destination (recommended: within ${COMPLETION_RADIUS_METERS}m).\n\nAre you sure you want to complete the trip?`,
         [
           { text: 'Cancel', style: 'cancel' },
@@ -502,11 +514,83 @@ const BookingScreen = ({ navigation }) => {
     setDistanceToDestination(null);
     setCancellationDetails(null);
     setReportReason('');
+    setDisputeReason('');
+    setShowCompletionModal(false);
     dispatch(resetBookingState());
     
     if (watchRef.current) {
       watchRef.current.remove();
       watchRef.current = null;
+    }
+  };
+
+  // Handle trip completion confirmation
+  const handleConfirmCompletion = async () => {
+    if (!currentBooking) return;
+
+    setIsConfirming(true);
+    try {
+      const token = await getToken(db);
+      if (!token) {
+        throw new Error('No authentication token');
+      }
+
+      const response = await axios.post(
+        `${API_URL}/${currentBooking._id}/confirm-completion`,
+        { confirmed: true },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      if (response.data.success) {
+        setShowCompletionModal(false);
+        Alert.alert('Trip Confirmed', 'Thank you for confirming! Please rate your driver.');
+        // The polling will pick up the completed status and show rating modal
+        dispatch(getActiveBooking(db));
+      }
+    } catch (error) {
+      console.error('Error confirming completion:', error);
+      Alert.alert('Error', error.response?.data?.message || 'Failed to confirm completion');
+    } finally {
+      setIsConfirming(false);
+    }
+  };
+
+  // Handle trip completion dispute
+  const handleDisputeCompletion = async () => {
+    if (!currentBooking) return;
+    
+    if (!disputeReason.trim()) {
+      Alert.alert('Reason Required', 'Please provide a reason for disputing the completion.');
+      return;
+    }
+
+    setIsConfirming(true);
+    try {
+      const token = await getToken(db);
+      if (!token) {
+        throw new Error('No authentication token');
+      }
+
+      const response = await axios.post(
+        `${API_URL}/${currentBooking._id}/confirm-completion`,
+        { confirmed: false, disputeReason: disputeReason.trim() },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      if (response.data.success) {
+        setShowCompletionModal(false);
+        setDisputeReason('');
+        Alert.alert(
+          'Dispute Submitted',
+          'Your dispute has been submitted and will be reviewed by our team.',
+          [{ text: 'OK', onPress: resetBooking }]
+        );
+      }
+    } catch (error) {
+      console.error('Error disputing completion:', error);
+      Alert.alert('Error', error.response?.data?.message || 'Failed to submit dispute');
+    } finally {
+      setIsConfirming(false);
     }
   };
 
@@ -1054,6 +1138,103 @@ const BookingScreen = ({ navigation }) => {
           </View>
         )}
       </View>
+
+      {/* Completion Confirmation Modal */}
+      <Modal
+        visible={showCompletionModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => {}}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.completionModal}>
+            <View style={styles.completionHeader}>
+              <Ionicons name="flag-outline" size={50} color={colors.primary} />
+              <Text style={styles.completionTitle}>Trip Completed</Text>
+              <Text style={styles.completionSubtitle}>
+                Your driver has marked the trip as complete
+              </Text>
+            </View>
+
+            {currentBooking?.driver && (
+              <View style={styles.completionDriverInfo}>
+                <View style={styles.driverAvatar}>
+                  <Ionicons name="person" size={24} color="#fff" />
+                </View>
+                <View style={styles.driverDetails}>
+                  <Text style={styles.driverName}>
+                    {currentBooking.driver.firstname} {currentBooking.driver.lastname}
+                  </Text>
+                  <Text style={styles.fareInfo}>
+                    Fare: ₱{currentBooking.agreedFare || currentBooking.preferredFare}
+                  </Text>
+                </View>
+              </View>
+            )}
+
+            <Text style={styles.completionQuestion}>
+              Have you arrived at your destination?
+            </Text>
+
+            <View style={styles.completionActions}>
+              <TouchableOpacity
+                style={[styles.confirmButton, isConfirming && styles.buttonDisabled]}
+                onPress={handleConfirmCompletion}
+                disabled={isConfirming}
+              >
+                {isConfirming ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <>
+                    <Ionicons name="checkmark-circle" size={20} color="#fff" />
+                    <Text style={styles.confirmButtonText}>Yes, Confirm</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={styles.disputeToggleButton}
+                onPress={() => {
+                  if (disputeReason) {
+                    setDisputeReason('');
+                  } else {
+                    setDisputeReason(' '); // Enable dispute input
+                  }
+                }}
+              >
+                <Ionicons name="alert-circle-outline" size={18} color="#dc3545" />
+                <Text style={styles.disputeToggleText}>I have not arrived</Text>
+              </TouchableOpacity>
+            </View>
+
+            {disputeReason !== '' && (
+              <View style={styles.disputeSection}>
+                <Text style={styles.disputeLabel}>Please describe the issue:</Text>
+                <TextInput
+                  style={styles.disputeInput}
+                  placeholder="e.g., Driver dropped me off at wrong location"
+                  placeholderTextColor={colors.orangeShade4}
+                  multiline
+                  numberOfLines={3}
+                  value={disputeReason.trim() ? disputeReason : ''}
+                  onChangeText={setDisputeReason}
+                />
+                <TouchableOpacity
+                  style={[styles.submitDisputeButton, isConfirming && styles.buttonDisabled]}
+                  onPress={handleDisputeCompletion}
+                  disabled={isConfirming || !disputeReason.trim()}
+                >
+                  {isConfirming ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <Text style={styles.submitDisputeText}>Submit Dispute</Text>
+                  )}
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        </View>
+      </Modal>
 
       {/* Rating Modal */}
       <Modal
@@ -1734,6 +1915,133 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   submitRatingText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+
+  // Completion Confirmation Modal
+  completionModal: {
+    backgroundColor: colors.ivory1,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: spacing.large,
+    paddingBottom: 40,
+  },
+  completionHeader: {
+    alignItems: 'center',
+    marginBottom: spacing.large,
+  },
+  completionTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: colors.orangeShade7,
+    marginTop: spacing.medium,
+  },
+  completionSubtitle: {
+    fontSize: 14,
+    color: colors.orangeShade5,
+    textAlign: 'center',
+    marginTop: spacing.small,
+  },
+  completionDriverInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.ivory4,
+    padding: spacing.medium,
+    borderRadius: 12,
+    marginBottom: spacing.large,
+  },
+  driverAvatar: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  driverDetails: {
+    marginLeft: spacing.medium,
+    flex: 1,
+  },
+  driverName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.orangeShade7,
+  },
+  fareInfo: {
+    fontSize: 14,
+    color: colors.primary,
+    fontWeight: '600',
+    marginTop: 2,
+  },
+  completionQuestion: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.orangeShade7,
+    textAlign: 'center',
+    marginBottom: spacing.large,
+  },
+  completionActions: {
+    gap: spacing.medium,
+  },
+  confirmButton: {
+    backgroundColor: '#28a745',
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    borderRadius: 12,
+    gap: 8,
+  },
+  confirmButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  disputeToggleButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    gap: 6,
+  },
+  disputeToggleText: {
+    color: '#dc3545',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  disputeSection: {
+    marginTop: spacing.medium,
+    paddingTop: spacing.medium,
+    borderTopWidth: 1,
+    borderTopColor: colors.ivory3,
+  },
+  disputeLabel: {
+    fontSize: 14,
+    fontWeight: '500',
+    color: colors.orangeShade7,
+    marginBottom: spacing.small,
+  },
+  disputeInput: {
+    backgroundColor: colors.ivory4,
+    borderRadius: 12,
+    padding: spacing.medium,
+    fontSize: 14,
+    color: colors.orangeShade7,
+    textAlignVertical: 'top',
+    minHeight: 80,
+    marginBottom: spacing.medium,
+    borderWidth: 1,
+    borderColor: '#dc3545',
+  },
+  submitDisputeButton: {
+    backgroundColor: '#dc3545',
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  submitDisputeText: {
     color: '#fff',
     fontSize: 16,
     fontWeight: '700',

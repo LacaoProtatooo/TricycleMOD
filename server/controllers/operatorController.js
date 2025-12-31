@@ -961,3 +961,152 @@ export const getExpenseSummary = async (req, res) => {
     res.status(500).json({ success: false, message: 'Failed to fetch expense summary', error: error.message });
   }
 };
+
+// ===================== ADMIN ENDPOINTS =====================
+
+/**
+ * Admin: Get all operators with their tricycles and assigned drivers
+ */
+export const adminGetAllOperators = async (req, res) => {
+  try {
+    const { page = 1, limit = 20, search = '' } = req.query;
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    // Build search query for operators
+    const searchQuery = {
+      role: 'operator',
+    };
+
+    if (search) {
+      searchQuery.$or = [
+        { firstname: { $regex: search, $options: 'i' } },
+        { lastname: { $regex: search, $options: 'i' } },
+        { email: { $regex: search, $options: 'i' } },
+        { username: { $regex: search, $options: 'i' } },
+      ];
+    }
+
+    // Get operators
+    const operators = await User.find(searchQuery)
+      .select('firstname lastname email phone image username isVerified createdAt')
+      .sort({ createdAt: -1 })
+      .skip(skip)
+      .limit(parseInt(limit));
+
+    const total = await User.countDocuments(searchQuery);
+
+    // Get tricycles and drivers for each operator
+    const operatorsWithDetails = await Promise.all(
+      operators.map(async (operator) => {
+        const tricycles = await Tricycle.find({ operator: operator._id })
+          .populate('driver', 'firstname lastname email phone image rating numReviews')
+          .select('plateNumber bodyNumber model status currentOdometer images driver createdAt');
+
+        // Count stats
+        const totalTricycles = tricycles.length;
+        const activeTricycles = tricycles.filter(t => t.driver).length;
+        const availableTricycles = tricycles.filter(t => t.status === 'available').length;
+
+        // Get unique drivers assigned to this operator's tricycles
+        const assignedDriverIds = [...new Set(tricycles.filter(t => t.driver).map(t => t.driver._id.toString()))];
+        const driversCount = assignedDriverIds.length;
+
+        return {
+          ...operator.toObject(),
+          tricycles,
+          stats: {
+            totalTricycles,
+            activeTricycles,
+            availableTricycles,
+            driversCount,
+          },
+        };
+      })
+    );
+
+    res.status(200).json({
+      success: true,
+      operators: operatorsWithDetails,
+      total,
+      page: parseInt(page),
+      pages: Math.ceil(total / parseInt(limit)),
+    });
+  } catch (error) {
+    console.error('Error fetching operators for admin:', error.message);
+    res.status(500).json({ success: false, message: 'Failed to fetch operators', error: error.message });
+  }
+};
+
+/**
+ * Admin: Get operator details with full tricycle and driver information
+ */
+export const adminGetOperatorDetails = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const operator = await User.findOne({ _id: id, role: 'operator' })
+      .select('-password');
+
+    if (!operator) {
+      return res.status(404).json({ success: false, message: 'Operator not found' });
+    }
+
+    const tricycles = await Tricycle.find({ operator: id })
+      .populate('driver', 'firstname lastname email phone image rating numReviews tripCount isVerified createdAt')
+      .populate('schedules.driver', 'firstname lastname')
+      .sort({ createdAt: -1 });
+
+    // Get all unique drivers who have ever been assigned to operator's tricycles
+    const driverIds = [...new Set(tricycles.filter(t => t.driver).map(t => t.driver._id.toString()))];
+    
+    res.status(200).json({
+      success: true,
+      operator,
+      tricycles,
+      driverCount: driverIds.length,
+    });
+  } catch (error) {
+    console.error('Error fetching operator details:', error.message);
+    res.status(500).json({ success: false, message: 'Failed to fetch operator details', error: error.message });
+  }
+};
+
+/**
+ * Admin: Get operators statistics
+ */
+export const adminGetOperatorStats = async (req, res) => {
+  try {
+    const totalOperators = await User.countDocuments({ role: 'operator' });
+    const verifiedOperators = await User.countDocuments({ role: 'operator', isVerified: true });
+    const totalTricycles = await Tricycle.countDocuments();
+    const assignedTricycles = await Tricycle.countDocuments({ driver: { $ne: null } });
+    const availableTricycles = await Tricycle.countDocuments({ status: 'available' });
+    const totalDrivers = await User.countDocuments({ role: 'driver' });
+
+    // Get operators created in last 30 days
+    const thirtyDaysAgo = new Date();
+    thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+    const newOperators = await User.countDocuments({
+      role: 'operator',
+      createdAt: { $gte: thirtyDaysAgo }
+    });
+
+    res.status(200).json({
+      success: true,
+      stats: {
+        totalOperators,
+        verifiedOperators,
+        newOperators,
+        totalTricycles,
+        assignedTricycles,
+        availableTricycles,
+        unassignedTricycles: totalTricycles - assignedTricycles,
+        totalDrivers,
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching operator stats:', error.message);
+    res.status(500).json({ success: false, message: 'Failed to fetch operator stats', error: error.message });
+  }
+};
+

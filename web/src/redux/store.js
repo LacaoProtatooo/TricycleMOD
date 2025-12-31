@@ -3,6 +3,11 @@ import authReducer from './reducers/authReducer';
 import userReducer from './reducers/userReducer';
 import announcementReducer from './reducers/announcementReducer';
 import driverReducer from './reducers/driverReducer';
+import bookingReducer from './reducers/bookingReducer';
+import operatorReducer from './reducers/operatorReducer';
+import adminNotificationReducer from './reducers/adminNotificationReducer';
+import dashboardReducer from './reducers/dashboardReducer';
+import userListReducer from './reducers/userListReducer';
 
 const store = configureStore({
   reducer: {
@@ -10,6 +15,11 @@ const store = configureStore({
     user: userReducer,
     announcement: announcementReducer,
     driver: driverReducer,
+    booking: bookingReducer,
+    operator: operatorReducer,
+    adminNotification: adminNotificationReducer,
+    dashboard: dashboardReducer,
+    userList: userListReducer,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({
