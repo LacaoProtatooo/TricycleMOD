@@ -93,7 +93,7 @@ export const getAllUsersWithActivity = async (req, res) => {
 
     // Get all users matching the query
     const users = await User.find(userQuery)
-      .select('firstName lastName email phoneNumber profileImage role createdAt')
+      .select('firstName lastName email phoneNumber image role createdAt')
       .lean();
 
     // Get activity data for all users
@@ -111,6 +111,7 @@ export const getAllUsersWithActivity = async (req, res) => {
       const activity = activityMap[user._id.toString()];
       return {
         ...user,
+        profileImage: user.image?.url || null,
         isOnline: activity?.isOnline || false,
         lastSeen: activity?.lastSeen || null,
         lastActiveAt: activity?.lastActiveAt || null,
@@ -215,6 +216,7 @@ export const getUserDetails = async (req, res) => {
 
     const userWithActivity = {
       ...user,
+      profileImage: user.image?.url || null,
       isOnline: activity?.isOnline || false,
       lastSeen: activity?.lastSeen || null,
       lastActiveAt: activity?.lastActiveAt || null,
