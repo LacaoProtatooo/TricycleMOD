@@ -2,12 +2,17 @@ import mongoose from "mongoose";
 import Tricycle from "../models/tricycleModel.js";
 import User from "../models/userModel.js";
 import cloudinary from "../utils/cloudinaryConfig.js";
+import { spawn } from "child_process";
+import path from "path";
+import fs from "fs";
+import os from "os";
+import { parseCRDocument, parseORDocument, validateDocuments } from "../utils/documentParser.js";
 
 // Cloudinary upload function 
-const uploadToCloudinary = (buffer) => {
+const uploadToCloudinary = (buffer, folder = "tricycles") => {
   return new Promise((resolve, reject) => {
     const stream = cloudinary.uploader.upload_stream(
-      { folder: "tricycles" },
+      { folder },
       (error, result) => {
         if (error) reject(error);
         else resolve(result);
@@ -15,6 +20,163 @@ const uploadToCloudinary = (buffer) => {
     );
     stream.end(buffer);
   });
+};
+
+// --- OCR HELPERS ---
+const resolveOcrScriptPath = () => {
+  const scriptCandidates = [
+    path.join(process.cwd(), 'ocr', 'paddle_scan.py'),
+    path.join(process.cwd(), 'server', 'ocr', 'paddle_scan.py'),
+    path.join(process.cwd(), '..', 'server', 'ocr', 'paddle_scan.py'),
+  ];
+
+  for (const candidate of scriptCandidates) {
+    try {
+      if (fs.existsSync(candidate)) {
+        return { scriptPath: candidate, scriptCandidates };
+      }
+    } catch (error) {
+      // ignore fs permission errors and continue
+    }
+  }
+
+  return { scriptPath: null, scriptCandidates };
+};
+
+const runPaddleOcr = async ({ filepath, langArg, noClsFlag }) => {
+  const { scriptPath, scriptCandidates } = resolveOcrScriptPath();
+
+  if (!scriptPath) {
+    const err = new Error('OCR script not found on server');
+    err.meta = { scriptCandidates };
+    throw err;
+  }
+
+  const baseArgs = [scriptPath, filepath];
+  if (langArg) {
+    baseArgs.push('--lang', String(langArg));
+  }
+  if (noClsFlag) {
+    baseArgs.push('--no-cls');
+  }
+
+  const trySpawn = (cmd) =>
+    new Promise((resolve, reject) => {
+      let proc;
+      try {
+        proc = spawn(cmd, baseArgs, { shell: false, cwd: process.cwd() });
+      } catch (error) {
+        return reject({ code: 'spawn_error', error });
+      }
+
+      let out = '';
+      let err = '';
+      proc.stdout.on('data', (d) => {
+        out += d.toString();
+      });
+      proc.stderr.on('data', (d) => {
+        err += d.toString();
+      });
+
+      const timeout = setTimeout(() => {
+        try {
+          proc.kill();
+        } catch (_) {
+          // ignore
+        }
+        reject({ code: 'timeout', error: new Error('Python script execution timed out') });
+      }, 60000);
+
+      proc.on('error', (error) => {
+        clearTimeout(timeout);
+        reject({ code: 'spawn_error', error });
+      });
+
+      proc.on('close', (code) => {
+        clearTimeout(timeout);
+        resolve({ code, out, err, cmd, args: baseArgs });
+      });
+    });
+
+  const isWindows = process.platform === 'win32';
+  const pythonCommands = isWindows ? ['py', 'python', 'python3'] : ['python3', 'python'];
+  const venvCandidates = [
+    path.join(process.cwd(), '.venv', isWindows ? 'Scripts' : 'bin', isWindows ? 'python.exe' : 'python'),
+    path.join(process.cwd(), 'venv', isWindows ? 'Scripts' : 'bin', isWindows ? 'python.exe' : 'python'),
+  ];
+  for (const vp of venvCandidates) {
+    try {
+      if (fs.existsSync(vp) && !pythonCommands.includes(vp)) {
+        pythonCommands.unshift(vp);
+        break;
+      }
+    } catch (_) {
+      // ignore
+    }
+  }
+
+  const attempts = [];
+  let result = null;
+
+  for (const cmd of pythonCommands) {
+    try {
+      const attempt = await trySpawn(cmd);
+      attempts.push({
+        cmd,
+        code: attempt.code,
+        stderr: attempt.err,
+        hasOutput: Boolean(attempt.out && attempt.out.length > 0),
+      });
+
+      if (attempt.code === 0 && attempt.out && attempt.out.length > 0) {
+        result = attempt;
+        break;
+      }
+
+      if (!result && attempt.out && attempt.out.length > 0) {
+        result = attempt;
+      }
+    } catch (spawnErr) {
+      attempts.push({
+        cmd,
+        code: spawnErr.code || 'spawn_error',
+        error: spawnErr.error?.message || spawnErr.message || String(spawnErr),
+      });
+    }
+  }
+
+  if (!result || (result.code !== 0 && (!result.out || result.out.length === 0))) {
+    const err = new Error('Failed to execute OCR python');
+    err.meta = { attempts, scriptPath, platform: process.platform };
+    throw err;
+  }
+
+  if (result.out && result.out.length > 0) {
+    try {
+      const parsed = JSON.parse(result.out);
+      if (parsed.error) {
+        const err = new Error(parsed.error || 'OCR python reported an error');
+        err.meta = { detail: parsed, attempts, scriptPath, stderr: result.err };
+        throw err;
+      }
+      return parsed;
+    } catch (parseErr) {
+      if (parseErr.message && parseErr.meta) throw parseErr;
+      const err = new Error('Invalid OCR output');
+      err.meta = {
+        parseError: parseErr.message || String(parseErr),
+        raw: result.out,
+        stderr: result.err,
+        attempts,
+        scriptPath,
+      };
+      throw err;
+    }
+  }
+
+  const err = new Error('OCR python returned no output');
+  err.meta = { attempts, scriptPath, stderr: result?.err };
+  throw err;
 };
 
 // ==================== GET ALL TRICYCLES ====================
@@ -403,6 +565,238 @@ export const updateSchedule = async (req, res) => {
     res.status(200).json({ success: true, data: updatedTricycle });
   } catch (error) {
     console.error("Error updating schedule:", error.message);
+    res.status(500).json({ success: false, message: "Server Error" });
+  }
+};
+
+// ==================== SCAN CR DOCUMENT (OCR) ====================
+export const scanCRDocument = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: "No image file provided" });
+    }
+
+    // Save temp file for OCR
+    const tempDir = os.tmpdir();
+    const tempFilename = `cr_scan_${Date.now()}_${Math.random().toString(36).substring(7)}.jpg`;
+    const tempFilepath = path.join(tempDir, tempFilename);
+    
+    fs.writeFileSync(tempFilepath, req.file.buffer);
+
+    try {
+      // Run OCR
+      const ocrResult = await runPaddleOcr({ filepath: tempFilepath, langArg: 'en', noClsFlag: true });
+      
+      // Parse CR document
+      const crData = parseCRDocument(ocrResult);
+      
+      // Clean up temp file
+      try {
+        fs.unlinkSync(tempFilepath);
+      } catch (_) {}
+
+      res.status(200).json({
+        success: true,
+        data: {
+          crData,
+          rawOcr: ocrResult,
+        }
+      });
+    } catch (ocrError) {
+      // Clean up temp file
+      try {
+        fs.unlinkSync(tempFilepath);
+      } catch (_) {}
+      
+      throw ocrError;
+    }
+  } catch (error) {
+    console.error("Error scanning CR document:", error.message);
+    res.status(500).json({ 
+      success: false, 
+      message: error.message || "Failed to scan CR document",
+      meta: error.meta || {}
+    });
+  }
+};
+
+// ==================== SCAN OR DOCUMENT (OCR) ====================
+export const scanORDocument = async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ success: false, message: "No image file provided" });
+    }
+
+    // Save temp file for OCR
+    const tempDir = os.tmpdir();
+    const tempFilename = `or_scan_${Date.now()}_${Math.random().toString(36).substring(7)}.jpg`;
+    const tempFilepath = path.join(tempDir, tempFilename);
+    
+    fs.writeFileSync(tempFilepath, req.file.buffer);
+
+    try {
+      // Run OCR
+      const ocrResult = await runPaddleOcr({ filepath: tempFilepath, langArg: 'en', noClsFlag: true });
+      
+      // Parse OR document
+      const orData = parseORDocument(ocrResult);
+      
+      // Clean up temp file
+      try {
+        fs.unlinkSync(tempFilepath);
+      } catch (_) {}
+
+      res.status(200).json({
+        success: true,
+        data: {
+          orData,
+          rawOcr: ocrResult,
+        }
+      });
+    } catch (ocrError) {
+      // Clean up temp file
+      try {
+        fs.unlinkSync(tempFilepath);
+      } catch (_) {}
+      
+      throw ocrError;
+    }
+  } catch (error) {
+    console.error("Error scanning OR document:", error.message);
+    res.status(500).json({ 
+      success: false, 
+      message: error.message || "Failed to scan OR document",
+      meta: error.meta || {}
+    });
+  }
+};
+
+// ==================== VALIDATE CR AND OR DOCUMENTS ====================
+export const validateCRORDocuments = async (req, res) => {
+  try {
+    const { crData, orData } = req.body;
+    
+    if (!crData || !orData) {
+      return res.status(400).json({ 
+        success: false, 
+        message: "Both CR and OR data are required for validation" 
+      });
+    }
+    
+    const validationResult = validateDocuments(crData, orData);
+    
+    res.status(200).json({
+      success: true,
+      data: validationResult
+    });
+  } catch (error) {
+    console.error("Error validating documents:", error.message);
+    res.status(500).json({ success: false, message: "Server Error" });
+  }
+};
+
+// ==================== UPDATE TRICYCLE CR/OR DATA ====================
+export const updateTricycleDocuments = async (req, res) => {
+  const { id } = req.params;
+  
+  try {
+    const tricycle = await Tricycle.findById(id);
+    if (!tricycle) {
+      return res.status(404).json({ success: false, message: "Tricycle not found" });
+    }
+
+    // Verify operator ownership
+    if (req.user && req.user.role === 'operator') {
+      if (tricycle.operator.toString() !== req.user.id.toString()) {
+        return res.status(403).json({
+          success: false,
+          message: "You can only update your own tricycles",
+        });
+      }
+    }
+
+    const { crData, orData, documentValidation } = req.body;
+    
+    // Handle CR image upload
+    if (req.files) {
+      const crImage = req.files.find(f => f.fieldname === 'crImage');
+      const orImage = req.files.find(f => f.fieldname === 'orImage');
+      
+      if (crImage) {
+        // Delete old CR image if exists
+        if (tricycle.crData?.crImage?.public_id) {
+          try {
+            await cloudinary.uploader.destroy(tricycle.crData.crImage.public_id);
+          } catch (_) {}
+        }
+        const result = await uploadToCloudinary(crImage.buffer, "tricycle_documents");
+        if (!tricycle.crData) tricycle.crData = {};
+        tricycle.crData.crImage = { public_id: result.public_id, url: result.secure_url };
+      }
+      
+      if (orImage) {
+        // Delete old OR image if exists
+        if (tricycle.orData?.orImage?.public_id) {
+          try {
+            await cloudinary.uploader.destroy(tricycle.orData.orImage.public_id);
+          } catch (_) {}
+        }
+        const result = await uploadToCloudinary(orImage.buffer, "tricycle_documents");
+        if (!tricycle.orData) tricycle.orData = {};
+        tricycle.orData.orImage = { public_id: result.public_id, url: result.secure_url };
+      }
+    }
+    
+    // Update CR data
+    if (crData) {
+      tricycle.crData = {
+        ...tricycle.crData,
+        ...crData,
+        crImage: tricycle.crData?.crImage // Preserve the image
+      };
+      
+      // Update plate number if extracted from CR
+      if (crData.plateNumber) {
+        tricycle.plateNumber = crData.plateNumber.toUpperCase();
+      }
+      
+      // Update model if extracted
+      if (crData.vehicleMake && crData.vehicleSeries) {
+        tricycle.model = `${crData.vehicleMake} ${crData.vehicleSeries}`;
+      }
+    }
+    
+    // Update OR data
+    if (orData) {
+      tricycle.orData = {
+        ...tricycle.orData,
+        ...orData,
+        orImage: tricycle.orData?.orImage // Preserve the image
+      };
+    }
+    
+    // Update validation status
+    if (documentValidation) {
+      tricycle.documentValidation = {
+        ...tricycle.documentValidation,
+        ...documentValidation,
+        validatedAt: new Date()
+      };
+    }
+    
+    await tricycle.save();
+    
+    const updatedTricycle = await Tricycle.findById(id)
+      .populate("operator", "firstname lastname username email")
+      .populate("driver", "firstname lastname username email phone image");
+    
+    res.status(200).json({
+      success: true,
+      message: "Tricycle documents updated successfully",
+      data: updatedTricycle
+    });
+  } catch (error) {
+    console.error("Error updating tricycle documents:", error.message);
     res.status(500).json({ success: false, message: "Server Error" });
   }
 };

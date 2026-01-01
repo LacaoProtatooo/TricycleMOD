@@ -216,9 +216,12 @@ export default function OperatorScreen({ navigation }) {
     setUnassignModalVisible(false);
   };
 
-  const handleCreateTricycle = async () => {
+  const handleCreateTricycle = async (tricycleDataWithDocs = null) => {
+    // Use provided data with documents or fall back to newTricycle state
+    const dataToSubmit = tricycleDataWithDocs || newTricycle;
+    
     // Validate input
-    const validationErrors = validateTricycleData(newTricycle);
+    const validationErrors = validateTricycleData(dataToSubmit);
     if (validationErrors.length > 0) {
       Alert.alert('Validation Error', validationErrors.join('\n'));
       return;
@@ -229,7 +232,7 @@ export default function OperatorScreen({ navigation }) {
       return;
     }
 
-    dispatch(createTricycle({ token, BACKEND, tricycleData: newTricycle }));
+    dispatch(createTricycle({ token, BACKEND, tricycleData: dataToSubmit }));
     
     // Close modal and reset form
     setAddTricycleModalVisible(false);
@@ -424,6 +427,8 @@ export default function OperatorScreen({ navigation }) {
         newTricycle={newTricycle}
         setNewTricycle={setNewTricycle}
         creating={creating}
+        token={token}
+        BACKEND={BACKEND}
       />
 
       <AssignDriverModal
