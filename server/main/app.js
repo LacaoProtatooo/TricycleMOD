@@ -18,6 +18,7 @@ import bookingRoutes from '../routes/bookingRoute.js';
 import trackingRoutes from '../routes/trackingRoute.js';
 import dashboardRoutes from '../routes/dashboardRoute.js';
 import userActivityRoutes from '../routes/userActivityRoute.js';
+import adminRoutes from '../routes/adminRoute.js';
 
 
 const app = express();
@@ -71,6 +72,7 @@ app.use('/api/booking', bookingRoutes);
 app.use('/api/tracking', trackingRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/activity', userActivityRoutes);
+app.use('/api/admin', adminRoutes);
 
 
 // Fallback for unknown routes

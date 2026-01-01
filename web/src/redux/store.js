@@ -8,6 +8,7 @@ import operatorReducer from './reducers/operatorReducer';
 import adminNotificationReducer from './reducers/adminNotificationReducer';
 import dashboardReducer from './reducers/dashboardReducer';
 import userListReducer from './reducers/userListReducer';
+import adminLogsReducer from './reducers/adminLogsReducer';
 
 const store = configureStore({
   reducer: {
@@ -20,6 +21,7 @@ const store = configureStore({
     adminNotification: adminNotificationReducer,
     dashboard: dashboardReducer,
     userList: userListReducer,
+    adminLogs: adminLogsReducer,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({

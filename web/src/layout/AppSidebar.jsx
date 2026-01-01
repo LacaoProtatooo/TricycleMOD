@@ -59,6 +59,11 @@ const navItems = [
     path: "/notifications",
   },
   {
+    icon: <ListIcon />,
+    name: "Admin Logs",
+    path: "/admin-logs",
+  },
+  {
     icon: <CalenderIcon />,
     name: "Calendar",
     path: "/calendar",

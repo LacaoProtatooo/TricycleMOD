@@ -3,11 +3,11 @@ import { createAsyncThunk } from '@reduxjs/toolkit';
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
 
 /**
- * Fetch all users with activity status
+ * Fetch admin activity logs
  */
-export const fetchUsersWithActivity = createAsyncThunk(
-  'userList/fetchUsersWithActivity',
-  async ({ page = 1, limit = 20, role, status, search, sortBy, sortOrder } = {}, { rejectWithValue }) => {
+export const fetchAdminLogs = createAsyncThunk(
+  'adminLogs/fetchAdminLogs',
+  async ({ page = 1, limit = 20, adminId, action, startDate, endDate, search, sortBy, sortOrder } = {}, { rejectWithValue }) => {
     try {
       const token = localStorage.getItem('adminToken');
       if (!token) {
@@ -17,13 +17,15 @@ export const fetchUsersWithActivity = createAsyncThunk(
       const params = new URLSearchParams();
       params.append('page', page);
       params.append('limit', limit);
-      if (role && role !== 'all') params.append('role', role);
-      if (status && status !== 'all') params.append('status', status);
+      if (adminId) params.append('adminId', adminId);
+      if (action && action !== 'all') params.append('action', action);
+      if (startDate) params.append('startDate', startDate);
+      if (endDate) params.append('endDate', endDate);
       if (search) params.append('search', search);
       if (sortBy) params.append('sortBy', sortBy);
       if (sortOrder) params.append('sortOrder', sortOrder);
 
-      const response = await fetch(`${API_BASE_URL}/api/activity/users?${params.toString()}`, {
+      const response = await fetch(`${API_BASE_URL}/api/admin/logs?${params.toString()}`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -34,7 +36,7 @@ export const fetchUsersWithActivity = createAsyncThunk(
       const data = await response.json();
 
       if (!response.ok) {
-        return rejectWithValue(data.message || 'Failed to fetch users');
+        return rejectWithValue(data.message || 'Failed to fetch admin logs');
       }
 
       return data;
@@ -45,18 +47,18 @@ export const fetchUsersWithActivity = createAsyncThunk(
 );
 
 /**
- * Fetch single user details
+ * Fetch admin activity log details
  */
-export const fetchUserDetails = createAsyncThunk(
-  'userList/fetchUserDetails',
-  async (userId, { rejectWithValue }) => {
+export const fetchAdminLogDetails = createAsyncThunk(
+  'adminLogs/fetchAdminLogDetails',
+  async (logId, { rejectWithValue }) => {
     try {
       const token = localStorage.getItem('adminToken');
       if (!token) {
         return rejectWithValue('No authentication token found');
       }
 
-      const response = await fetch(`${API_BASE_URL}/api/activity/users/${userId}`, {
+      const response = await fetch(`${API_BASE_URL}/api/admin/logs/${logId}`, {
         method: 'GET',
         headers: {
           'Content-Type': 'application/json',
@@ -67,7 +69,7 @@ export const fetchUserDetails = createAsyncThunk(
       const data = await response.json();
 
       if (!response.ok) {
-        return rejectWithValue(data.message || 'Failed to fetch user details');
+        return rejectWithValue(data.message || 'Failed to fetch log details');
       }
 
       return data;
@@ -78,30 +80,33 @@ export const fetchUserDetails = createAsyncThunk(
 );
 
 /**
- * Change user role
+ * Fetch admin activity stats
  */
-export const changeUserRole = createAsyncThunk(
-  'userList/changeUserRole',
-  async ({ userId, newRole, confirmationCode }, { rejectWithValue }) => {
+export const fetchAdminLogStats = createAsyncThunk(
+  'adminLogs/fetchAdminLogStats',
+  async ({ startDate, endDate } = {}, { rejectWithValue }) => {
     try {
       const token = localStorage.getItem('adminToken');
       if (!token) {
         return rejectWithValue('No authentication token found');
       }
 
-      const response = await fetch(`${API_BASE_URL}/api/admin/users/${userId}/role`, {
-        method: 'PUT',
+      const params = new URLSearchParams();
+      if (startDate) params.append('startDate', startDate);
+      if (endDate) params.append('endDate', endDate);
+
+      const response = await fetch(`${API_BASE_URL}/api/admin/logs/stats?${params.toString()}`, {
+        method: 'GET',
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${token}`,
         },
-        body: JSON.stringify({ newRole, confirmationCode }),
       });
 
       const data = await response.json();
 
       if (!response.ok) {
-        return rejectWithValue(data.message || 'Failed to change user role');
+        return rejectWithValue(data.message || 'Failed to fetch log stats');
       }
 
       return data;

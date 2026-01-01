@@ -2,8 +2,8 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 import PageMeta from '../components/common/PageMeta';
 import PageBreadCrumb from '../components/common/PageBreadCrumb';
-import { fetchUsersWithActivity, fetchUserDetails } from '../redux/actions/userListAction';
-import { clearSelectedUser } from '../redux/reducers/userListReducer';
+import { fetchUsersWithActivity, fetchUserDetails, changeUserRole } from '../redux/actions/userListAction';
+import { clearSelectedUser, clearRoleChangeStatus } from '../redux/reducers/userListReducer';
 
 // Auto-refresh interval (30 seconds)
 const AUTO_REFRESH_INTERVAL = 30 * 1000;
@@ -39,9 +39,21 @@ const CloseIcon = () => (
   </svg>
 );
 
+const WarningIcon = () => (
+  <svg className="w-6 h-6 text-amber-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+  </svg>
+);
+
+const StarIcon = ({ filled }) => (
+  <svg className={`w-4 h-4 ${filled ? 'text-yellow-400 fill-current' : 'text-gray-300'}`} viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11.049 2.927c.3-.921 1.603-.921 1.902 0l1.519 4.674a1 1 0 00.95.69h4.915c.969 0 1.371 1.24.588 1.81l-3.976 2.888a1 1 0 00-.363 1.118l1.518 4.674c.3.922-.755 1.688-1.538 1.118l-3.976-2.888a1 1 0 00-1.176 0l-3.976 2.888c-.783.57-1.838-.197-1.538-1.118l1.518-4.674a1 1 0 00-.363-1.118l-3.976-2.888c-.784-.57-.38-1.81.588-1.81h4.914a1 1 0 00.951-.69l1.519-4.674z" />
+  </svg>
+);
+
 export default function Users() {
   const dispatch = useDispatch();
-  const { users, pagination, counts, loading, selectedUser, detailsLoading } = useSelector(
+  const { users, pagination, counts, loading, selectedUser, detailsLoading, roleChangeLoading, roleChangeSuccess, roleChangeError } = useSelector(
     (state) => state.userList
   );
 
@@ -56,6 +68,12 @@ export default function Users() {
   const [showUserModal, setShowUserModal] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(true);
   const autoRefreshRef = useRef(null);
+
+  // Role change modal state
+  const [showRoleChangeModal, setShowRoleChangeModal] = useState(false);
+  const [selectedNewRole, setSelectedNewRole] = useState('');
+  const [confirmationInput, setConfirmationInput] = useState('');
+  const [roleChangeMessage, setRoleChangeMessage] = useState({ type: '', text: '' });
 
   const fetchUsers = useCallback(() => {
     dispatch(
@@ -95,6 +113,32 @@ export default function Users() {
     return () => clearTimeout(timer);
   }, [searchInput, filters.search]);
 
+  // Handle role change success/error
+  useEffect(() => {
+    if (roleChangeSuccess) {
+      setRoleChangeMessage({ type: 'success', text: 'Role changed successfully!' });
+      setShowRoleChangeModal(false);
+      setConfirmationInput('');
+      setSelectedNewRole('');
+      fetchUsers();
+      dispatch(clearRoleChangeStatus());
+    }
+    if (roleChangeError) {
+      setRoleChangeMessage({ type: 'error', text: roleChangeError });
+      dispatch(clearRoleChangeStatus());
+    }
+  }, [roleChangeSuccess, roleChangeError, dispatch, fetchUsers]);
+
+  // Clear message after 3 seconds
+  useEffect(() => {
+    if (roleChangeMessage.text) {
+      const timer = setTimeout(() => {
+        setRoleChangeMessage({ type: '', text: '' });
+      }, 3000);
+      return () => clearTimeout(timer);
+    }
+  }, [roleChangeMessage]);
+
   const handleFilterChange = (key, value) => {
     setFilters((prev) => ({ ...prev, [key]: value }));
   };
@@ -124,7 +168,27 @@ export default function Users() {
 
   const closeUserModal = () => {
     setShowUserModal(false);
+    setShowRoleChangeModal(false);
+    setConfirmationInput('');
+    setSelectedNewRole('');
     dispatch(clearSelectedUser());
+  };
+
+  const handleOpenRoleChangeModal = () => {
+    if (selectedUser && selectedUser.role !== 'admin') {
+      setSelectedNewRole(selectedUser.role === 'driver' ? 'operator' : 'driver');
+      setShowRoleChangeModal(true);
+    }
+  };
+
+  const handleRoleChange = () => {
+    if (!selectedUser || !selectedNewRole || !confirmationInput) return;
+
+    dispatch(changeUserRole({
+      userId: selectedUser._id,
+      newRole: selectedNewRole,
+      confirmationCode: confirmationInput,
+    }));
   };
 
   const formatDate = (date) => {
@@ -162,15 +226,32 @@ export default function Users() {
         return 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400';
       case 'guest':
         return 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400';
+      case 'admin':
+        return 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400';
       default:
         return 'bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300';
     }
+  };
+
+  const renderStarRating = (rating) => {
+    const stars = [];
+    for (let i = 1; i <= 5; i++) {
+      stars.push(<StarIcon key={i} filled={i <= rating} />);
+    }
+    return <div className="flex gap-0.5">{stars}</div>;
   };
 
   return (
     <>
       <PageMeta title="Users | TricycleMOD Admin" description="Manage all users" />
       <PageBreadCrumb pageTitle="Users" />
+
+      {/* Role Change Message */}
+      {roleChangeMessage.text && (
+        <div className={`mb-4 p-4 rounded-lg ${roleChangeMessage.type === 'success' ? 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400' : 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400'}`}>
+          {roleChangeMessage.text}
+        </div>
+      )}
 
       {/* Stats Cards */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-6">
@@ -483,9 +564,9 @@ export default function Users() {
               className="fixed inset-0 bg-black/50 transition-opacity"
               onClick={closeUserModal}
             ></div>
-            <div className="relative bg-white dark:bg-gray-800 rounded-2xl max-w-lg w-full mx-auto shadow-xl transform transition-all">
+            <div className="relative bg-white dark:bg-gray-800 rounded-2xl max-w-2xl w-full mx-auto shadow-xl transform transition-all max-h-[90vh] overflow-y-auto">
               {/* Modal Header */}
-              <div className="flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+              <div className="sticky top-0 bg-white dark:bg-gray-800 flex items-center justify-between px-6 py-4 border-b border-gray-200 dark:border-gray-700 z-10">
                 <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
                   User Details
                 </h3>
@@ -508,16 +589,16 @@ export default function Users() {
                     {/* Profile Header */}
                     <div className="flex items-center gap-4">
                       <div className="relative">
-                        {selectedUser.profileImage ? (
+                        {selectedUser.profileImage || selectedUser.image?.url ? (
                           <img
-                            src={selectedUser.profileImage}
-                            alt={`${selectedUser.firstName} ${selectedUser.lastName}`}
+                            src={selectedUser.profileImage || selectedUser.image?.url}
+                            alt={`${selectedUser.firstname || selectedUser.firstName} ${selectedUser.lastname || selectedUser.lastName}`}
                             className="w-20 h-20 rounded-full object-cover"
                           />
                         ) : (
                           <div className="w-20 h-20 rounded-full bg-gray-200 dark:bg-gray-600 flex items-center justify-center">
                             <span className="text-2xl text-gray-600 dark:text-gray-300 font-medium">
-                              {selectedUser.firstName?.[0]}{selectedUser.lastName?.[0]}
+                              {(selectedUser.firstname || selectedUser.firstName)?.[0]}{(selectedUser.lastname || selectedUser.lastName)?.[0]}
                             </span>
                           </div>
                         )}
@@ -527,11 +608,12 @@ export default function Users() {
                           }`}
                         ></span>
                       </div>
-                      <div>
+                      <div className="flex-1">
                         <h4 className="text-xl font-semibold text-gray-900 dark:text-white">
-                          {selectedUser.firstName} {selectedUser.lastName}
+                          {selectedUser.firstname || selectedUser.firstName} {selectedUser.lastname || selectedUser.lastName}
                         </h4>
-                        <div className="flex items-center gap-2 mt-1">
+                        <p className="text-sm text-gray-500 dark:text-gray-400">@{selectedUser.username}</p>
+                        <div className="flex items-center gap-2 mt-2 flex-wrap">
                           <span
                             className={`inline-flex px-2.5 py-1 rounded-full text-xs font-medium capitalize ${getRoleBadgeColor(
                               selectedUser.role
@@ -549,44 +631,64 @@ export default function Users() {
                             {selectedUser.isOnline ? <OnlineIcon /> : <OfflineIcon />}
                             {selectedUser.isOnline ? 'Online' : 'Offline'}
                           </span>
+                          {selectedUser.isVerified && (
+                            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-medium bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400">
+                              <svg className="w-3 h-3" fill="currentColor" viewBox="0 0 20 20">
+                                <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.707-9.293a1 1 0 00-1.414-1.414L9 10.586 7.707 9.293a1 1 0 00-1.414 1.414l2 2a1 1 0 001.414 0l4-4z" clipRule="evenodd" />
+                              </svg>
+                              Verified
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      {/* Change Role Button - only for non-admin users */}
+                      {selectedUser.role !== 'admin' && (
+                        <button
+                          onClick={handleOpenRoleChangeModal}
+                          className="px-4 py-2 bg-amber-500 hover:bg-amber-600 text-white rounded-lg font-medium text-sm transition-colors flex items-center gap-2"
+                        >
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                          </svg>
+                          Change Role
+                        </button>
+                      )}
+                    </div>
+
+                    {/* Contact Information */}
+                    <div>
+                      <h5 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2">
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                        </svg>
+                        Contact Information
+                      </h5>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3">
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Email</p>
+                          <p className="text-sm font-medium text-gray-900 dark:text-white break-all">
+                            {selectedUser.email || 'N/A'}
+                          </p>
+                        </div>
+                        <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3">
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Phone</p>
+                          <p className="text-sm font-medium text-gray-900 dark:text-white">
+                            {selectedUser.phone || selectedUser.phoneNumber || 'N/A'}
+                          </p>
                         </div>
                       </div>
                     </div>
 
-                    {/* User Info Grid */}
-                    <div className="grid grid-cols-2 gap-4">
+                    {/* Address */}
+                    <div>
+                      <h5 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2">
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                        </svg>
+                        Address
+                      </h5>
                       <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3">
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Email</p>
-                        <p className="text-sm font-medium text-gray-900 dark:text-white break-all">
-                          {selectedUser.email || 'N/A'}
-                        </p>
-                      </div>
-                      <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3">
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Phone</p>
-                        <p className="text-sm font-medium text-gray-900 dark:text-white">
-                          {selectedUser.phoneNumber || 'N/A'}
-                        </p>
-                      </div>
-                      <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3">
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Last Seen</p>
-                        <p className="text-sm font-medium text-gray-900 dark:text-white">
-                          {formatDate(selectedUser.lastSeen)}
-                        </p>
-                      </div>
-                      <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3">
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Status</p>
-                        <p className="text-sm font-medium text-gray-900 dark:text-white">
-                          {selectedUser.isOnline ? 'Active Now' : 'Inactive'}
-                        </p>
-                      </div>
-                      <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3">
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Joined</p>
-                        <p className="text-sm font-medium text-gray-900 dark:text-white">
-                          {formatDate(selectedUser.createdAt)}
-                        </p>
-                      </div>
-                      <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3">
-                        <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Address</p>
                         <p className="text-sm font-medium text-gray-900 dark:text-white">
                           {selectedUser.address
                             ? typeof selectedUser.address === 'object'
@@ -603,12 +705,223 @@ export default function Users() {
                         </p>
                       </div>
                     </div>
+
+                    {/* Activity & Statistics */}
+                    <div>
+                      <h5 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2">
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+                        </svg>
+                        Activity & Statistics
+                      </h5>
+                      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                        <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3">
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Trip Count</p>
+                          <p className="text-lg font-bold text-gray-900 dark:text-white">
+                            {selectedUser.tripCount || 0}
+                          </p>
+                        </div>
+                        <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3">
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Rating</p>
+                          <div className="flex items-center gap-2">
+                            <span className="text-lg font-bold text-gray-900 dark:text-white">
+                              {(selectedUser.rating || 0).toFixed(1)}
+                            </span>
+                            {renderStarRating(Math.round(selectedUser.rating || 0))}
+                          </div>
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                            ({selectedUser.numReviews || 0} reviews)
+                          </p>
+                        </div>
+                        <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3">
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Loyalty</p>
+                          <p className="text-lg font-bold text-gray-900 dark:text-white">
+                            {selectedUser.loyaltyMonths || 0} <span className="text-sm font-normal">months</span>
+                          </p>
+                        </div>
+                        <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3">
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Lost & Found Posted</p>
+                          <p className="text-lg font-bold text-gray-900 dark:text-white">
+                            {selectedUser.lostFoundPosted || 0}
+                          </p>
+                        </div>
+                        <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3">
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Lost & Found Claimed</p>
+                          <p className="text-lg font-bold text-gray-900 dark:text-white">
+                            {selectedUser.lostFoundClaimed || 0}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Dates */}
+                    <div>
+                      <h5 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2">
+                        <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                        </svg>
+                        Account Dates
+                      </h5>
+                      <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+                        <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3">
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Joined</p>
+                          <p className="text-sm font-medium text-gray-900 dark:text-white">
+                            {formatDate(selectedUser.createdAt)}
+                          </p>
+                        </div>
+                        <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3">
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Last Login</p>
+                          <p className="text-sm font-medium text-gray-900 dark:text-white">
+                            {formatDate(selectedUser.lastLogin)}
+                          </p>
+                        </div>
+                        <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3">
+                          <p className="text-xs text-gray-500 dark:text-gray-400 mb-1">Last Seen</p>
+                          <p className="text-sm font-medium text-gray-900 dark:text-white">
+                            {formatDate(selectedUser.lastSeen)}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Device Info */}
+                    {selectedUser.deviceInfo && (
+                      <div>
+                        <h5 className="text-sm font-semibold text-gray-700 dark:text-gray-300 mb-3 flex items-center gap-2">
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 18h.01M8 21h8a2 2 0 002-2V5a2 2 0 00-2-2H8a2 2 0 00-2 2v14a2 2 0 002 2z" />
+                          </svg>
+                          Device Information
+                        </h5>
+                        <div className="bg-gray-50 dark:bg-gray-700/50 rounded-lg p-3">
+                          <p className="text-sm font-medium text-gray-900 dark:text-white capitalize">
+                            Platform: {selectedUser.deviceInfo.platform || 'Unknown'}
+                          </p>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* User ID */}
+                    <div className="pt-4 border-t border-gray-200 dark:border-gray-700">
+                      <p className="text-xs text-gray-400 dark:text-gray-500">
+                        User ID: {selectedUser._id}
+                      </p>
+                    </div>
                   </div>
                 ) : (
                   <p className="text-center text-gray-500 dark:text-gray-400 py-8">
                     User not found
                   </p>
                 )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Role Change Confirmation Modal */}
+      {showRoleChangeModal && selectedUser && (
+        <div className="fixed inset-0 z-[60] overflow-y-auto">
+          <div className="flex items-center justify-center min-h-screen px-4 pt-4 pb-20 text-center sm:p-0">
+            <div
+              className="fixed inset-0 bg-black/60 transition-opacity"
+              onClick={() => setShowRoleChangeModal(false)}
+            ></div>
+            <div className="relative bg-white dark:bg-gray-800 rounded-2xl max-w-md w-full mx-auto shadow-xl transform transition-all">
+              {/* Modal Header */}
+              <div className="flex items-center gap-3 px-6 py-4 border-b border-gray-200 dark:border-gray-700">
+                <WarningIcon />
+                <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
+                  Change User Role
+                </h3>
+              </div>
+
+              {/* Modal Body */}
+              <div className="px-6 py-6">
+                <div className="mb-6">
+                  <p className="text-gray-700 dark:text-gray-300 mb-4">
+                    You are about to change the role of <span className="font-semibold">{selectedUser.firstname || selectedUser.firstName} {selectedUser.lastname || selectedUser.lastName}</span> from{' '}
+                    <span className={`inline-flex px-2 py-0.5 rounded text-xs font-medium capitalize ${getRoleBadgeColor(selectedUser.role)}`}>
+                      {selectedUser.role}
+                    </span>{' '}
+                    to:
+                  </p>
+
+                  {/* Role Selection */}
+                  <div className="flex gap-3 mb-6">
+                    {['guest', 'driver', 'operator'].map((role) => (
+                      <button
+                        key={role}
+                        onClick={() => setSelectedNewRole(role)}
+                        disabled={role === selectedUser.role}
+                        className={`flex-1 px-4 py-3 rounded-lg border-2 transition-all capitalize font-medium ${
+                          selectedNewRole === role
+                            ? 'border-blue-500 bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400'
+                            : role === selectedUser.role
+                            ? 'border-gray-200 dark:border-gray-700 bg-gray-100 dark:bg-gray-700 text-gray-400 dark:text-gray-500 cursor-not-allowed'
+                            : 'border-gray-200 dark:border-gray-700 hover:border-gray-300 dark:hover:border-gray-600 text-gray-700 dark:text-gray-300'
+                        }`}
+                      >
+                        {role}
+                      </button>
+                    ))}
+                  </div>
+
+                  {/* Warning Box */}
+                  <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg p-4 mb-6">
+                    <p className="text-sm text-amber-800 dark:text-amber-300 font-medium mb-2">
+                      ⚠️ Warning: This action requires confirmation
+                    </p>
+                    <p className="text-sm text-amber-700 dark:text-amber-400">
+                      To confirm this role change, please type the following confirmation code:
+                    </p>
+                    <code className="block mt-2 p-2 bg-amber-100 dark:bg-amber-900/40 rounded text-amber-900 dark:text-amber-200 font-mono text-sm break-all">
+                      webttrac_{selectedUser.email}
+                    </code>
+                  </div>
+
+                  {/* Confirmation Input */}
+                  <div>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+                      Confirmation Code
+                    </label>
+                    <input
+                      type="text"
+                      value={confirmationInput}
+                      onChange={(e) => setConfirmationInput(e.target.value)}
+                      placeholder="Enter confirmation code..."
+                      className="w-full px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-700 text-gray-900 dark:text-white placeholder-gray-500 dark:placeholder-gray-400 focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm"
+                    />
+                  </div>
+                </div>
+
+                {/* Action Buttons */}
+                <div className="flex gap-3">
+                  <button
+                    onClick={() => {
+                      setShowRoleChangeModal(false);
+                      setConfirmationInput('');
+                      setSelectedNewRole('');
+                    }}
+                    className="flex-1 px-4 py-2.5 rounded-lg border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 font-medium transition-colors"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    onClick={handleRoleChange}
+                    disabled={!confirmationInput || confirmationInput !== `webttrac_${selectedUser.email}` || !selectedNewRole || selectedNewRole === selectedUser.role || roleChangeLoading}
+                    className="flex-1 px-4 py-2.5 rounded-lg bg-amber-500 hover:bg-amber-600 text-white font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                  >
+                    {roleChangeLoading ? (
+                      <>
+                        <div className="animate-spin rounded-full h-4 w-4 border-2 border-white border-t-transparent"></div>
+                        Changing...
+                      </>
+                    ) : (
+                      'Confirm Change'
+                    )}
+                  </button>
+                </div>
               </div>
             </div>
           </div>

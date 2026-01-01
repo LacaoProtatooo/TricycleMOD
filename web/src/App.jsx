@@ -15,6 +15,7 @@ import Drivers from "./pages/Drivers";
 import Operators from "./pages/Operators";
 import Bookings from "./pages/Bookings";
 import Notifications from "./pages/Notifications";
+import AdminLogs from "./pages/AdminLogs";
 import Videos from "./pages/UiElements/Videos";
 import Images from "./pages/UiElements/Images";
 import Alerts from "./pages/UiElements/Alerts";
@@ -57,6 +58,7 @@ export default function App() {
               <Route path="/operators" element={<Operators />} />
               <Route path="/bookings" element={<Bookings />} />
               <Route path="/notifications" element={<Notifications />} />
+              <Route path="/admin-logs" element={<AdminLogs />} />
               <Route path="/calendar" element={<Calendar />} />
               <Route path="/announcements" element={<Announcements />} />
               <Route path="/blank" element={<Blank />} />

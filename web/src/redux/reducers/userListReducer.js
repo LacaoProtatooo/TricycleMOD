@@ -1,5 +1,5 @@
 import { createSlice } from '@reduxjs/toolkit';
-import { fetchUsersWithActivity, fetchUserDetails } from '../actions/userListAction';
+import { fetchUsersWithActivity, fetchUserDetails, changeUserRole } from '../actions/userListAction';
 
 const initialState = {
   users: [],
@@ -17,7 +17,10 @@ const initialState = {
   },
   loading: false,
   detailsLoading: false,
+  roleChangeLoading: false,
   error: null,
+  roleChangeSuccess: false,
+  roleChangeError: null,
 };
 
 const userListSlice = createSlice({
@@ -29,6 +32,10 @@ const userListSlice = createSlice({
     },
     clearSelectedUser: (state) => {
       state.selectedUser = null;
+    },
+    clearRoleChangeStatus: (state) => {
+      state.roleChangeSuccess = false;
+      state.roleChangeError = null;
     },
   },
   extraReducers: (builder) => {
@@ -60,10 +67,33 @@ const userListSlice = createSlice({
       .addCase(fetchUserDetails.rejected, (state, action) => {
         state.detailsLoading = false;
         state.error = action.payload;
+      })
+      // Change user role
+      .addCase(changeUserRole.pending, (state) => {
+        state.roleChangeLoading = true;
+        state.roleChangeError = null;
+        state.roleChangeSuccess = false;
+      })
+      .addCase(changeUserRole.fulfilled, (state, action) => {
+        state.roleChangeLoading = false;
+        state.roleChangeSuccess = true;
+        // Update the selected user's role
+        if (state.selectedUser && state.selectedUser._id === action.payload.user._id) {
+          state.selectedUser.role = action.payload.user.role;
+        }
+        // Update the user in the list
+        const userIndex = state.users.findIndex(u => u._id === action.payload.user._id);
+        if (userIndex !== -1) {
+          state.users[userIndex].role = action.payload.user.role;
+        }
+      })
+      .addCase(changeUserRole.rejected, (state, action) => {
+        state.roleChangeLoading = false;
+        state.roleChangeError = action.payload;
       });
   },
 });
 
-export const { clearUserListError, clearSelectedUser } = userListSlice.actions;
+export const { clearUserListError, clearSelectedUser, clearRoleChangeStatus } = userListSlice.actions;
 
 export default userListSlice.reducer;
