@@ -9,6 +9,7 @@ import adminNotificationReducer from './reducers/adminNotificationReducer';
 import dashboardReducer from './reducers/dashboardReducer';
 import userListReducer from './reducers/userListReducer';
 import adminLogsReducer from './reducers/adminLogsReducer';
+import lostFoundReducer from './reducers/lostFoundReducer';
 
 const store = configureStore({
   reducer: {
@@ -22,6 +23,7 @@ const store = configureStore({
     dashboard: dashboardReducer,
     userList: userListReducer,
     adminLogs: adminLogsReducer,
+    lostFound: lostFoundReducer,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({

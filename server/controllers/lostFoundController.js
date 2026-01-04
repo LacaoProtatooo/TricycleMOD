@@ -88,3 +88,96 @@ export const claimLostFound = async (req, res) => {
     res.status(500).json({ success: false, message: 'Server Error' });
   }
 };
+
+// Admin: Verify/update lost and found item status
+export const verifyLostFound = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { status, claimerName, claimerContact, claimNotes } = req.body;
+
+    const item = await LostFound.findById(id);
+    if (!item) {
+      return res.status(404).json({ success: false, message: 'Item not found' });
+    }
+
+    // Validate status
+    const validStatuses = ['posted', 'claimed', 'returned'];
+    if (status && !validStatuses.includes(status)) {
+      return res.status(400).json({ success: false, message: 'Invalid status' });
+    }
+
+    // Update fields
+    if (status) item.status = status;
+    if (status === 'claimed' || status === 'returned') {
+      item.claimedAt = item.claimedAt || new Date();
+      if (claimerName) item.claimerName = claimerName;
+      if (claimerContact) item.claimerContact = claimerContact;
+      if (claimNotes) item.claimNotes = claimNotes;
+    }
+
+    await item.save();
+
+    // Populate driver info before returning
+    await item.populate('driver', 'firstname lastname username image');
+
+    res.status(200).json({ success: true, data: item });
+  } catch (error) {
+    console.error('Error verifying lost & found:', error);
+    res.status(500).json({ success: false, message: 'Server Error' });
+  }
+};
+
+// Admin: Delete lost and found item
+export const deleteLostFound = async (req, res) => {
+  try {
+    const { id } = req.params;
+
+    const item = await LostFound.findById(id);
+    if (!item) {
+      return res.status(404).json({ success: false, message: 'Item not found' });
+    }
+
+    // Delete image from cloudinary if exists
+    if (item.photoPublicId) {
+      await cloudinary.uploader.destroy(item.photoPublicId).catch(() => {});
+    }
+
+    await LostFound.findByIdAndDelete(id);
+
+    res.status(200).json({ success: true, message: 'Item deleted successfully' });
+  } catch (error) {
+    console.error('Error deleting lost & found:', error);
+    res.status(500).json({ success: false, message: 'Server Error' });
+  }
+};
+
+// Admin: Get lost and found statistics
+export const getLostFoundStats = async (req, res) => {
+  try {
+    const stats = await LostFound.aggregate([
+      {
+        $group: {
+          _id: '$status',
+          count: { $sum: 1 }
+        }
+      }
+    ]);
+
+    const formattedStats = {
+      total: 0,
+      posted: 0,
+      claimed: 0,
+      returned: 0
+    };
+
+    stats.forEach(stat => {
+      formattedStats[stat._id] = stat.count;
+      formattedStats.total += stat.count;
+    });
+
+    res.status(200).json({ success: true, data: formattedStats });
+  } catch (error) {
+    console.error('Error getting lost & found stats:', error);
+    res.status(500).json({ success: false, message: 'Server Error' });
+  }
+};

@@ -18,6 +18,7 @@ import {
   TaskIcon,
   AlertIcon,
   GroupIcon,
+  FolderIcon,
 } from "../icons";
 import { useSidebar } from "../context/SidebarContext";
 import SidebarWidget from "./SidebarWidget";
@@ -57,6 +58,11 @@ const navItems = [
     icon: <AlertIcon />,
     name: "Notifications",
     path: "/notifications",
+  },
+  {
+    icon: <FolderIcon />,
+    name: "Lost & Found",
+    path: "/lost-found",
   },
   {
     icon: <ListIcon />,
