@@ -6,13 +6,17 @@ const tricycleSchema = new mongoose.Schema({
         required: [true, 'Plate number is required'],
         trim: true,
         uppercase: true,
-        maxlength: [20, 'Plate number cannot exceed 20 characters']
+        match: [/^[A-Z]{3}[0-9]{3}$/, 'Plate number must be 3 letters followed by 3 numbers (e.g., ABC123)'],
+        maxlength: [6, 'Plate number must be exactly 6 characters'],
+        minlength: [6, 'Plate number must be exactly 6 characters']
     },
     bodyNumber: {
         type: String,
         trim: true,
         uppercase: true,
-        maxlength: [20, 'Body number cannot exceed 20 characters']
+        match: [/^[0-9]{2}$/, 'Body number must be exactly 2 digits (e.g., 01, 99)'],
+        maxlength: [2, 'Body number must be exactly 2 digits'],
+        minlength: [2, 'Body number must be exactly 2 digits']
     },
     model: {
         type: String,
