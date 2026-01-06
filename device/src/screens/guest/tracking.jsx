@@ -279,6 +279,24 @@ const GuestTracking = () => {
       return;
     }
 
+    // Ensure deviceId is available
+    let currentDeviceId = deviceId;
+    if (!currentDeviceId) {
+      try {
+        currentDeviceId = await AsyncStorage.getItem(DEVICE_ID_KEY);
+        if (!currentDeviceId) {
+          const appId = Application.applicationId || 'tricyclemod';
+          currentDeviceId = `device_${appId}_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+          await AsyncStorage.setItem(DEVICE_ID_KEY, currentDeviceId);
+        }
+        setDeviceId(currentDeviceId);
+      } catch (e) {
+        console.error('Failed to get deviceId:', e);
+        Alert.alert('Error', 'Failed to initialize device. Please try again.');
+        return;
+      }
+    }
+
     try {
       // Get current location for initial coordinate
       const location = await Location.getCurrentPositionAsync({
@@ -297,13 +315,13 @@ const GuestTracking = () => {
 
       // Start trip on server
       const response = await axios.post(`${BASE_URL}/api/tracking/start`, {
-        deviceId,
+        deviceId: currentDeviceId,
         name: `Trip ${new Date().toLocaleDateString()}`,
         initialCoordinate: initialCoord,
       });
 
       if (!response.data.success) {
-        throw new Error(response.data.message);
+        throw new Error(response.data.message || 'Failed to start trip');
       }
 
       const { tripId, startTime } = response.data;
@@ -345,7 +363,85 @@ const GuestTracking = () => {
       Alert.alert('Recording Started', 'Your trip is being recorded');
     } catch (error) {
       console.error('Error starting recording:', error);
-      Alert.alert('Error', error.message || 'Failed to start recording');
+      
+      // Check if server returned an existing trip (400 with tripId)
+      const errorData = error.response?.data;
+      if (errorData?.tripId) {
+        Alert.alert(
+          'Existing Trip Found',
+          'You have an active trip. Would you like to resume or cancel it?',
+          [
+            {
+              text: 'Cancel Trip',
+              style: 'destructive',
+              onPress: async () => {
+                try {
+                  await axios.post(`${BASE_URL}/api/tracking/${errorData.tripId}/cancel`);
+                  await AsyncStorage.removeItem(ACTIVE_TRIP_KEY);
+                  Alert.alert('Trip Cancelled', 'You can now start a new recording');
+                } catch (e) {
+                  console.error('Failed to cancel trip:', e);
+                  Alert.alert('Error', 'Failed to cancel existing trip');
+                }
+              },
+            },
+            {
+              text: 'Resume Trip',
+              onPress: async () => {
+                try {
+                  // Get current location
+                  const loc = await Location.getCurrentPositionAsync({
+                    accuracy: Location.Accuracy.BestForNavigation,
+                  });
+                  const initialCoord = {
+                    latitude: loc.coords.latitude,
+                    longitude: loc.coords.longitude,
+                    altitude: loc.coords.altitude || 0,
+                    timestamp: Date.now(),
+                  };
+                  
+                  // Resume the existing trip
+                  setActiveTripId(errorData.tripId);
+                  activeTripIdRef.current = errorData.tripId;
+                  setIsRecording(true);
+                  tripStartRef.current = Date.now();
+                  recordedPosRef.current = [initialCoord];
+                  lastPosRef.current = initialCoord;
+                  distanceRef.current = 0;
+                  setRecordedPositions([initialCoord]);
+
+                  // Save to AsyncStorage
+                  await AsyncStorage.setItem(ACTIVE_TRIP_KEY, JSON.stringify({
+                    tripId: errorData.tripId,
+                    startTime: tripStartRef.current,
+                    positions: [initialCoord],
+                  }));
+
+                  // Start watching location
+                  const subscription = await Location.watchPositionAsync(
+                    {
+                      accuracy: Location.Accuracy.BestForNavigation,
+                      timeInterval: 1000,
+                      distanceInterval: 2,
+                    },
+                    handleLocationUpdate
+                  );
+                  watchRef.current = subscription;
+
+                  syncIntervalRef.current = setInterval(syncToServer, SYNC_INTERVAL_MS);
+                  Alert.alert('Resumed', 'Continuing your previous trip');
+                } catch (e) {
+                  console.error('Failed to resume trip:', e);
+                  Alert.alert('Error', 'Failed to resume trip');
+                }
+              },
+            },
+          ]
+        );
+        return;
+      }
+      
+      Alert.alert('Error', errorData?.message || error.message || 'Failed to start recording');
     }
   };
 
