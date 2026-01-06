@@ -664,3 +664,56 @@ export const deleteTrip = async (req, res) => {
     });
   }
 };
+
+/**
+ * Export relive/route data as GPX without saving to database
+ * POST /api/tracking/export-relive-gpx
+ * Used for exporting current route data from driver's relive mode
+ */
+export const exportReliveGPX = async (req, res) => {
+  try {
+    const { gpxContent, deviceId, name } = req.body;
+
+    if (!gpxContent) {
+      return res.status(400).json({
+        success: false,
+        message: 'GPX content is required',
+      });
+    }
+
+    // Generate a unique ID for this export
+    const exportId = `relive_${Date.now()}_${uuidv4().slice(0, 8)}`;
+
+    // Upload to Cloudinary as raw file
+    const uploadResult = await new Promise((resolve, reject) => {
+      const uploadStream = cloudinary.uploader.upload_stream(
+        {
+          resource_type: 'raw',
+          public_id: `tracking/relive/${exportId}`,
+          format: 'gpx',
+          folder: 'tricyclemod',
+        },
+        (error, result) => {
+          if (error) reject(error);
+          else resolve(result);
+        }
+      );
+      uploadStream.end(Buffer.from(gpxContent));
+    });
+
+    return res.status(200).json({
+      success: true,
+      message: 'Relive GPX exported successfully',
+      gpxUrl: uploadResult.secure_url,
+      fileName: `${name || exportId}.gpx`,
+    });
+
+  } catch (error) {
+    console.error('Error exporting relive GPX:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to export relive GPX',
+      error: error.message,
+    });
+  }
+};

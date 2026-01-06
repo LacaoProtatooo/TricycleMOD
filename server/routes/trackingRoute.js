@@ -10,6 +10,7 @@ import {
   exportGPX,
   exportGeoJSON,
   deleteTrip,
+  exportReliveGPX,
 } from '../controllers/trackingController.js';
 import { protect, optionalVerified, requireVerified } from '../middleware/authMiddleware.js';
 
@@ -35,6 +36,7 @@ router.get('/history', optionalVerified, getTripHistory);
 router.get('/:tripId', optionalVerified, getTripDetails);
 
 // Export routes
+router.post('/export-relive-gpx', optionalVerified, exportReliveGPX);
 router.post('/:tripId/export-gpx', optionalVerified, exportGPX);
 router.get('/:tripId/geojson', optionalVerified, exportGeoJSON);
 
