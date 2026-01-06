@@ -24,6 +24,8 @@ import {
 import MapView, { Marker, Polyline, Circle, PROVIDER_GOOGLE, AnimatedRegion } from 'react-native-maps';
 import * as Location from 'expo-location';
 import * as Application from 'expo-application';
+import * as DocumentPicker from 'expo-document-picker';
+import * as FileSystem from 'expo-file-system/legacy';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -78,6 +80,140 @@ function formatDate(dateStr) {
   });
 }
 
+// Parse GPX XML content to extract track points
+function parseGPX(gpxContent) {
+  try {
+    const rawCoordinates = [];
+    let tripName = 'Imported GPX';
+
+    // Extract track name from <name> tag (with optional namespace prefix)
+    const nameMatch = gpxContent.match(/<(?:[a-zA-Z0-9]+:)?name>([^<]+)<\/(?:[a-zA-Z0-9]+:)?name>/);
+    if (nameMatch) {
+      tripName = nameMatch[1].trim();
+    }
+
+    // Extract track points from <trkpt> tags (with optional namespace prefix like ns0:trkpt)
+    const trkptRegex = /<(?:[a-zA-Z0-9]+:)?trkpt[^>]*lat=["']([^"']+)["'][^>]*lon=["']([^"']+)["'][^>]*>([\s\S]*?)<\/(?:[a-zA-Z0-9]+:)?trkpt>/g;
+    let match;
+
+    while ((match = trkptRegex.exec(gpxContent)) !== null) {
+      const lat = parseFloat(match[1]);
+      const lon = parseFloat(match[2]);
+      const innerContent = match[3];
+
+      // Extract elevation if present (with optional namespace prefix)
+      const eleMatch = innerContent.match(/<(?:[a-zA-Z0-9]+:)?ele>([^<]+)<\/(?:[a-zA-Z0-9]+:)?ele>/);
+      const ele = eleMatch ? parseFloat(eleMatch[1]) : 0;
+
+      // Extract timestamp if present (with optional namespace prefix)
+      const timeMatch = innerContent.match(/<(?:[a-zA-Z0-9]+:)?time>([^<]+)<\/(?:[a-zA-Z0-9]+:)?time>/);
+      const timestamp = timeMatch ? new Date(timeMatch[1]).getTime() : Date.now();
+
+      if (!isNaN(lat) && !isNaN(lon)) {
+        rawCoordinates.push({
+          latitude: lat,
+          longitude: lon,
+          altitude: ele,
+          timestamp: timestamp,
+        });
+      }
+    }
+
+    // If no trkpt found, try to parse <rtept> (route points) with optional namespace
+    if (rawCoordinates.length === 0) {
+      const rteptRegex = /<(?:[a-zA-Z0-9]+:)?rtept[^>]*lat=["']([^"']+)["'][^>]*lon=["']([^"']+)["'][^>]*>([\s\S]*?)<\/(?:[a-zA-Z0-9]+:)?rtept>/g;
+      while ((match = rteptRegex.exec(gpxContent)) !== null) {
+        const lat = parseFloat(match[1]);
+        const lon = parseFloat(match[2]);
+        const innerContent = match[3];
+
+        const eleMatch = innerContent.match(/<(?:[a-zA-Z0-9]+:)?ele>([^<]+)<\/(?:[a-zA-Z0-9]+:)?ele>/);
+        const ele = eleMatch ? parseFloat(eleMatch[1]) : 0;
+
+        const timeMatch = innerContent.match(/<(?:[a-zA-Z0-9]+:)?time>([^<]+)<\/(?:[a-zA-Z0-9]+:)?time>/);
+        const timestamp = timeMatch ? new Date(timeMatch[1]).getTime() : Date.now();
+
+        if (!isNaN(lat) && !isNaN(lon)) {
+          rawCoordinates.push({
+            latitude: lat,
+            longitude: lon,
+            altitude: ele,
+            timestamp: timestamp,
+          });
+        }
+      }
+    }
+
+    // Sort by timestamp to ensure correct order
+    rawCoordinates.sort((a, b) => a.timestamp - b.timestamp);
+
+    // Filter out GPS jumps/teleports (unrealistic speed > 150 km/h or backward time jumps)
+    const MAX_SPEED_MPS = 150 * 1000 / 3600; // 150 km/h in m/s (about 42 m/s)
+    const coordinates = [];
+    
+    for (let i = 0; i < rawCoordinates.length; i++) {
+      const current = rawCoordinates[i];
+      
+      if (coordinates.length === 0) {
+        coordinates.push({
+          ...current,
+          timestamp: new Date(current.timestamp).toISOString(),
+        });
+        continue;
+      }
+
+      const last = coordinates[coordinates.length - 1];
+      const lastTimestamp = new Date(last.timestamp).getTime();
+      const timeDiff = (current.timestamp - lastTimestamp) / 1000; // seconds
+      
+      // Skip if time goes backward or is same
+      if (timeDiff <= 0) continue;
+      
+      const distance = haversineMeters(last, current);
+      const speed = distance / timeDiff; // m/s
+
+      // Skip if speed is unrealistically high (GPS jump)
+      if (speed > MAX_SPEED_MPS) continue;
+
+      // Skip duplicate coordinates
+      if (last.latitude === current.latitude && last.longitude === current.longitude) continue;
+
+      coordinates.push({
+        ...current,
+        timestamp: new Date(current.timestamp).toISOString(),
+      });
+    }
+
+    // Calculate total distance from filtered coordinates
+    let totalDistance = 0;
+    for (let i = 1; i < coordinates.length; i++) {
+      totalDistance += haversineMeters(coordinates[i - 1], coordinates[i]);
+    }
+
+    // Calculate duration
+    let startTime = coordinates.length > 0 ? coordinates[0].timestamp : new Date().toISOString();
+    let endTime = coordinates.length > 0 ? coordinates[coordinates.length - 1].timestamp : new Date().toISOString();
+    let duration = 0;
+    if (startTime && endTime) {
+      duration = Math.floor((new Date(endTime) - new Date(startTime)) / 1000);
+    }
+
+    return {
+      tripId: `imported_${Date.now()}`,
+      name: tripName,
+      coordinates,
+      startTime,
+      endTime,
+      totalDistance,
+      duration,
+      isImported: true,
+    };
+  } catch (error) {
+    console.error('Error parsing GPX:', error);
+    return null;
+  }
+}
+
 const GuestTracking = () => {
   const mapRef = useRef(null);
   const watchRef = useRef(null);
@@ -117,6 +253,9 @@ const GuestTracking = () => {
 
   // Export state
   const [isExporting, setIsExporting] = useState(false);
+
+  // Import state
+  const [isImporting, setIsImporting] = useState(false);
 
   // Map type state
   const [mapType, setMapType] = useState('hybrid');
@@ -814,6 +953,72 @@ const GuestTracking = () => {
     }
   };
 
+  // ============== GPX IMPORT ==============
+
+  const importGPXFile = async () => {
+    try {
+      setIsImporting(true);
+
+      // Pick a GPX file
+      const result = await DocumentPicker.getDocumentAsync({
+        type: ['application/gpx+xml', 'text/xml', 'application/xml', '*/*'],
+        copyToCacheDirectory: true,
+      });
+
+      if (result.canceled || !result.assets || result.assets.length === 0) {
+        setIsImporting(false);
+        return;
+      }
+
+      const file = result.assets[0];
+      
+      // Check file extension
+      if (!file.name.toLowerCase().endsWith('.gpx')) {
+        Alert.alert('Invalid File', 'Please select a GPX file (.gpx extension)');
+        setIsImporting(false);
+        return;
+      }
+
+      // Read file content
+      const gpxContent = await FileSystem.readAsStringAsync(file.uri);
+
+      // Parse GPX content
+      const parsedTrip = parseGPX(gpxContent);
+
+      if (!parsedTrip || parsedTrip.coordinates.length < 2) {
+        Alert.alert(
+          'Invalid GPX',
+          'The GPX file does not contain valid track data (at least 2 points required).'
+        );
+        setIsImporting(false);
+        return;
+      }
+
+      setIsImporting(false);
+      setShowHistory(false);
+
+      // Show trip info and ask to start relive
+      Alert.alert(
+        'GPX Imported',
+        `Track: ${parsedTrip.name}\nPoints: ${parsedTrip.coordinates.length}\nDistance: ${(parsedTrip.totalDistance / 1000).toFixed(2)} km\nDuration: ${formatDuration(parsedTrip.duration)}`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Start Relive',
+            onPress: () => {
+              setReliveTrip(parsedTrip);
+              startRelive(parsedTrip);
+            },
+          },
+        ]
+      );
+    } catch (error) {
+      console.error('Error importing GPX:', error);
+      Alert.alert('Error', 'Failed to import GPX file. Please ensure it is a valid GPX format.');
+      setIsImporting(false);
+    }
+  };
+
   // ============== RENDER ==============
 
   const renderTripHistoryItem = ({ item }) => (
@@ -1089,9 +1294,19 @@ const GuestTracking = () => {
           <View style={styles.modalContent}>
             <View style={styles.modalHeader}>
               <Text style={styles.modalTitle}>Trip History</Text>
-              <TouchableOpacity onPress={() => setShowHistory(false)}>
-                <Ionicons name="close" size={28} color={colors.orangeShade7} />
-              </TouchableOpacity>
+              <View style={styles.modalHeaderActions}>
+                <TouchableOpacity 
+                  style={styles.importBtn} 
+                  onPress={importGPXFile}
+                  disabled={isImporting}
+                >
+                  <Ionicons name="cloud-upload-outline" size={24} color={colors.primary} />
+                  <Text style={styles.importBtnText}>Import GPX</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => setShowHistory(false)}>
+                  <Ionicons name="close" size={28} color={colors.orangeShade7} />
+                </TouchableOpacity>
+              </View>
             </View>
 
             {loadingHistory ? (
@@ -1123,6 +1338,14 @@ const GuestTracking = () => {
         <View style={styles.exportOverlay}>
           <ActivityIndicator size="large" color="#fff" />
           <Text style={styles.exportOverlayText}>Exporting GPX...</Text>
+        </View>
+      )}
+
+      {/* Import Loading Overlay */}
+      {isImporting && (
+        <View style={styles.exportOverlay}>
+          <ActivityIndicator size="large" color="#fff" />
+          <Text style={styles.exportOverlayText}>Importing GPX...</Text>
         </View>
       )}
     </SafeAreaView>
@@ -1407,6 +1630,27 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '700',
     color: colors.orangeShade7,
+  },
+  modalHeaderActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 16,
+  },
+  importBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.ivory2,
+    paddingHorizontal: spacing.medium,
+    paddingVertical: spacing.small,
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: colors.ivory3,
+  },
+  importBtnText: {
+    color: colors.primary,
+    fontWeight: '600',
+    fontSize: 14,
+    marginLeft: 6,
   },
   modalLoading: {
     flex: 1,
