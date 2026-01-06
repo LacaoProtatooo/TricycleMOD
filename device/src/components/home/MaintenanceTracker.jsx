@@ -9,6 +9,7 @@ import { getToken } from '../../utils/jwtStorage';
 import { useAsyncSQLiteContext } from '../../utils/asyncSQliteProvider';
 import VehicleDiagnostic, { getWearColor } from './VehicleDiagnostic';
 import PredictiveMaintenance from './PredictiveMaintenance';
+import ServiceHistory from './ServiceHistory';
 
 // Key for tracking which notifications have been sent
 const NOTIFIED_ITEMS_KEY = 'maintenance_notified_items_v1';
@@ -87,8 +88,9 @@ const MaintenanceTracker = ({ tricycleId, serverHistory }) => {
 	const [odometerKm, setOdometerKm] = useState(null);
 	const [notifiedItems, setNotifiedItems] = useState({}); // Track which items have been notified
 	const hasCheckedNotifications = useRef(false);
-	const [activeTab, setActiveTab] = useState('schedule'); // 'schedule' | 'predictive'
+	const [activeTab, setActiveTab] = useState('schedule'); // 'schedule' | 'predictive' | 'history'
 	const [wearPatterns, setWearPatterns] = useState({});
+	const [plateNumber, setPlateNumber] = useState(null);
 
 	// Setup notification channel for maintenance alerts
 	useEffect(() => {
@@ -472,11 +474,24 @@ const MaintenanceTracker = ({ tricycleId, serverHistory }) => {
 				>
 					<Ionicons 
 						name="list-outline" 
-						size={18} 
+						size={16} 
 						color={activeTab === 'schedule' ? colors.primary : colors.orangeShade5} 
 					/>
 					<Text style={[styles.tabText, activeTab === 'schedule' && styles.tabTextActive]}>
 						Schedule
+					</Text>
+				</TouchableOpacity>
+				<TouchableOpacity 
+					style={[styles.tab, activeTab === 'history' && styles.tabActive]}
+					onPress={() => setActiveTab('history')}
+				>
+					<Ionicons 
+						name="document-text-outline" 
+						size={16} 
+						color={activeTab === 'history' ? colors.primary : colors.orangeShade5} 
+					/>
+					<Text style={[styles.tabText, activeTab === 'history' && styles.tabTextActive]}>
+						History
 					</Text>
 				</TouchableOpacity>
 				<TouchableOpacity 
@@ -485,11 +500,11 @@ const MaintenanceTracker = ({ tricycleId, serverHistory }) => {
 				>
 					<Ionicons 
 						name="analytics-outline" 
-						size={18} 
+						size={16} 
 						color={activeTab === 'predictive' ? colors.primary : colors.orangeShade5} 
 					/>
 					<Text style={[styles.tabText, activeTab === 'predictive' && styles.tabTextActive]}>
-						AI Predictions
+						AI
 					</Text>
 				</TouchableOpacity>
 			</View>
@@ -537,6 +552,21 @@ const MaintenanceTracker = ({ tricycleId, serverHistory }) => {
 						maintenanceData={data}
 						tricycleId={tricycleId}
 						onMaintenanceNeeded={handleMaintenanceNeeded}
+					/>
+				</ScrollView>
+			)}
+
+			{/* Service History Tab Content */}
+			{activeTab === 'history' && (
+				<ScrollView
+					nestedScrollEnabled={true}
+					contentContainerStyle={{ paddingBottom: spacing.large }}
+					showsVerticalScrollIndicator={false}
+				>
+					<ServiceHistory 
+						tricycleId={tricycleId}
+						plateNumber={plateNumber}
+						maintenanceData={data}
 					/>
 				</ScrollView>
 			)}

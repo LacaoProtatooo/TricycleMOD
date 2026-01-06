@@ -7,6 +7,7 @@ import {
     updateTricycle,
     deleteTricycle,
     addMaintenanceLog,
+    getMaintenanceHistory,
     assignDriver,
     updateSchedule,
     updateOdometer,
@@ -31,6 +32,7 @@ router.put("/:id", authUser, upload.array("images", 5), updateTricycle);
 router.delete("/:id", authUser, deleteTricycle);
 
 // Maintenance and assignment routes
+router.get("/:id/maintenance", authUser, getMaintenanceHistory);
 router.post("/:id/maintenance", authUser, addMaintenanceLog);
 router.put("/:id/assign", authUser, assignDriver);
 router.put("/:id/schedule", authUser, updateSchedule);

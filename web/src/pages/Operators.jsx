@@ -4,6 +4,7 @@ import { Modal } from "../components/ui/modal";
 import { useModal } from "../hooks/useModal";
 import PageMeta from "../components/common/PageMeta";
 import PageBreadcrumb from "../components/common/PageBreadCrumb";
+import MaintenanceHistoryModal from "../components/MaintenanceHistoryModal";
 import {
   fetchAllOperators,
   fetchOperatorDetails,
@@ -32,8 +33,10 @@ const Operators = () => {
 
   const [searchQuery, setSearchQuery] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
+  const [maintenanceTricycle, setMaintenanceTricycle] = useState(null);
 
   const { isOpen: isDetailsOpen, openModal: openDetailsModal, closeModal: closeDetailsModal } = useModal();
+  const { isOpen: isMaintenanceOpen, openModal: openMaintenanceModal, closeModal: closeMaintenanceModal } = useModal();
 
   // Fetch operators on mount and filter change
   useEffect(() => {
@@ -57,6 +60,17 @@ const Operators = () => {
   const handleCloseDetails = () => {
     closeDetailsModal();
     dispatch(clearSelectedOperator());
+  };
+
+  const handleViewMaintenance = (tricycle, e) => {
+    e.stopPropagation();
+    setMaintenanceTricycle(tricycle);
+    openMaintenanceModal();
+  };
+
+  const handleCloseMaintenanceModal = () => {
+    closeMaintenanceModal();
+    setMaintenanceTricycle(null);
   };
 
   const handleSearch = (e) => {
@@ -498,8 +512,17 @@ const Operators = () => {
                       )}
 
                       {/* Odometer */}
-                      <div className="mt-2 text-xs text-gray-500 dark:text-gray-400">
-                        Odometer: {tricycle.currentOdometer?.toLocaleString() || 0} km
+                      <div className="mt-2 flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
+                        <span>Odometer: {tricycle.currentOdometer?.toLocaleString() || 0} km</span>
+                        <button
+                          onClick={(e) => handleViewMaintenance(tricycle, e)}
+                          className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-brand-600 dark:text-brand-400 hover:bg-brand-50 dark:hover:bg-brand-900/20 rounded transition-colors"
+                        >
+                          <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                          </svg>
+                          Maintenance
+                        </button>
                       </div>
                     </div>
                   ))}
@@ -527,6 +550,13 @@ const Operators = () => {
           </div>
         )}
       </Modal>
+
+      {/* Maintenance History Modal */}
+      <MaintenanceHistoryModal
+        isOpen={isMaintenanceOpen}
+        onClose={handleCloseMaintenanceModal}
+        tricycle={maintenanceTricycle}
+      />
     </>
   );
 };

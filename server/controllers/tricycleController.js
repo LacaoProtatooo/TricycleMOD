@@ -464,6 +464,71 @@ export const addMaintenanceLog = async (req, res) => {
   }
 };
 
+// ==================== GET MAINTENANCE HISTORY ====================
+export const getMaintenanceHistory = async (req, res) => {
+  const { id } = req.params;
+  const { category, dateFrom, dateTo, sortBy = 'newest', limit } = req.query;
+
+  try {
+    const tricycle = await Tricycle.findById(id)
+      .populate('maintenanceHistory.completedBy', 'firstname lastname')
+      .select('plateNumber model bodyNumber maintenanceHistory currentOdometer');
+    
+    if (!tricycle) {
+      return res.status(404).json({ success: false, message: "Tricycle not found" });
+    }
+
+    let history = [...(tricycle.maintenanceHistory || [])];
+
+    // Filter by date range
+    if (dateFrom) {
+      const fromDate = new Date(dateFrom);
+      history = history.filter(h => new Date(h.completedAt) >= fromDate);
+    }
+    if (dateTo) {
+      const toDate = new Date(dateTo);
+      history = history.filter(h => new Date(h.completedAt) <= toDate);
+    }
+
+    // Sort
+    history.sort((a, b) => {
+      if (sortBy === 'newest') return new Date(b.completedAt) - new Date(a.completedAt);
+      if (sortBy === 'oldest') return new Date(a.completedAt) - new Date(b.completedAt);
+      if (sortBy === 'km_high') return (b.lastServiceKm || 0) - (a.lastServiceKm || 0);
+      if (sortBy === 'km_low') return (a.lastServiceKm || 0) - (b.lastServiceKm || 0);
+      return 0;
+    });
+
+    // Limit results
+    if (limit) {
+      history = history.slice(0, parseInt(limit));
+    }
+
+    // Calculate statistics
+    const stats = {
+      totalServices: tricycle.maintenanceHistory?.length || 0,
+      filteredCount: history.length,
+      lastServiceDate: history.length > 0 ? history[0].completedAt : null,
+      currentOdometer: tricycle.currentOdometer || 0,
+    };
+
+    res.status(200).json({
+      success: true,
+      tricycle: {
+        _id: tricycle._id,
+        plateNumber: tricycle.plateNumber,
+        model: tricycle.model,
+        bodyNumber: tricycle.bodyNumber,
+      },
+      history,
+      stats,
+    });
+  } catch (error) {
+    console.error("Error getting maintenance history:", error.message);
+    res.status(500).json({ success: false, message: "Server Error" });
+  }
+};
+
 // ==================== UPDATE ODOMETER ====================
 export const updateOdometer = async (req, res) => {
   const { id } = req.params;
