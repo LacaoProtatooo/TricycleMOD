@@ -8,9 +8,12 @@ import Constants from 'expo-constants';
 import { getToken } from '../../utils/jwtStorage';
 import { useAsyncSQLiteContext } from '../../utils/asyncSQliteProvider';
 import VehicleDiagnostic, { getWearColor } from './VehicleDiagnostic';
+import PredictiveMaintenance from './PredictiveMaintenance';
 
 // Key for tracking which notifications have been sent
 const NOTIFIED_ITEMS_KEY = 'maintenance_notified_items_v1';
+const WEAR_PATTERNS_KEY = 'wear_patterns_v1';
+const MAINTENANCE_HISTORY_KEY = 'maintenance_history_v2';
 
 const BACKEND = (Constants?.expoConfig?.extra?.BACKEND_URL) || (Constants?.manifest?.extra?.BACKEND_URL) || 'http://192.168.254.105:5000';
 const STORAGE_KEY = 'maintenance_data_v1';
@@ -84,6 +87,8 @@ const MaintenanceTracker = ({ tricycleId, serverHistory }) => {
 	const [odometerKm, setOdometerKm] = useState(null);
 	const [notifiedItems, setNotifiedItems] = useState({}); // Track which items have been notified
 	const hasCheckedNotifications = useRef(false);
+	const [activeTab, setActiveTab] = useState('schedule'); // 'schedule' | 'predictive'
+	const [wearPatterns, setWearPatterns] = useState({});
 
 	// Setup notification channel for maintenance alerts
 	useEffect(() => {
@@ -223,6 +228,13 @@ const MaintenanceTracker = ({ tricycleId, serverHistory }) => {
             
             const km = await AsyncStorage.getItem(KM_KEY);
             if (km) setCurrentKm(km);
+
+            // 4. Load wear patterns for predictive maintenance
+            const patternsKey = tricycleId ? `${WEAR_PATTERNS_KEY}_${tricycleId}` : WEAR_PATTERNS_KEY;
+            const patternsStr = await AsyncStorage.getItem(patternsKey);
+            if (patternsStr) {
+                setWearPatterns(JSON.parse(patternsStr));
+            }
         } catch (e) {
             console.warn('MaintenanceTracker load error', e);
         } finally {
@@ -283,6 +295,7 @@ const MaintenanceTracker = ({ tricycleId, serverHistory }) => {
 	const markDone = async (itemKey) => {
 		try {
 			const kmNum = parseInt(odometerKm || currentKm || '0', 10);
+			const previousKm = data[itemKey] || 0;
 			const next = { ...data, [itemKey]: kmNum };
             
             // Save to dynamic key
@@ -292,6 +305,12 @@ const MaintenanceTracker = ({ tricycleId, serverHistory }) => {
 
             // Sync to server
             await saveToServer(itemKey, kmNum, "Completed via app");
+			
+			// Track wear pattern for AI predictions
+			await trackWearPattern(itemKey, kmNum, previousKm);
+
+			// Save to maintenance history for predictive analytics
+			await saveToMaintenanceHistory(itemKey, kmNum);
 			
 			// Clear the notification flag for this item so it can notify again in the next cycle
 			const notifyKey = tricycleId ? `${NOTIFIED_ITEMS_KEY}_${tricycleId}` : NOTIFIED_ITEMS_KEY;
@@ -308,6 +327,67 @@ const MaintenanceTracker = ({ tricycleId, serverHistory }) => {
 			Alert.alert('Success', `${itemKey.replace(/_/g, ' ')} marked as maintained at ${kmNum} km`);
 		} catch (e) {
 			console.warn('markDone error', e);
+		}
+	};
+
+	// Track wear patterns for predictive maintenance AI
+	const trackWearPattern = async (itemKey, currentKm, previousServiceKm) => {
+		try {
+			const patternsKey = tricycleId ? `${WEAR_PATTERNS_KEY}_${tricycleId}` : WEAR_PATTERNS_KEY;
+			const currentPatterns = { ...wearPatterns };
+			
+			if (!currentPatterns[itemKey]) {
+				currentPatterns[itemKey] = [];
+			}
+			
+			// Calculate wear level based on km since last service
+			const kmSinceService = currentKm - previousServiceKm;
+			const itemSchedule = defaultSchedule.find(g => g.items.find(i => i.key === itemKey));
+			const expectedInterval = itemSchedule?.intervalKm || 1000;
+			const wearLevel = Math.min(100, (kmSinceService / expectedInterval) * 100);
+			
+			// Add data point
+			currentPatterns[itemKey].push({
+				km: currentKm,
+				wearLevel: wearLevel,
+				kmSinceLastService: kmSinceService,
+				timestamp: Date.now(),
+			});
+			
+			// Keep only last 20 data points per item
+			if (currentPatterns[itemKey].length > 20) {
+				currentPatterns[itemKey] = currentPatterns[itemKey].slice(-20);
+			}
+			
+			setWearPatterns(currentPatterns);
+			await AsyncStorage.setItem(patternsKey, JSON.stringify(currentPatterns));
+		} catch (e) {
+			console.warn('trackWearPattern error', e);
+		}
+	};
+
+	// Save to maintenance history for analytics
+	const saveToMaintenanceHistory = async (itemKey, kmNum) => {
+		try {
+			const historyKey = tricycleId ? `${MAINTENANCE_HISTORY_KEY}_${tricycleId}` : MAINTENANCE_HISTORY_KEY;
+			const historyStr = await AsyncStorage.getItem(historyKey);
+			let history = historyStr ? JSON.parse(historyStr) : [];
+			
+			history.push({
+				itemKey,
+				km: kmNum,
+				date: new Date().toISOString(),
+				type: 'maintenance_completed',
+			});
+			
+			// Keep last 200 entries
+			if (history.length > 200) {
+				history = history.slice(-200);
+			}
+			
+			await AsyncStorage.setItem(historyKey, JSON.stringify(history));
+		} catch (e) {
+			console.warn('saveToMaintenanceHistory error', e);
 		}
 	};
 
@@ -355,6 +435,23 @@ const MaintenanceTracker = ({ tricycleId, serverHistory }) => {
 		}
 	};
 
+	// Handle maintenance needed from predictive component
+	const handleMaintenanceNeeded = (itemKey) => {
+		// Find the item and show details
+		const group = defaultSchedule.find(g => g.items.find(i => i.key === itemKey));
+		const item = group?.items.find(i => i.key === itemKey);
+		if (item) {
+			Alert.alert(
+				`${item.name} Needs Attention`,
+				`${item.notes}\n\nMark as completed?`,
+				[
+					{ text: 'Cancel', style: 'cancel' },
+					{ text: 'Mark Done', onPress: () => markDone(itemKey) },
+				]
+			);
+		}
+	};
+
 	if (!loaded) return null;
 
 	return (
@@ -366,6 +463,36 @@ const MaintenanceTracker = ({ tricycleId, serverHistory }) => {
                 <Text style={styles.odometerLabel}>Odometer</Text>
                 <Text style={styles.odometerValue}>{odometerKm !== null ? `${odometerKm.toFixed(3)} km` : '—'}</Text>
             </View>
+
+			{/* Tab Switcher */}
+			<View style={styles.tabContainer}>
+				<TouchableOpacity 
+					style={[styles.tab, activeTab === 'schedule' && styles.tabActive]}
+					onPress={() => setActiveTab('schedule')}
+				>
+					<Ionicons 
+						name="list-outline" 
+						size={18} 
+						color={activeTab === 'schedule' ? colors.primary : colors.orangeShade5} 
+					/>
+					<Text style={[styles.tabText, activeTab === 'schedule' && styles.tabTextActive]}>
+						Schedule
+					</Text>
+				</TouchableOpacity>
+				<TouchableOpacity 
+					style={[styles.tab, activeTab === 'predictive' && styles.tabActive]}
+					onPress={() => setActiveTab('predictive')}
+				>
+					<Ionicons 
+						name="analytics-outline" 
+						size={18} 
+						color={activeTab === 'predictive' ? colors.primary : colors.orangeShade5} 
+					/>
+					<Text style={[styles.tabText, activeTab === 'predictive' && styles.tabTextActive]}>
+						AI Predictions
+					</Text>
+				</TouchableOpacity>
+			</View>
 
 			{/* Critical/Worn Summary Banner */}
 			{(criticalCount > 0 || wornCount > 0) && (
@@ -399,52 +526,70 @@ const MaintenanceTracker = ({ tricycleId, serverHistory }) => {
                 </Text>
             )}
 
-			<ScrollView
-				nestedScrollEnabled={true}
-				contentContainerStyle={{ paddingBottom: spacing.large }}
-				showsVerticalScrollIndicator={false}
-			>
-				{/* Vehicle Diagnostic View */}
-				<VehicleDiagnostic partsStatus={partsStatus} />
-				
-				{/* Detailed List View */}
-				<Text style={styles.sectionTitle}>Maintenance Schedule Details</Text>
-				
-				{defaultSchedule.map((group) => (
-					<View key={group.id} style={styles.group}>
-						<Text style={styles.groupTitle}>{group.title}</Text>
-						{group.items.map((it) => {
-							const last = data[it.key] || 0;
-							const progress = progressFor(last, group.intervalKm);
-							const dueKm = last + group.intervalKm;
-							const color = getWearColor(progress);
-							
-							return (
-								<View key={it.key} style={styles.card}>
-									<View style={[styles.statusIndicator, { backgroundColor: color }]} />
-									
-									<View style={styles.cardLeft}>
-										<Text style={styles.itemName}>{it.name}</Text>
-										<Text style={styles.itemNotes}>{it.notes}</Text>
-										<Text style={styles.small}>Last: {last} km · Next: {dueKm} km</Text>
+			{/* Predictive AI Tab Content */}
+			{activeTab === 'predictive' && (
+				<ScrollView
+					nestedScrollEnabled={true}
+					contentContainerStyle={{ paddingBottom: spacing.large }}
+					showsVerticalScrollIndicator={false}
+				>
+					<PredictiveMaintenance 
+						maintenanceData={data}
+						tricycleId={tricycleId}
+						onMaintenanceNeeded={handleMaintenanceNeeded}
+					/>
+				</ScrollView>
+			)}
 
-										<View style={styles.barBackground}>
-											<View style={[styles.barFill, { width: `${progress}%`, backgroundColor: color }]} />
+			{/* Schedule Tab Content */}
+			{activeTab === 'schedule' && (
+				<ScrollView
+					nestedScrollEnabled={true}
+					contentContainerStyle={{ paddingBottom: spacing.large }}
+					showsVerticalScrollIndicator={false}
+				>
+					{/* Vehicle Diagnostic View */}
+					<VehicleDiagnostic partsStatus={partsStatus} />
+					
+					{/* Detailed List View */}
+					<Text style={styles.sectionTitle}>Maintenance Schedule Details</Text>
+					
+					{defaultSchedule.map((group) => (
+						<View key={group.id} style={styles.group}>
+							<Text style={styles.groupTitle}>{group.title}</Text>
+							{group.items.map((it) => {
+								const last = data[it.key] || 0;
+								const progress = progressFor(last, group.intervalKm);
+								const dueKm = last + group.intervalKm;
+								const color = getWearColor(progress);
+								
+								return (
+									<View key={it.key} style={styles.card}>
+										<View style={[styles.statusIndicator, { backgroundColor: color }]} />
+										
+										<View style={styles.cardLeft}>
+											<Text style={styles.itemName}>{it.name}</Text>
+											<Text style={styles.itemNotes}>{it.notes}</Text>
+											<Text style={styles.small}>Last: {last} km · Next: {dueKm} km</Text>
+
+											<View style={styles.barBackground}>
+												<View style={[styles.barFill, { width: `${progress}%`, backgroundColor: color }]} />
+											</View>
+											<Text style={[styles.small, { color }]}>{progress}% - {progress < 30 ? 'Good' : progress < 60 ? 'Fair' : progress < 80 ? 'Worn' : 'Critical'}</Text>
 										</View>
-										<Text style={[styles.small, { color }]}>{progress}% - {progress < 30 ? 'Good' : progress < 60 ? 'Fair' : progress < 80 ? 'Worn' : 'Critical'}</Text>
-									</View>
 
-									<View style={styles.cardRight}>
-										<TouchableOpacity style={styles.doneBtn} onPress={() => markDone(it.key)}>
-											<Ionicons name="checkmark-done-outline" size={20} color={colors.ivory1} />
-										</TouchableOpacity>
+										<View style={styles.cardRight}>
+											<TouchableOpacity style={styles.doneBtn} onPress={() => markDone(it.key)}>
+												<Ionicons name="checkmark-done-outline" size={20} color={colors.ivory1} />
+											</TouchableOpacity>
+										</View>
 									</View>
-								</View>
-							);
-						})}
-					</View>
-				))}
-			</ScrollView>
+								);
+							})}
+						</View>
+					))}
+				</ScrollView>
+			)}
 		</View>
 	);
 };
@@ -472,6 +617,37 @@ const styles = StyleSheet.create({
 		flexDirection: 'row',
 		alignItems: 'center',
 		marginBottom: spacing.small,
+	},
+	// Tab styles
+	tabContainer: {
+		flexDirection: 'row',
+		backgroundColor: colors.ivory1,
+		borderRadius: 12,
+		padding: 4,
+		marginBottom: spacing.medium,
+		borderWidth: 1,
+		borderColor: colors.ivory3,
+	},
+	tab: {
+		flex: 1,
+		flexDirection: 'row',
+		alignItems: 'center',
+		justifyContent: 'center',
+		paddingVertical: 10,
+		paddingHorizontal: 12,
+		borderRadius: 10,
+		gap: 6,
+	},
+	tabActive: {
+		backgroundColor: colors.primary + '15',
+	},
+	tabText: {
+		fontSize: 13,
+		fontWeight: '600',
+		color: colors.orangeShade5,
+	},
+	tabTextActive: {
+		color: colors.primary,
 	},
 	kmInput: {
 		flex: 1,
