@@ -30,6 +30,7 @@ import Announcements from "./pages/Announcements";
 import BasicTables from "./pages/Tables/BasicTables";
 import FormElements from "./pages/Forms/FormElements";
 import Blank from "./pages/Blank";
+import About from "./pages/About";
 import AppLayout from "./layout/AppLayout";
 import { ScrollToTop } from "./components/common/ScrollToTop";
 import Home from "./pages/Dashboard/Home";
@@ -64,6 +65,7 @@ export default function App() {
               <Route path="/calendar" element={<Calendar />} />
               <Route path="/announcements" element={<Announcements />} />
               <Route path="/blank" element={<Blank />} />
+              <Route path="/about" element={<About />} />
 
               {/* Forms */}
               <Route path="/form-elements" element={<FormElements />} />

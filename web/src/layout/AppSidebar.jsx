@@ -27,7 +27,7 @@ const navItems = [
   {
     icon: <GridIcon />,
     name: "Dashboard",
-    subItems: [{ name: "Ecommerce", path: "/", pro: false }],
+    path: "/",
   },
   {
     icon: <BoltIcon />,
@@ -70,15 +70,11 @@ const navItems = [
     path: "/admin-logs",
   },
   {
-    icon: <CalenderIcon />,
-    name: "Calendar",
-    path: "/calendar",
-  },
-  {
     icon: <PageIcon />,
     name: "User Profile",
     path: "/profile",
   },
+  { name: "About", path: "/about", icon: <PageIcon /> },
   {
     name: "Forms",
     icon: <ListIcon />,
@@ -90,13 +86,11 @@ const navItems = [
     subItems: [{ name: "Basic Tables", path: "/basic-tables", pro: false }],
   },
   {
-    name: "Pages",
-    icon: <PageIcon />,
-    subItems: [
-      { name: "Blank Page", path: "/blank", pro: false },
-      { name: "404 Error", path: "/error-404", pro: false },
-    ],
+    icon: <CalenderIcon />,
+    name: "Calendar",
+    path: "/calendar",
   },
+  
 ];
 
 const othersItems = [
@@ -335,30 +329,27 @@ const AppSidebar = () => {
           !isExpanded && !isHovered ? "lg:justify-center" : "justify-start"
         }`}
       >
-        <Link to="/">
+        <Link to="/" className="flex items-center gap-3">
           {isExpanded || isHovered || isMobileOpen ? (
             <>
               <img
-                className="dark:hidden"
-                src="/images/logo/logo.svg"
-                alt="Logo"
-                width={150}
+                src="/src/assets/webttrac_logo_bgrm.png"
+                alt="WEBT-TRaC Logo"
+                width={40}
                 height={40}
+                className="rounded-full"
               />
-              <img
-                className="hidden dark:block"
-                src="/images/logo/logo-dark.svg"
-                alt="Logo"
-                width={150}
-                height={40}
-              />
+              <span className="text-lg font-bold text-gray-900 dark:text-white">
+                WEBT-TRaC
+              </span>
             </>
           ) : (
             <img
-              src="/images/logo/logo-icon.svg"
-              alt="Logo"
+              src="/src/assets/webttrac_logo_bgrm.png"
+              alt="WEBT-TRaC Logo"
               width={32}
               height={32}
+              className="rounded-full"
             />
           )}
         </Link>

@@ -83,17 +83,17 @@ const AppHeader = () => {
             {/* Cross Icon */}
           </button>
 
-          <Link to="/" className="lg:hidden">
+          <Link to="/" className="lg:hidden flex items-center gap-2">
             <img
-              className="dark:hidden"
-              src="./images/logo/logo.svg"
-              alt="Logo"
+              src="/src/assets/webttrac_logo_bgrm.png"
+              alt="WEBT-TRaC Logo"
+              width={32}
+              height={32}
+              className="rounded-full"
             />
-            <img
-              className="hidden dark:block"
-              src="./images/logo/logo-dark.svg"
-              alt="Logo"
-            />
+            <span className="text-lg font-bold text-gray-900 dark:text-white">
+              WEBT-TRaC
+            </span>
           </Link>
 
           <button

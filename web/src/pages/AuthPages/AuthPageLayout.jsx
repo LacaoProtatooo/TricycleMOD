@@ -14,14 +14,18 @@ export default function AuthLayout({ children }) {
             <div className="flex flex-col items-center max-w-xs">
               <Link to="/" className="block mb-4">
                 <img
-                  width={231}
-                  height={48}
-                  src="/images/logo/auth-logo.svg"
-                  alt="Logo"
+                  width={120}
+                  height={120}
+                  src="/src/assets/webttrac_logo_bgrm.png"
+                  alt="WEBT-TRaC Logo"
+                  className="rounded-full"
                 />
               </Link>
+              <h2 className="text-2xl font-bold text-white dark:text-white mb-2">
+                WEBT-TRaC
+              </h2>
               <p className="text-center text-gray-400 dark:text-white/60">
-                Free and Open-Source Tailwind CSS Admin Dashboard Template
+                Western Bicutan Tenement – Tricycle Regulatory and Compliance Admin Dashboard
               </p>
             </div>
           </div>
