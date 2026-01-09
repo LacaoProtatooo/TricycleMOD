@@ -1,5 +1,6 @@
 import PageBreadcrumb from "../components/common/PageBreadCrumb";
 import PageMeta from "../components/common/PageMeta";
+import WebttodaRouteMap from "../components/WebttodaRouteMap";
 
 export default function About() {
   const developers = [
@@ -276,6 +277,36 @@ export default function About() {
               localized user-friendly solution that is product and service
               specific to the demands of the Western Bicutan Tenement community.
             </p>
+          </div>
+        </div>
+
+        {/* WEBTTODA Route Coverage Map Section */}
+        <div className="rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-white/[0.03] lg:p-8">
+          <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4 text-center">
+            WEBTTODA Route Coverage Area
+          </h2>
+          <p className="text-gray-600 dark:text-gray-400 text-center max-w-3xl mx-auto mb-6 leading-relaxed">
+            The map below shows the official WEBTTODA tricycle route in Western
+            Bicutan Tenement with a 50-meter service coverage area highlighted.
+            This represents the designated operational zone for registered
+            tricycle drivers and operators.
+          </p>
+          <div className="rounded-xl overflow-hidden shadow-lg">
+            <WebttodaRouteMap />
+          </div>
+          <div className="mt-4 flex flex-wrap justify-center gap-6 text-sm">
+            <div className="flex items-center gap-2">
+              <div className="w-4 h-1 bg-orange-500 rounded"></div>
+              <span className="text-gray-600 dark:text-gray-400">
+                WEBTTODA Route
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="w-4 h-4 bg-orange-500/20 border border-orange-500 rounded"></div>
+              <span className="text-gray-600 dark:text-gray-400">
+                50m Coverage Area
+              </span>
+            </div>
           </div>
         </div>
 
