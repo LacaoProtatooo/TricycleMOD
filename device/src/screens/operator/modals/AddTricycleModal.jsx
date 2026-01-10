@@ -278,6 +278,12 @@ export default function AddTricycleModal({
       
       if (result.success) {
         setOrData(result.data.orData);
+        
+        // Auto-fill plate number from OR if not already filled
+        if (result.data.orData.plateNumber && !newTricycle.plateNumber) {
+          setNewTricycle(prev => ({ ...prev, plateNumber: result.data.orData.plateNumber }));
+        }
+        
         Alert.alert('Success', 'OR document scanned successfully!');
         
         // Auto-validate if both documents are scanned

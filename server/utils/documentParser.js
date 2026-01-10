@@ -88,6 +88,8 @@ export const parseCRDocument = (ocrResult) => {
       /PLATE\s*(?:NO|NUMBER|#)?\.?[:\s]*([A-Z0-9\-\s]+)/i,
       /PLATE\s*NO\.?\s*[:\s]*([A-Z0-9\-\s]+)/i,
       /REG(?:ISTRATION)?\s*(?:NO|NUMBER|#)?[:\s]*([A-Z0-9\-]+)/i,
+      /(\d{3}[A-Z]{3})/,  // Philippine format: 3 numbers + 3 letters (e.g., 985XCD)
+      /([A-Z]{3}\d{3})/,  // Alternative: 3 letters + 3 numbers (e.g., ABC123)
       /([A-Z]{2,3}[\s\-]?\d{3,4})/  // Common Philippine plate format
     ],
     mvFileNumber: [
@@ -206,6 +208,8 @@ export const parseORDocument = (ocrResult) => {
   const patterns = {
     plateNumber: [
       /PLATE\s*(?:NO|NUMBER|#)?[:\s]*([A-Z0-9\-]+)/i,
+      /(\d{3}[A-Z]{3})/,  // Philippine format: 3 numbers + 3 letters (e.g., 985XCD)
+      /([A-Z]{3}\d{3})/,  // Alternative: 3 letters + 3 numbers (e.g., ABC123)
       /([A-Z]{2,3}[\s\-]?\d{3,4})/
     ],
     orNumber: [
