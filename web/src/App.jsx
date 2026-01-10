@@ -17,6 +17,7 @@ import Bookings from "./pages/Bookings";
 import Notifications from "./pages/Notifications";
 import AdminLogs from "./pages/AdminLogs";
 import LostFound from "./pages/LostFound";
+import Leaderboard from "./pages/Leaderboard";
 import Videos from "./pages/UiElements/Videos";
 import Images from "./pages/UiElements/Images";
 import Alerts from "./pages/UiElements/Alerts";
@@ -62,6 +63,7 @@ export default function App() {
               <Route path="/notifications" element={<Notifications />} />
               <Route path="/admin-logs" element={<AdminLogs />} />
               <Route path="/lost-found" element={<LostFound />} />
+              <Route path="/leaderboard" element={<Leaderboard />} />
               <Route path="/calendar" element={<Calendar />} />
               <Route path="/announcements" element={<Announcements />} />
               <Route path="/blank" element={<Blank />} />

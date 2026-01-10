@@ -65,6 +65,11 @@ const navItems = [
     path: "/lost-found",
   },
   {
+    icon: <PieChartIcon />,
+    name: "Leaderboard",
+    path: "/leaderboard",
+  },
+  {
     icon: <ListIcon />,
     name: "Admin Logs",
     path: "/admin-logs",

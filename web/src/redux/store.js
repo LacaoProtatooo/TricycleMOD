@@ -10,6 +10,7 @@ import dashboardReducer from './reducers/dashboardReducer';
 import userListReducer from './reducers/userListReducer';
 import adminLogsReducer from './reducers/adminLogsReducer';
 import lostFoundReducer from './reducers/lostFoundReducer';
+import leaderboardReducer from './reducers/leaderboardReducer';
 
 const store = configureStore({
   reducer: {
@@ -24,6 +25,7 @@ const store = configureStore({
     userList: userListReducer,
     adminLogs: adminLogsReducer,
     lostFound: lostFoundReducer,
+    leaderboard: leaderboardReducer,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({
