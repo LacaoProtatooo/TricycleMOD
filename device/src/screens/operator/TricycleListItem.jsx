@@ -149,7 +149,7 @@ export default function TricycleListItem({
             {tricycle.currentOdometer > 0 && (
               <>
                 <Text style={styles.meta}>•</Text>
-                <Text style={styles.meta}>{tricycle.currentOdometer.toFixed(1)} km</Text>
+                <Text style={styles.meta}>{Math.round(tricycle.currentOdometer)} km</Text>
               </>
             )}
           </View>

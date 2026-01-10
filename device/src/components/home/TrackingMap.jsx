@@ -296,7 +296,7 @@ export default function TrackingMap({ follow = true, onEnterTerminalZone, odomet
             );
             if (meters > 0.2) {
               setOdometerKm((prev) => {
-                const nextKm = +(prev + meters / 1000).toFixed(3);
+                const nextKm = Math.round(prev + meters / 1000);
                 AsyncStorage.setItem(KM_KEY, String(nextKm)).catch(() => {});
                 return nextKm;
               });
@@ -1189,7 +1189,7 @@ ${trackPoints}
         </View>
         <View style={styles.hudRow}>
           <Text style={styles.hudLabel}>Odometer</Text>
-          <Text style={styles.hudValue}>{odometerKm.toFixed(3)} km</Text>
+          <Text style={styles.hudValue}>{Math.round(odometerKm)} km</Text>
         </View>
 
         {/* Trip Recording Controls */}

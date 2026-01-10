@@ -65,7 +65,7 @@ TaskManager.defineTask(BG_TASK_NAME, async ({ data, error }) => {
         // optional dt check
         const dt = curTs && lastTs ? (curTs - lastTs) / 1000 : null;
         if (meters > 0.25 && (!dt || dt >= 0)) {
-          odometer = +(odometer + meters / 1000).toFixed(3);
+          odometer = Math.round(odometer + meters / 1000);
           odometerChanged = true;
         }
       }

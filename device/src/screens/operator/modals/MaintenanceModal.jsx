@@ -145,7 +145,7 @@ export default function MaintenanceModal({
       '═══════════════════════════════════════════',
       '',
       `Vehicle: ${plateNumber}`,
-      `Odometer: ${selectedTricycle?.currentOdometer?.toLocaleString() || 0} km`,
+      `Odometer: ${Math.round(selectedTricycle?.currentOdometer || 0).toLocaleString()} km`,
       `Generated: ${formatDateTime(new Date().toISOString())}`,
       `Total Records: ${filteredHistory.length}`,
       '',
@@ -218,7 +218,7 @@ export default function MaintenanceModal({
             <View style={{ flex: 1 }}>
               <Text style={styles.modalTitle}>Maintenance History</Text>
               <Text style={styles.modalSub}>
-                {plateNumber} • {selectedTricycle?.currentOdometer?.toLocaleString() || 0} km
+                {plateNumber} • {Math.round(selectedTricycle?.currentOdometer || 0).toLocaleString()} km
               </Text>
             </View>
             <TouchableOpacity onPress={onClose} style={modalStyles.closeBtn}>

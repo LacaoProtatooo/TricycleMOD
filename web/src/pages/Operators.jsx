@@ -513,7 +513,7 @@ const Operators = () => {
 
                       {/* Odometer */}
                       <div className="mt-2 flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
-                        <span>Odometer: {tricycle.currentOdometer?.toLocaleString() || 0} km</span>
+                        <span>Odometer: {Math.round(tricycle.currentOdometer || 0).toLocaleString()} km</span>
                         <button
                           onClick={(e) => handleViewMaintenance(tricycle, e)}
                           className="inline-flex items-center gap-1 px-2 py-1 text-xs font-medium text-brand-600 dark:text-brand-400 hover:bg-brand-50 dark:hover:bg-brand-900/20 rounded transition-colors"

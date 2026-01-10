@@ -463,7 +463,7 @@ const MaintenanceTracker = ({ tricycleId, serverHistory }) => {
             {/* Realtime odometer */}
             <View style={styles.odometerRow}>
                 <Text style={styles.odometerLabel}>Odometer</Text>
-                <Text style={styles.odometerValue}>{odometerKm !== null ? `${odometerKm.toFixed(3)} km` : '—'}</Text>
+                <Text style={styles.odometerValue}>{odometerKm !== null ? `${Math.round(odometerKm)} km` : '—'}</Text>
             </View>
 
 			{/* Tab Switcher */}
