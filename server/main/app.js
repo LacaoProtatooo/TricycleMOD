@@ -19,6 +19,7 @@ import trackingRoutes from '../routes/trackingRoute.js';
 import dashboardRoutes from '../routes/dashboardRoute.js';
 import userActivityRoutes from '../routes/userActivityRoute.js';
 import adminRoutes from '../routes/adminRoute.js';
+import leaderboardRoutes from '../routes/leaderboardRoute.js';
 
 
 const app = express();
@@ -73,6 +74,7 @@ app.use('/api/tracking', trackingRoutes);
 app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/activity', userActivityRoutes);
 app.use('/api/admin', adminRoutes);
+app.use('/api/leaderboard', leaderboardRoutes);
 
 
 // Fallback for unknown routes

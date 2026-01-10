@@ -20,6 +20,7 @@ import ChatMenu from '../message/chatMenu';
 import LostFoundScreen from './LostFoundScreen';
 import GuestMain from '../guest/main';
 import DriverBookingScreen from '../driver/DriverBookingScreen';
+import LeaderboardTab from '../dashboard/LeaderboardTab';
 
 const Tab = createBottomTabNavigator();
 
@@ -96,6 +97,19 @@ const Home = () => {
               title: 'Trips',
               tabBarIcon: ({ color, size }) => (
                 <Ionicons name="bicycle-outline" size={size} color={color} />
+              ) 
+            }}
+          />
+        )}
+        {/* Leaderboard Tab - Only for drivers */}
+        {currentUser?.role === 'driver' && (
+          <Tab.Screen
+            name="Leaderboard"
+            component={LeaderboardTab}
+            options={{ 
+              title: 'Ranks',
+              tabBarIcon: ({ color, size }) => (
+                <Ionicons name="trophy-outline" size={size} color={color} />
               ) 
             }}
           />

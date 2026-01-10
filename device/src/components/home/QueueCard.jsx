@@ -210,13 +210,35 @@ const QueueCard = ({ token, BACKEND, assignedTricycle, userId }) => {
       if (dist > threshold && !autoCancelling) {
         setAutoCancelling(true);
         try {
-          const res = await fetch(`${BACKEND}/api/queue/${myEntry._id}`, {
-            method: 'DELETE',
-            headers: { Authorization: `Bearer ${token}` }
-          });
-          if (res.ok) {
-            setQueue((prev) => prev.filter((q) => String(q._id) !== String(myEntry._id)));
-            Alert.alert('Queue', 'You left the terminal zone. Removed from queue.');
+          // If driver is position 1 (first in queue), treat leaving as a trip departure
+          if (position === 1 || myEntry.status === 'called') {
+            // Auto-depart: count as trip and advance queue
+            const res = await fetch(`${BACKEND}/api/queue/advance?terminal=${encodeURIComponent(myEntry.terminal || terminalId)}`, {
+              method: 'POST',
+              headers: { Authorization: `Bearer ${token}` },
+            });
+            if (res.ok) {
+              Alert.alert('Queue', 'You left the terminal zone. Trip counted and queue advanced.');
+              // Refresh queue
+              const qRes = await fetch(`${BACKEND}/api/queue?terminal=${encodeURIComponent(myEntry.terminal || terminalId)}`, { 
+                headers: { Authorization: `Bearer ${token}` } 
+              });
+              const qJson = await qRes.json();
+              if (qJson.success) {
+                const sorted = (qJson.data || []).sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt));
+                setQueue(sorted);
+              }
+            }
+          } else {
+            // Not first in queue - just cancel (remove from queue without counting trip)
+            const res = await fetch(`${BACKEND}/api/queue/${myEntry._id}`, {
+              method: 'DELETE',
+              headers: { Authorization: `Bearer ${token}` }
+            });
+            if (res.ok) {
+              setQueue((prev) => prev.filter((q) => String(q._id) !== String(myEntry._id)));
+              Alert.alert('Queue', 'You left the terminal zone. Removed from queue.');
+            }
           }
         } catch (e) {
           console.warn('auto cancel error', e);
