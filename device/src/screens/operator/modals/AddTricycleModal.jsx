@@ -514,7 +514,13 @@ export default function AddTricycleModal({
                     style={styles.textInput}
                     placeholder="Body Number"
                     value={newTricycle.bodyNumber}
-                    onChangeText={(text) => setNewTricycle({ ...newTricycle, bodyNumber: text.toUpperCase() })}
+                    onChangeText={(text) => {
+                      // Allow digits only and limit to 4 characters
+                      const sanitized = (text || '').replace(/\D/g, '').slice(0, 4);
+                      setNewTricycle({ ...newTricycle, bodyNumber: sanitized });
+                    }}
+                    keyboardType="numeric"
+                    maxLength={4}
                     editable={!creating}
                   />
                   
@@ -884,7 +890,7 @@ export default function AddTricycleModal({
               
               <TouchableOpacity 
                 style={[styles.modalBtn, { backgroundColor: colors.primary }]} 
-                onPress={activeTab === 'documents' && (crData || orData) ? handleSubmitWithDocuments : onSubmit} 
+                onPress={activeTab === 'documents' && (crData || orData) ? handleSubmitWithDocuments : () => onSubmit(newTricycle)} 
                 disabled={creating}
               >
                 {creating ? (

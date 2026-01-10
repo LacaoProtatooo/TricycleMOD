@@ -6,17 +6,22 @@ const tricycleSchema = new mongoose.Schema({
         required: [true, 'Plate number is required'],
         trim: true,
         uppercase: true,
-        match: [/^[A-Z]{3}[0-9]{3}$/, 'Plate number must be 3 letters followed by 3 numbers (e.g., ABC123)'],
+        match: [/^[0-9]{3}[A-Z]{3}$/, 'Plate number must be 3 numbers followed by 3 letters (e.g., 123ABC)'],
         maxlength: [6, 'Plate number must be exactly 6 characters'],
         minlength: [6, 'Plate number must be exactly 6 characters']
     },
     bodyNumber: {
         type: String,
         trim: true,
-        uppercase: true,
-        match: [/^[0-9]{2}$/, 'Body number must be exactly 2 digits (e.g., 01, 99)'],
-        maxlength: [2, 'Body number must be exactly 2 digits'],
-        minlength: [2, 'Body number must be exactly 2 digits']
+        // Validation only applies if value is provided (not empty)
+        validate: {
+            validator: function(v) {
+                // Allow empty/null values, only validate if there's a value
+                if (!v || v === '') return true;
+                return /^[0-9]{4}$/.test(v); // Exactly 4 digits
+            },
+            message: 'Body number must be exactly 4 digits (e.g., 0001, 1234)'
+        }
     },
     model: {
         type: String,

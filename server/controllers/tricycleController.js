@@ -237,11 +237,11 @@ export const createTricycle = async (req, res) => {
   try {
     const { plateNumber, bodyNumber, model, driver, status, currentOdometer } = req.body;
 
-    // Validate required fields
-    if (!plateNumber || !model || !bodyNumber) {
+    // Validate required fields (bodyNumber is optional)
+    if (!plateNumber || !model) {
       return res.status(400).json({
         success: false,
-        message: "Plate number, body number, and model are required.",
+        message: "Plate number and model are required.",
       });
     }
 
