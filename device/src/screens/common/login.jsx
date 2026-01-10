@@ -48,10 +48,12 @@ const Login = () => {
   const apiURL = BACKEND_URL || 'http://192.168.254.105:5000';
 
   const navigateAfterLogin = (user) => {
+    // Route operators to OperatorScreen, others to Home
+    const targetScreen = user?.role === 'operator' ? 'OperatorScreen' : 'Home';
     navigation.dispatch(
       CommonActions.reset({
         index: 0,
-        routes: [{ name: user?.isAdmin ? 'Adminhome' : 'Home' }],
+        routes: [{ name: user?.isAdmin ? 'Adminhome' : targetScreen }],
       })
     );
   };

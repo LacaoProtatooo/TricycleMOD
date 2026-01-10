@@ -16,6 +16,7 @@ import TricycleListItem from '../TricycleListItem';
 import ErrorDisplay from '../../../components/common/ErrorDisplay';
 import EmptyState from '../../../components/common/EmptyState';
 import LoadingScreen from '../../../components/common/LoadingScreen';
+import WeatherWidget from '../../../components/home/WeatherWidget';
 import styles from '../operatorStyles';
 
 const { width: screenWidth } = Dimensions.get('window');
@@ -145,6 +146,11 @@ export default function OverviewTab({
             </View>
 
             {error && <ErrorDisplay error={error} onRetry={onRefresh} />}
+
+            {/* Weather Widget */}
+            <View style={localStyles.weatherContainer}>
+              <WeatherWidget />
+            </View>
 
             {/* Stats Cards */}
             <ScrollView 
@@ -277,6 +283,11 @@ const getIntervalForItem = (itemKey) => {
 };
 
 const localStyles = StyleSheet.create({
+  weatherContainer: {
+    paddingHorizontal: spacing.medium,
+    paddingTop: spacing.small,
+    paddingBottom: spacing.small,
+  },
   statsContainer: {
     paddingHorizontal: spacing.medium,
     paddingVertical: spacing.small,

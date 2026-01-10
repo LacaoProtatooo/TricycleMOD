@@ -345,6 +345,7 @@ export default function OperatorScreen({ navigation }) {
         })}
       >
         <Tab.Screen 
+
           name="Overview"
           options={{ headerShown: false }}
         >

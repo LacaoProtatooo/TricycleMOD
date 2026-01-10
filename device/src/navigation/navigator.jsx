@@ -199,7 +199,7 @@ const Navigator = () => {
           {/* Stack Navigator */}
           <Stack.Navigator 
             screenOptions={{ headerShown: false }}
-            initialRouteName={user ? 'Home' : 'Login'}
+            initialRouteName={user ? (user.role === 'operator' ? 'OperatorScreen' : 'Home') : 'Login'}
           >
             {/* Always include all screens for navigation to work properly */}
             <Stack.Screen name="Login" component={Login} />
