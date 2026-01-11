@@ -1,19 +1,21 @@
 // AppDrawer.jsx
 import React, { useState, useCallback } from 'react';
-import { View, StyleSheet, Dimensions, TouchableOpacity } from 'react-native';
+import { View, StyleSheet, Dimensions, TouchableOpacity, Platform, StatusBar } from 'react-native';
 import { DrawerContentScrollView, DrawerItem } from '@react-navigation/drawer';
 import { Avatar, Text, IconButton, Divider, Drawer } from 'react-native-paper';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getUserCredentials } from '../../utils/userStorage';
 import defaultAvatar from '../../../assets/webttrac_logo_bgrm.png';
 import { colors, spacing, fonts } from './theme';
 
-const SCREEN_HEIGHT = Dimensions.get('window').height;
+const SCREEN_HEIGHT = Dimensions.get('screen').height;
 const SCREEN_WIDTH = Dimensions.get('window').width;
 
 const AppDrawer = ({ closeDrawer, navigation }) => {
   const [user, setUser] = useState(null);
+  const insets = useSafeAreaInsets();
 
   // Check if driver is suspended
   const isDriverSuspended = user && user.role === 'driver' && user.isSuspended && 
@@ -64,12 +66,13 @@ const AppDrawer = ({ closeDrawer, navigation }) => {
   return (
     <View style={styles.overlay}>
       {/* Drawer container on the LEFT - takes half screen */}
-      <View style={styles.container}>
+      <View style={[styles.container, { paddingBottom: insets.bottom }]}>
         <DrawerContentScrollView
-          contentContainerStyle={styles.scrollContent}
+          contentContainerStyle={[styles.scrollContent, { paddingBottom: insets.bottom + 20 }]}
           showsVerticalScrollIndicator={false}
+          bounces={false}
         >
-          <View style={styles.drawerContent}>
+          <View style={[styles.drawerContent, { paddingTop: insets.top > 0 ? insets.top : 10 }]}>
             {/* Close Button */}
             {/* <IconButton
               icon="close"
@@ -368,28 +371,30 @@ const styles = StyleSheet.create({
     right: 0,
     bottom: 0,
     flexDirection: 'row',
+    zIndex: 1000,
   },
   container: {
-    width: SCREEN_WIDTH * 0.6, // Takes half of screen width - LEFT SIDE
-    height: SCREEN_HEIGHT, // Full height for proper scrolling
+    width: SCREEN_WIDTH * 0.65, // Slightly wider for better visibility
+    height: '100%', // Use percentage for full height
     backgroundColor: colors.background,
     shadowColor: '#000',
-    shadowOffset: { width: 2, height: 0 }, // Changed to positive for right shadow
+    shadowOffset: { width: 2, height: 0 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 16,
   },
   overlayBackground: {
     flex: 1,
-    backgroundColor: 'rgba(0, 0, 0, 0.5)', // Semi-transparent dark overlay - RIGHT SIDE
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
   },
   scrollContent: {
     flexGrow: 1,
+    minHeight: '100%',
   },
   drawerContent: {
     flex: 1,
-    paddingTop: 10,
-    paddingBottom: 20,
+    paddingBottom: 30,
+    minHeight: SCREEN_HEIGHT - 100,
   },
   closeButton: {
     alignSelf: 'flex-end',
@@ -466,7 +471,9 @@ const styles = StyleSheet.create({
   },
   footer: {
     marginTop: 'auto',
-    padding: spacing.medium,
+    paddingHorizontal: spacing.medium,
+    paddingTop: spacing.medium,
+    paddingBottom: spacing.large,
     alignItems: 'center',
   },
   versionText: {

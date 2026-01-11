@@ -151,7 +151,7 @@ export default function MonthlyTarget({ stats, loading }) {
         <p className="mx-auto mt-10 w-full max-w-[380px] text-center text-sm text-gray-500 sm:text-base">
           {loading ? 'Loading...' : (
             currentMonthRevenue > 0 
-              ? `You've earned ${formatCurrency(currentMonthRevenue)} this month from ${currentMonthTrips} completed trips.`
+              ? `WEBTTODA earned ${formatCurrency(currentMonthRevenue)} this month from ${currentMonthTrips} completed trips.`
               : 'No completed trips this month yet.'
           )}
         </p>

@@ -239,7 +239,7 @@ export default function About() {
         {/* Introduction Section */}
         <div className="rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-white/[0.03] lg:p-8">
           <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4 text-center">
-            Introduction
+            Tricycles in Western Bicutan Tenement
           </h2>
           <div className="text-gray-600 dark:text-gray-400 leading-relaxed space-y-4 max-w-4xl mx-auto">
             <p>
@@ -269,7 +269,7 @@ export default function About() {
         {/* Background Section */}
         <div className="rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-white/[0.03] lg:p-8">
           <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-4 text-center">
-            Background of the Study
+            Tricycles as Mode of Transportation
           </h2>
           <div className="text-gray-600 dark:text-gray-400 leading-relaxed space-y-4 max-w-4xl mx-auto">
             <p>
