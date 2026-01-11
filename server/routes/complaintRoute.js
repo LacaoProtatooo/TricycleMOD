@@ -18,8 +18,26 @@ import {
   operatorAddResponse,
   getDriverComplaintSummary,
   analyzeComplaintSentiment,
+  detectBodyNumberFromImage,
+  lookupByBodyNumber,
 } from '../controllers/complaintController.js';
 import { protect, authorize } from '../middleware/authMiddleware.js';
+import multer from 'multer';
+
+// Configure multer for image upload
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: 10 * 1024 * 1024, // 10MB limit
+  },
+  fileFilter: (req, file, cb) => {
+    if (file.mimetype.startsWith('image/')) {
+      cb(null, true);
+    } else {
+      cb(new Error('Only image files are allowed'), false);
+    }
+  },
+});
 
 const router = express.Router();
 
@@ -37,6 +55,11 @@ router.get('/drivers', protect, getDriversForComplaint);
 router.get('/recent-bookings', protect, getRecentBookings);
 router.get('/my-complaints', protect, getMyComplaints);
 router.post('/analyze-sentiment', protect, analyzeComplaintSentiment);
+
+// Body number OCR detection routes
+router.post('/detect-body-number', protect, upload.single('image'), detectBodyNumberFromImage);
+router.get('/lookup-body-number/:bodyNumber', protect, lookupByBodyNumber);
+
 router.post('/', protect, fileComplaint);
 router.get('/:id', protect, getComplaintDetails);
 router.put('/:id/withdraw', protect, withdrawComplaint);

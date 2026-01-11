@@ -6,6 +6,10 @@ import Tricycle from '../models/tricycleModel.js';
 import cloudinary from '../utils/cloudinaryConfig.js';
 import { messaging } from '../utils/firebase.js';
 import { analyzeComplaint, analyzeSentiment } from '../utils/sentimentAnalysis.js';
+import { detectBodyNumber, formatBodyNumber } from '../utils/bodyNumberOCR.js';
+import fs from 'fs';
+import path from 'path';
+import os from 'os';
 
 /**
  * Complaint Controller
@@ -1493,6 +1497,163 @@ export const getDriverComplaintSummary = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to fetch driver summary',
+      error: error.message,
+    });
+  }
+};
+/**
+ * Detect body number from uploaded image using OCR
+ * POST /api/complaints/detect-body-number
+ */
+export const detectBodyNumberFromImage = async (req, res) => {
+  let tempFilePath = null;
+  
+  try {
+    // Check if file was uploaded
+    if (!req.file) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please upload an image of the tricycle body number',
+      });
+    }
+    
+    // Save buffer to temp file for OCR processing
+    const tempDir = path.join(os.tmpdir(), 'tmod_ocr');
+    if (!fs.existsSync(tempDir)) {
+      fs.mkdirSync(tempDir, { recursive: true });
+    }
+    
+    tempFilePath = path.join(tempDir, `body_${Date.now()}_${Math.random().toString(36).substr(2, 9)}.jpg`);
+    fs.writeFileSync(tempFilePath, req.file.buffer);
+    
+    // Run body number detection
+    const result = await detectBodyNumber(tempFilePath);
+    
+    if (!result.success) {
+      return res.status(200).json({
+        success: false,
+        message: result.error || 'Could not detect body number in image',
+        rawText: result.rawText || '',
+        suggestion: 'Please ensure the body number is clearly visible and try again, or enter it manually.',
+      });
+    }
+    
+    // Check if detected body number exists in database
+    let tricycleMatch = null;
+    if (result.bodyNumber) {
+      tricycleMatch = await Tricycle.findOne({ bodyNumber: result.bodyNumber })
+        .populate('driver', 'firstname lastname image')
+        .populate('operator', 'firstname lastname')
+        .select('plateNumber bodyNumber model status driver operator');
+    }
+    
+    res.status(200).json({
+      success: true,
+      bodyNumber: result.bodyNumber,
+      confidence: result.confidence,
+      original: result.original,
+      candidates: result.candidates,
+      tricycleMatch: tricycleMatch ? {
+        _id: tricycleMatch._id,
+        plateNumber: tricycleMatch.plateNumber,
+        bodyNumber: tricycleMatch.bodyNumber,
+        model: tricycleMatch.model,
+        status: tricycleMatch.status,
+        driver: tricycleMatch.driver ? {
+          _id: tricycleMatch.driver._id,
+          name: `${tricycleMatch.driver.firstname} ${tricycleMatch.driver.lastname}`,
+          profilePicture: tricycleMatch.driver.image?.url,
+        } : null,
+        operator: tricycleMatch.operator ? {
+          _id: tricycleMatch.operator._id,
+          name: `${tricycleMatch.operator.firstname} ${tricycleMatch.operator.lastname}`,
+        } : null,
+      } : null,
+      message: tricycleMatch 
+        ? `Body number ${result.bodyNumber} found! Tricycle is registered.`
+        : `Body number ${result.bodyNumber} detected but not found in our records.`,
+    });
+    
+  } catch (error) {
+    console.error('Error detecting body number:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to process image',
+      error: error.message,
+    });
+  } finally {
+    // Clean up temp file
+    if (tempFilePath && fs.existsSync(tempFilePath)) {
+      try {
+        fs.unlinkSync(tempFilePath);
+      } catch (e) {
+        console.error('Failed to delete temp file:', e);
+      }
+    }
+  }
+};
+
+/**
+ * Lookup tricycle by body number
+ * GET /api/complaints/lookup-body-number/:bodyNumber
+ */
+export const lookupByBodyNumber = async (req, res) => {
+  try {
+    const { bodyNumber } = req.params;
+    
+    if (!bodyNumber) {
+      return res.status(400).json({
+        success: false,
+        message: 'Body number is required',
+      });
+    }
+    
+    // Format and search
+    const formattedNumber = formatBodyNumber(bodyNumber);
+    
+    const tricycle = await Tricycle.findOne({ 
+      $or: [
+        { bodyNumber: formattedNumber },
+        { bodyNumber: bodyNumber.trim() },
+        { bodyNumber: bodyNumber.trim().padStart(4, '0') },
+      ]
+    })
+      .populate('driver', 'firstname lastname image phone')
+      .populate('operator', 'firstname lastname phone')
+      .select('plateNumber bodyNumber model status driver operator');
+    
+    if (!tricycle) {
+      return res.status(200).json({
+        success: false,
+        message: `No tricycle found with body number ${bodyNumber}`,
+      });
+    }
+    
+    res.status(200).json({
+      success: true,
+      tricycle: {
+        _id: tricycle._id,
+        plateNumber: tricycle.plateNumber,
+        bodyNumber: tricycle.bodyNumber,
+        model: tricycle.model,
+        status: tricycle.status,
+        driver: tricycle.driver ? {
+          _id: tricycle.driver._id,
+          name: `${tricycle.driver.firstname} ${tricycle.driver.lastname}`,
+          profilePicture: tricycle.driver.image?.url,
+        } : null,
+        operator: tricycle.operator ? {
+          _id: tricycle.operator._id,
+          name: `${tricycle.operator.firstname} ${tricycle.operator.lastname}`,
+        } : null,
+      },
+    });
+    
+  } catch (error) {
+    console.error('Error looking up body number:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to lookup body number',
       error: error.message,
     });
   }

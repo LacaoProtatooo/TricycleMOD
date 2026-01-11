@@ -80,6 +80,11 @@ const ComplaintScreen = ({ navigation }) => {
   const [sentimentAnalysis, setSentimentAnalysis] = useState(null);
   const [analyzingSentiment, setAnalyzingSentiment] = useState(false);
   
+  // Body Number OCR Detection state
+  const [scanningBodyNumber, setScanningBodyNumber] = useState(false);
+  const [bodyNumberDetection, setBodyNumberDetection] = useState(null);
+  const [showBodyNumberScanner, setShowBodyNumberScanner] = useState(false);
+  
   // Loading states
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -273,6 +278,160 @@ const ComplaintScreen = ({ navigation }) => {
       console.error('Error analyzing sentiment:', error);
     } finally {
       setAnalyzingSentiment(false);
+    }
+  };
+
+  // Body number OCR detection from camera
+  const scanBodyNumber = async () => {
+    try {
+      const { status } = await ImagePicker.requestCameraPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission Denied', 'Camera permission is required to scan body numbers.');
+        return;
+      }
+      
+      const result = await ImagePicker.launchCameraAsync({
+        quality: 0.8,
+        base64: true,
+      });
+      
+      if (!result.canceled && result.assets?.[0]) {
+        setScanningBodyNumber(true);
+        const asset = result.assets[0];
+        
+        const token = await getToken(db);
+        if (!token) {
+          Alert.alert('Error', 'Please login to use this feature.');
+          return;
+        }
+        
+        // Create form data with the image
+        const formData = new FormData();
+        formData.append('image', {
+          uri: asset.uri,
+          type: 'image/jpeg',
+          name: 'body_number.jpg',
+        });
+        
+        const response = await axios.post(`${API_URL}/detect-body-number`, formData, {
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'multipart/form-data',
+          },
+        });
+        
+        if (response.data.success) {
+          setBodyNumberDetection(response.data);
+          
+          // Auto-fill body number
+          setTricycleDetails(prev => ({
+            ...prev,
+            bodyNumber: response.data.bodyNumber,
+          }));
+          
+          // If tricycle was found in database, offer to auto-fill driver
+          if (response.data.tricycleMatch?.driver) {
+            Alert.alert(
+              'Tricycle Found!',
+              `Body number ${response.data.bodyNumber} is registered to ${response.data.tricycleMatch.driver.name}. Would you like to select this driver?`,
+              [
+                { text: 'No, keep manual entry', style: 'cancel' },
+                { 
+                  text: 'Yes, select driver', 
+                  onPress: () => {
+                    setSelectedDriver({
+                      _id: response.data.tricycleMatch.driver._id,
+                      firstname: response.data.tricycleMatch.driver.name.split(' ')[0],
+                      lastname: response.data.tricycleMatch.driver.name.split(' ').slice(1).join(' '),
+                      image: { url: response.data.tricycleMatch.driver.profilePicture },
+                    });
+                    setTricycleDetails({ plateNumber: '', bodyNumber: '', description: '' });
+                  }
+                },
+              ]
+            );
+          } else {
+            Alert.alert(
+              'Body Number Detected',
+              `Detected: ${response.data.bodyNumber} (${response.data.confidence}% confidence)\n\n${response.data.message}`,
+              [{ text: 'OK' }]
+            );
+          }
+        } else {
+          Alert.alert(
+            'Detection Failed',
+            response.data.message || 'Could not detect body number. Please try again or enter manually.',
+            [{ text: 'OK' }]
+          );
+        }
+      }
+    } catch (error) {
+      console.error('Error scanning body number:', error);
+      Alert.alert('Error', 'Failed to scan body number. Please try again or enter manually.');
+    } finally {
+      setScanningBodyNumber(false);
+    }
+  };
+
+  // Lookup body number in database
+  const lookupBodyNumber = async () => {
+    const bodyNumber = tricycleDetails.bodyNumber.trim();
+    if (!bodyNumber) {
+      Alert.alert('Enter Body Number', 'Please enter a body number to lookup.');
+      return;
+    }
+    
+    try {
+      setScanningBodyNumber(true);
+      const token = await getToken(db);
+      if (!token) return;
+      
+      const response = await axios.get(`${API_URL}/lookup-body-number/${bodyNumber}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      
+      if (response.data.success && response.data.tricycle) {
+        const tricycle = response.data.tricycle;
+        
+        if (tricycle.driver) {
+          Alert.alert(
+            'Tricycle Found!',
+            `Body number ${tricycle.bodyNumber} is registered.\n\nPlate: ${tricycle.plateNumber}\nDriver: ${tricycle.driver.name}`,
+            [
+              { text: 'Keep manual entry', style: 'cancel' },
+              { 
+                text: 'Select this driver', 
+                onPress: () => {
+                  setSelectedDriver({
+                    _id: tricycle.driver._id,
+                    firstname: tricycle.driver.name.split(' ')[0],
+                    lastname: tricycle.driver.name.split(' ').slice(1).join(' '),
+                    image: { url: tricycle.driver.profilePicture },
+                  });
+                  setTricycleDetails({ plateNumber: '', bodyNumber: '', description: '' });
+                }
+              },
+            ]
+          );
+        } else {
+          Alert.alert(
+            'Tricycle Found',
+            `Body number ${tricycle.bodyNumber} is registered but has no assigned driver.\n\nPlate: ${tricycle.plateNumber}`,
+            [{ text: 'OK' }]
+          );
+        }
+      } else {
+        Alert.alert(
+          'Not Found',
+          `Body number "${bodyNumber}" is not registered in our system.`,
+          [{ text: 'OK' }]
+        );
+      }
+    } catch (error) {
+      console.error('Error looking up body number:', error);
+      Alert.alert('Error', 'Failed to lookup body number.');
+    } finally {
+      setScanningBodyNumber(false);
     }
   };
 
@@ -589,13 +748,65 @@ const ComplaintScreen = ({ navigation }) => {
                   value={tricycleDetails.plateNumber}
                   onChangeText={(text) => setTricycleDetails({ ...tricycleDetails, plateNumber: text })}
                 />
-                <TextInput
-                  style={styles.input}
-                  placeholder="Body Number"
-                  placeholderTextColor={colors.placeholder}
-                  value={tricycleDetails.bodyNumber}
-                  onChangeText={(text) => setTricycleDetails({ ...tricycleDetails, bodyNumber: text })}
-                />
+                
+                {/* Body Number with OCR Scanner */}
+                <View style={styles.bodyNumberContainer}>
+                  <TextInput
+                    style={[styles.input, styles.bodyNumberInput]}
+                    placeholder="Body Number (e.g., 0001)"
+                    placeholderTextColor={colors.placeholder}
+                    value={tricycleDetails.bodyNumber}
+                    onChangeText={(text) => setTricycleDetails({ ...tricycleDetails, bodyNumber: text })}
+                    keyboardType="numeric"
+                    maxLength={4}
+                  />
+                  <View style={styles.bodyNumberButtons}>
+                    <TouchableOpacity
+                      style={styles.scanButton}
+                      onPress={scanBodyNumber}
+                      disabled={scanningBodyNumber}
+                    >
+                      {scanningBodyNumber ? (
+                        <ActivityIndicator size="small" color="#fff" />
+                      ) : (
+                        <>
+                          <Ionicons name="camera" size={18} color="#fff" />
+                          <Text style={styles.scanButtonText}>Scan</Text>
+                        </>
+                      )}
+                    </TouchableOpacity>
+                    {tricycleDetails.bodyNumber.length > 0 && (
+                      <TouchableOpacity
+                        style={styles.lookupButton}
+                        onPress={lookupBodyNumber}
+                        disabled={scanningBodyNumber}
+                      >
+                        <Ionicons name="search" size={18} color={colors.primary} />
+                      </TouchableOpacity>
+                    )}
+                  </View>
+                </View>
+                
+                {/* Body Number Detection Result */}
+                {bodyNumberDetection && (
+                  <View style={styles.detectionResult}>
+                    <Ionicons 
+                      name={bodyNumberDetection.tricycleMatch ? "checkmark-circle" : "information-circle"} 
+                      size={16} 
+                      color={bodyNumberDetection.tricycleMatch ? "#28a745" : colors.primary} 
+                    />
+                    <Text style={[
+                      styles.detectionText,
+                      { color: bodyNumberDetection.tricycleMatch ? "#28a745" : colors.text }
+                    ]}>
+                      {bodyNumberDetection.tricycleMatch 
+                        ? `Verified: ${bodyNumberDetection.bodyNumber} (${bodyNumberDetection.confidence}%)`
+                        : `Detected: ${bodyNumberDetection.bodyNumber} (${bodyNumberDetection.confidence}%)`
+                      }
+                    </Text>
+                  </View>
+                )}
+                
                 <TextInput
                   style={[styles.input, styles.textArea]}
                   placeholder="Physical description of the tricycle"
@@ -1364,6 +1575,60 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: colors.orangeShade7,
     marginBottom: 10,
+  },
+  // Body Number OCR Scanner Styles
+  bodyNumberContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 10,
+  },
+  bodyNumberInput: {
+    flex: 1,
+    marginBottom: 0,
+  },
+  bodyNumberButtons: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  scanButton: {
+    backgroundColor: colors.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    borderRadius: 10,
+    minWidth: 80,
+    justifyContent: 'center',
+  },
+  scanButtonText: {
+    color: '#fff',
+    fontSize: 13,
+    fontWeight: '600',
+  },
+  lookupButton: {
+    backgroundColor: '#fff',
+    borderWidth: 1,
+    borderColor: colors.primary,
+    paddingHorizontal: 12,
+    paddingVertical: 12,
+    borderRadius: 10,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  detectionResult: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#f0f9ff',
+    padding: 10,
+    borderRadius: 8,
+    marginBottom: 10,
+  },
+  detectionText: {
+    fontSize: 13,
+    fontWeight: '500',
   },
   textArea: {
     height: 60,
