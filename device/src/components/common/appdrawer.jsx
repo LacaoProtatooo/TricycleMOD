@@ -242,18 +242,32 @@ const AppDrawer = ({ closeDrawer, navigation }) => {
   
                   {/* Only show Operator for operators */}
                   {user.role === 'operator' && (
-                    <DrawerItem
-                      icon={({ focused }) => renderIcon('settings-outline', focused)}
-                      label="Operator"
-                      labelStyle={styles.drawerLabel}
-                      activeBackgroundColor={`${colors.ivory4}CC`}
-                      activeTintColor={colors.primary}
-                      inactiveTintColor={colors.orangeShade8}
-                      onPress={() => {
-                        navigateSafe('OperatorScreen');
-                        closeDrawer();
-                      }}
-                    />
+                    <>
+                      <DrawerItem
+                        icon={({ focused }) => renderIcon('settings-outline', focused)}
+                        label="Operator"
+                        labelStyle={styles.drawerLabel}
+                        activeBackgroundColor={`${colors.ivory4}CC`}
+                        activeTintColor={colors.primary}
+                        inactiveTintColor={colors.orangeShade8}
+                        onPress={() => {
+                          navigateSafe('OperatorScreen');
+                          closeDrawer();
+                        }}
+                      />
+                      <DrawerItem
+                        icon={({ focused }) => renderIcon('cash-outline', focused)}
+                        label="Boundary Settlements"
+                        labelStyle={styles.drawerLabel}
+                        activeBackgroundColor={`${colors.ivory4}CC`}
+                        activeTintColor={colors.primary}
+                        inactiveTintColor={colors.orangeShade8}
+                        onPress={() => {
+                          navigateSafe('BoundarySettlements');
+                          closeDrawer();
+                        }}
+                      />
+                    </>
                   )}
 
                   {/* Only show Sick Leave for drivers (not suspended) */}

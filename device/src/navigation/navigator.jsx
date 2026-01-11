@@ -18,6 +18,7 @@ import Login from '../screens/common/login';
 import Signup from '../screens/common/signup';
 import Account from '../screens/common/account';
 import OperatorScreen from '../screens/operator/OperatorScreen';
+import BoundarySettlementsScreen from '../screens/operator/BoundarySettlementsScreen';
 import Chat from '../screens/message/chat';
 import SickLeaveScreen from '../screens/common/SickLeaveScreen';
 import ForumScreen from '../screens/common/ForumScreen';
@@ -246,6 +247,7 @@ const Navigator = () => {
             <Stack.Screen name="Home" component={Home} />
             <Stack.Screen name="About" component={About} />
             <Stack.Screen name="OperatorScreen" component={OperatorScreen} />
+            <Stack.Screen name="BoundarySettlements" component={BoundarySettlementsScreen} />
             <Stack.Screen name="Account" component={Account} />
             <Stack.Screen name="Chat" component={Chat} />
             <Stack.Screen name="SickLeave" component={SickLeaveScreen} />

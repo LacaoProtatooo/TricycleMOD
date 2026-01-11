@@ -97,6 +97,15 @@ const DriverBookingScreen = ({ navigation }) => {
   const [offerMessage, setOfferMessage] = useState('');
   const [tripHistory, setTripHistory] = useState([]);
 
+  // Koding/Boundary state
+  const [showKodingModal, setShowKodingModal] = useState(false);
+  const [kodingInfo, setKodingInfo] = useState(null);
+  const [loadingKoding, setLoadingKoding] = useState(false);
+  const [settlingAmount, setSettlingAmount] = useState('');
+  const [settlementNotes, setSettlementNotes] = useState('');
+  const [paymentMethod, setPaymentMethod] = useState('cash');
+  const [submittingSettlement, setSubmittingSettlement] = useState(false);
+
   // Map region
   const [mapRegion, setMapRegion] = useState({
     latitude: 14.5176,
@@ -653,6 +662,69 @@ const DriverBookingScreen = ({ navigation }) => {
     setShowHistoryModal(true);
   };
 
+  // ==================== KODING/BOUNDARY FUNCTIONS ====================
+
+  const fetchKodingInfo = async () => {
+    if (!authToken) return;
+    try {
+      setLoadingKoding(true);
+      const response = await axios.get(`${BACKEND_URL}/api/boundary/driver-info`, {
+        headers: { Authorization: `Bearer ${authToken}` }
+      });
+      setKodingInfo(response.data);
+      if (response.data.hasTricycle && response.data.tricycle?.boundary?.amount) {
+        setSettlingAmount(response.data.tricycle.boundary.amount.toString());
+      }
+    } catch (error) {
+      console.error('Error fetching koding info:', error);
+      Alert.alert('Error', 'Failed to load boundary info');
+    } finally {
+      setLoadingKoding(false);
+    }
+  };
+
+  const openKodingModal = async () => {
+    await fetchKodingInfo();
+    setShowKodingModal(true);
+  };
+
+  const handleSettlePayment = async () => {
+    if (!settlingAmount || parseFloat(settlingAmount) <= 0) {
+      Alert.alert('Invalid Amount', 'Please enter a valid amount');
+      return;
+    }
+
+    try {
+      setSubmittingSettlement(true);
+      const response = await axios.post(
+        `${BACKEND_URL}/api/boundary/settle`,
+        {
+          amount: parseFloat(settlingAmount),
+          settlementType: kodingInfo?.tricycle?.boundary?.settlementType || 'daily',
+          periodStart: new Date(),
+          periodEnd: new Date(),
+          paymentMethod,
+          notes: settlementNotes
+        },
+        { headers: { Authorization: `Bearer ${authToken}` } }
+      );
+
+      if (response.data.success) {
+        Alert.alert(
+          'Payment Recorded!',
+          'Your payment has been recorded. Awaiting operator confirmation.',
+          [{ text: 'OK', onPress: () => fetchKodingInfo() }]
+        );
+        setSettlementNotes('');
+      }
+    } catch (error) {
+      console.error('Error settling payment:', error);
+      Alert.alert('Error', error.response?.data?.message || 'Failed to record payment');
+    } finally {
+      setSubmittingSettlement(false);
+    }
+  };
+
   const centerMapOnUser = () => {
     if (userLocation && mapRef.current) {
       mapRef.current.animateCamera(
@@ -1085,6 +1157,10 @@ const DriverBookingScreen = ({ navigation }) => {
           <Ionicons name="time-outline" size={18} color={colors.primary} />
           <Text style={styles.historyBtnText}>History</Text>
         </TouchableOpacity>
+        <TouchableOpacity style={styles.kodingBtn} onPress={openKodingModal}>
+          <Ionicons name="cash-outline" size={18} color="#28a745" />
+          <Text style={styles.kodingBtnText}>Koding</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Content */}
@@ -1508,6 +1584,177 @@ const DriverBookingScreen = ({ navigation }) => {
               showsVerticalScrollIndicator={false}
               contentContainerStyle={styles.historyList}
             />
+          )}
+        </SafeAreaView>
+      </Modal>
+
+      {/* Koding/Boundary Settlement Modal */}
+      <Modal
+        visible={showKodingModal}
+        transparent={false}
+        animationType="slide"
+        onRequestClose={() => setShowKodingModal(false)}
+      >
+        <SafeAreaView style={styles.kodingModalContainer} edges={['top', 'bottom']}>
+          <View style={styles.kodingModalHeader}>
+            <Text style={styles.kodingModalTitle}>Koding (Boundary)</Text>
+            <TouchableOpacity onPress={() => setShowKodingModal(false)}>
+              <Ionicons name="close" size={24} color="#666" />
+            </TouchableOpacity>
+          </View>
+
+          {loadingKoding ? (
+            <View style={styles.kodingLoading}>
+              <ActivityIndicator size="large" color={colors.primary} />
+              <Text style={{ marginTop: 10 }}>Loading...</Text>
+            </View>
+          ) : !kodingInfo?.hasTricycle ? (
+            <View style={styles.kodingEmpty}>
+              <Ionicons name="bicycle-outline" size={60} color="#ccc" />
+              <Text style={styles.kodingEmptyText}>No tricycle assigned</Text>
+              <Text style={styles.kodingEmptySubtext}>
+                Contact your operator to get assigned to a tricycle
+              </Text>
+            </View>
+          ) : (
+            <ScrollView style={styles.kodingContent} showsVerticalScrollIndicator={false}>
+              {/* Tricycle & Operator Info */}
+              <View style={styles.kodingInfoCard}>
+                <View style={styles.kodingInfoRow}>
+                  <Ionicons name="bicycle" size={20} color={colors.primary} />
+                  <Text style={styles.kodingInfoLabel}>Tricycle:</Text>
+                  <Text style={styles.kodingInfoValue}>
+                    {kodingInfo.tricycle.plateNumber} {kodingInfo.tricycle.bodyNumber ? `(${kodingInfo.tricycle.bodyNumber})` : ''}
+                  </Text>
+                </View>
+                <View style={styles.kodingInfoRow}>
+                  <Ionicons name="person" size={20} color={colors.primary} />
+                  <Text style={styles.kodingInfoLabel}>Operator:</Text>
+                  <Text style={styles.kodingInfoValue}>{kodingInfo.operator?.name || 'N/A'}</Text>
+                </View>
+                <View style={styles.kodingInfoRow}>
+                  <Ionicons name="cash" size={20} color="#28a745" />
+                  <Text style={styles.kodingInfoLabel}>Rate:</Text>
+                  <Text style={[styles.kodingInfoValue, { color: '#28a745', fontWeight: '700' }]}>
+                    ₱{kodingInfo.tricycle.boundary?.amount || 0} / {kodingInfo.tricycle.boundary?.settlementType || 'daily'}
+                  </Text>
+                </View>
+              </View>
+
+              {/* Summary Cards */}
+              <View style={styles.kodingSummaryRow}>
+                <View style={[styles.kodingSummaryCard, { backgroundColor: '#fff3cd' }]}>
+                  <Text style={styles.kodingSummaryLabel}>Pending</Text>
+                  <Text style={[styles.kodingSummaryValue, { color: '#856404' }]}>
+                    ₱{kodingInfo.summary?.totalPending || 0}
+                  </Text>
+                  <Text style={styles.kodingSummaryCount}>
+                    {kodingInfo.summary?.pendingCount || 0} unsettled
+                  </Text>
+                </View>
+                <View style={[styles.kodingSummaryCard, { backgroundColor: '#cce5ff' }]}>
+                  <Text style={styles.kodingSummaryLabel}>Awaiting Confirm</Text>
+                  <Text style={[styles.kodingSummaryValue, { color: '#004085' }]}>
+                    ₱{kodingInfo.summary?.totalAwaitingConfirmation || 0}
+                  </Text>
+                  <Text style={styles.kodingSummaryCount}>
+                    {kodingInfo.summary?.awaitingConfirmationCount || 0} pending
+                  </Text>
+                </View>
+              </View>
+
+              {/* Settle Payment Section */}
+              <View style={styles.kodingSettleSection}>
+                <Text style={styles.kodingSectionTitle}>Settle Payment</Text>
+                
+                <Text style={styles.kodingInputLabel}>Amount (₱)</Text>
+                <TextInput
+                  style={styles.kodingInput}
+                  value={settlingAmount}
+                  onChangeText={setSettlingAmount}
+                  keyboardType="numeric"
+                  placeholder="Enter amount"
+                />
+
+                <Text style={styles.kodingInputLabel}>Payment Method</Text>
+                <View style={styles.paymentMethodRow}>
+                  {['cash', 'gcash', 'bank_transfer'].map((method) => (
+                    <TouchableOpacity
+                      key={method}
+                      style={[
+                        styles.paymentMethodBtn,
+                        paymentMethod === method && styles.paymentMethodBtnActive
+                      ]}
+                      onPress={() => setPaymentMethod(method)}
+                    >
+                      <Ionicons
+                        name={method === 'cash' ? 'cash-outline' : method === 'gcash' ? 'phone-portrait-outline' : 'card-outline'}
+                        size={16}
+                        color={paymentMethod === method ? '#fff' : '#666'}
+                      />
+                      <Text style={[
+                        styles.paymentMethodText,
+                        paymentMethod === method && styles.paymentMethodTextActive
+                      ]}>
+                        {method === 'cash' ? 'Cash' : method === 'gcash' ? 'GCash' : 'Bank'}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                <Text style={styles.kodingInputLabel}>Notes (Optional)</Text>
+                <TextInput
+                  style={[styles.kodingInput, { height: 60, textAlignVertical: 'top' }]}
+                  value={settlementNotes}
+                  onChangeText={setSettlementNotes}
+                  placeholder="Add notes..."
+                  multiline
+                />
+
+                <TouchableOpacity
+                  style={[styles.settleBtn, submittingSettlement && { opacity: 0.7 }]}
+                  onPress={handleSettlePayment}
+                  disabled={submittingSettlement}
+                >
+                  {submittingSettlement ? (
+                    <ActivityIndicator color="#fff" />
+                  ) : (
+                    <>
+                      <Ionicons name="checkmark-circle" size={20} color="#fff" />
+                      <Text style={styles.settleBtnText}>Record Payment</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
+
+              {/* Recent Settlements */}
+              {kodingInfo.pendingSettlements?.length > 0 && (
+                <View style={styles.kodingRecentSection}>
+                  <Text style={styles.kodingSectionTitle}>Pending Settlements</Text>
+                  {kodingInfo.pendingSettlements.map((settlement) => (
+                    <View key={settlement._id} style={styles.settlementItem}>
+                      <View style={styles.settlementRow}>
+                        <Text style={styles.settlementAmount}>₱{settlement.amount}</Text>
+                        <View style={[
+                          styles.settlementStatus,
+                          { backgroundColor: settlement.status === 'paid' ? '#cce5ff' : '#fff3cd' }
+                        ]}>
+                          <Text style={{
+                            fontSize: 10,
+                            color: settlement.status === 'paid' ? '#004085' : '#856404'
+                          }}>
+                            {settlement.status === 'paid' ? 'Awaiting Confirmation' : 'Pending'}
+                          </Text>
+                        </View>
+                      </View>
+                      <Text style={styles.settlementDate}>
+                        {new Date(settlement.paidAt || settlement.createdAt).toLocaleDateString()}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+            </ScrollView>
           )}
         </SafeAreaView>
       </Modal>
@@ -2592,6 +2839,223 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     color: '#007bff',
+  },
+
+  // Koding Button
+  kodingBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 14,
+    borderRadius: 8,
+    backgroundColor: '#d4edda',
+    marginLeft: 8,
+    gap: 6,
+  },
+  kodingBtnText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#28a745',
+  },
+
+  // Koding Modal Styles
+  kodingModalContainer: {
+    flex: 1,
+    backgroundColor: colors.ivory1 || '#FFFEF7',
+  },
+  kodingModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingVertical: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: '#eee',
+  },
+  kodingModalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: colors.orangeShade7 || '#333',
+  },
+  kodingLoading: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  kodingEmpty: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  kodingEmptyText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: '#666',
+    marginTop: 16,
+  },
+  kodingEmptySubtext: {
+    fontSize: 14,
+    color: '#999',
+    marginTop: 8,
+    textAlign: 'center',
+  },
+  kodingContent: {
+    flex: 1,
+    padding: 16,
+  },
+  kodingInfoCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+    elevation: 2,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 3,
+  },
+  kodingInfoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+    gap: 10,
+  },
+  kodingInfoLabel: {
+    fontSize: 14,
+    color: '#666',
+    width: 70,
+  },
+  kodingInfoValue: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+    flex: 1,
+  },
+  kodingSummaryRow: {
+    flexDirection: 'row',
+    gap: 12,
+    marginBottom: 16,
+  },
+  kodingSummaryCard: {
+    flex: 1,
+    borderRadius: 12,
+    padding: 14,
+    alignItems: 'center',
+  },
+  kodingSummaryLabel: {
+    fontSize: 12,
+    fontWeight: '600',
+    marginBottom: 4,
+  },
+  kodingSummaryValue: {
+    fontSize: 22,
+    fontWeight: '700',
+  },
+  kodingSummaryCount: {
+    fontSize: 11,
+    color: '#666',
+    marginTop: 2,
+  },
+  kodingSettleSection: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+  },
+  kodingSectionTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#333',
+    marginBottom: 16,
+  },
+  kodingInputLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#666',
+    marginBottom: 6,
+  },
+  kodingInput: {
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    fontSize: 15,
+    marginBottom: 12,
+    backgroundColor: '#fafafa',
+  },
+  paymentMethodRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 12,
+  },
+  paymentMethodBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    borderRadius: 8,
+    backgroundColor: '#f0f0f0',
+    gap: 6,
+  },
+  paymentMethodBtnActive: {
+    backgroundColor: colors.primary,
+  },
+  paymentMethodText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#666',
+  },
+  paymentMethodTextActive: {
+    color: '#fff',
+  },
+  settleBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#28a745',
+    paddingVertical: 14,
+    borderRadius: 10,
+    marginTop: 8,
+    gap: 8,
+  },
+  settleBtnText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  kodingRecentSection: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 20,
+  },
+  settlementItem: {
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+    borderBottomColor: '#f0f0f0',
+  },
+  settlementRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+  },
+  settlementAmount: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#333',
+  },
+  settlementStatus: {
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  settlementDate: {
+    fontSize: 12,
+    color: '#999',
+    marginTop: 4,
   },
 });
 

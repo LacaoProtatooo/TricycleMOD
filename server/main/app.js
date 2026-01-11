@@ -21,6 +21,7 @@ import userActivityRoutes from '../routes/userActivityRoute.js';
 import adminRoutes from '../routes/adminRoute.js';
 import leaderboardRoutes from '../routes/leaderboardRoute.js';
 import complaintRoutes from '../routes/complaintRoute.js';
+import boundaryRoutes from '../routes/boundaryRoute.js';
 
 
 const app = express();
@@ -77,6 +78,7 @@ app.use('/api/activity', userActivityRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/leaderboard', leaderboardRoutes);
 app.use('/api/complaints', complaintRoutes);
+app.use('/api/boundary', boundaryRoutes);
 
 
 // Fallback for unknown routes
