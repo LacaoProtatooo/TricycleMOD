@@ -27,6 +27,7 @@ import RulesRegulations from "./pages/RulesRegulations";
 =======
 >>>>>>> Stashed changes
 import RulesRegulations from "./pages/RulesRegulations";
+import RulesRegulations from "./pages/RulesRegulations";
 import Videos from "./pages/UiElements/Videos";
 import Images from "./pages/UiElements/Images";
 import Alerts from "./pages/UiElements/Alerts";
