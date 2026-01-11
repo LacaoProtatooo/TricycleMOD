@@ -112,6 +112,13 @@ const tricycleSchema = new mongoose.Schema({
             days: [{ type: String, enum: ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'] }]
         }
     ],
+    // Boundary/Koding (rental fee) agreement
+    boundary: {
+        amount: { type: Number, min: 0, max: 1000, default: 0 }, // Amount in PHP (300-700 typical)
+        settlementType: { type: String, enum: ['daily', 'weekly'], default: 'daily' },
+        lastSettledAt: { type: Date },
+        notes: { type: String, trim: true, maxlength: 200 }
+    },
     images: [
         {
             public_id: {

@@ -15,6 +15,8 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../../../components/common/theme';
 import styles from '../operatorStyles';
 
+const BOUNDARY_OPTIONS = [300, 350, 400, 450, 500, 550, 600, 650, 700];
+
 export default function AssignDriverModal({
   visible,
   onClose,
@@ -25,7 +27,9 @@ export default function AssignDriverModal({
   assignmentType,
   setAssignmentType,
   schedule,
-  setSchedule
+  setSchedule,
+  boundary,
+  setBoundary
 }) {
   return (
     <Modal visible={visible} animationType="slide" transparent>
@@ -123,6 +127,84 @@ export default function AssignDriverModal({
               </View>
             </View>
           )}
+
+          {/* Boundary/Koding Section */}
+          <View style={{ marginBottom: 16, backgroundColor: '#f8f9fa', padding: 12, borderRadius: 8 }}>
+            <Text style={{ fontWeight: '600', marginBottom: 12, color: colors.primary }}>
+              <Ionicons name="cash-outline" size={16} /> Boundary (Koding)
+            </Text>
+            
+            <Text style={{ fontSize: 13, marginBottom: 8 }}>
+              Daily Rate: ₱{boundary.amount}
+            </Text>
+            
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
+              <View style={{ flexDirection: 'row', gap: 8 }}>
+                {BOUNDARY_OPTIONS.map((amount) => (
+                  <TouchableOpacity
+                    key={amount}
+                    style={{
+                      paddingHorizontal: 14,
+                      paddingVertical: 8,
+                      borderRadius: 20,
+                      backgroundColor: boundary.amount === amount ? colors.primary : '#e9ecef',
+                      borderWidth: 1,
+                      borderColor: boundary.amount === amount ? colors.primary : '#dee2e6'
+                    }}
+                    onPress={() => setBoundary({ ...boundary, amount })}
+                  >
+                    <Text style={{ 
+                      color: boundary.amount === amount ? '#fff' : '#495057', 
+                      fontWeight: boundary.amount === amount ? '600' : '400',
+                      fontSize: 13
+                    }}>
+                      ₱{amount}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </ScrollView>
+
+            <Text style={{ fontSize: 12, marginTop: 8, marginBottom: 6 }}>Settlement Type:</Text>
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <TouchableOpacity
+                style={{
+                  flex: 1,
+                  padding: 10,
+                  backgroundColor: boundary.settlementType === 'daily' ? colors.primary : '#eee',
+                  alignItems: 'center',
+                  borderRadius: 8
+                }}
+                onPress={() => setBoundary({ ...boundary, settlementType: 'daily' })}
+              >
+                <Text style={{ color: boundary.settlementType === 'daily' ? '#fff' : '#333', fontWeight: '500' }}>
+                  Daily
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={{
+                  flex: 1,
+                  padding: 10,
+                  backgroundColor: boundary.settlementType === 'weekly' ? colors.primary : '#eee',
+                  alignItems: 'center',
+                  borderRadius: 8
+                }}
+                onPress={() => setBoundary({ ...boundary, settlementType: 'weekly' })}
+              >
+                <Text style={{ color: boundary.settlementType === 'weekly' ? '#fff' : '#333', fontWeight: '500' }}>
+                  Weekly (₱{boundary.amount * 7})
+                </Text>
+              </TouchableOpacity>
+            </View>
+
+            <TextInput
+              style={[styles.textInput, { marginTop: 10, marginBottom: 0 }]}
+              value={boundary.notes}
+              onChangeText={(t) => setBoundary({ ...boundary, notes: t })}
+              placeholder="Notes (optional, e.g., 'Sundays free')"
+              maxLength={200}
+            />
+          </View>
 
           <ScrollView style={styles.driverList}>
             {availableDrivers.length === 0 ? (

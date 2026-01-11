@@ -77,6 +77,7 @@ export default function OperatorScreen({ navigation }) {
   const [selectedTricycle, setSelectedTricycle] = useState(null);
   const [assignmentType, setAssignmentType] = useState('exclusive');
   const [schedule, setSchedule] = useState({ days: [], startTime: '08:00', endTime: '17:00' });
+  const [boundary, setBoundary] = useState({ amount: 500, settlementType: 'daily', notes: '' });
 
   const [maintenanceModalVisible, setMaintenanceModalVisible] = useState(false);
   const [selectedTricycleHistory, setSelectedTricycleHistory] = useState([]);
@@ -169,7 +170,7 @@ export default function OperatorScreen({ navigation }) {
       }
     }
 
-    const payload = { tricycleId, driverId };
+    const payload = { tricycleId, driverId, boundary };
     if (assignmentType === 'shared') {
       payload.schedule = schedule;
     }
@@ -177,8 +178,9 @@ export default function OperatorScreen({ navigation }) {
     dispatch(assignDriver({ token, BACKEND, payload }));
     setAssignModalVisible(false);
     
-    // Reset schedule
+    // Reset schedule and boundary
     setSchedule({ days: [], startTime: '08:00', endTime: '17:00' });
+    setBoundary({ amount: 500, settlementType: 'daily', notes: '' });
   };
 
   const handleUnassignDriver = async (tricycle) => {
@@ -443,8 +445,9 @@ export default function OperatorScreen({ navigation }) {
         visible={assignModalVisible}
         onClose={() => {
           setAssignModalVisible(false);
-          // Reset schedule when closing
+          // Reset schedule and boundary when closing
           setSchedule({ days: [], startTime: '08:00', endTime: '17:00' });
+          setBoundary({ amount: 500, settlementType: 'daily', notes: '' });
         }}
         onSubmit={handleAssignDriver}
         availableDrivers={availableDrivers}
@@ -454,6 +457,8 @@ export default function OperatorScreen({ navigation }) {
         setAssignmentType={setAssignmentType}
         schedule={schedule}
         setSchedule={setSchedule}
+        boundary={boundary}
+        setBoundary={setBoundary}
       />
 
       <MaintenanceModal

@@ -453,7 +453,17 @@ export const assignDriverToTricycle = async (req, res) => {
       });
     }
 
-    const { schedule } = req.body;
+    const { schedule, boundary } = req.body;
+
+    // Handle boundary/koding agreement
+    if (boundary) {
+      tricycle.boundary = {
+        amount: boundary.amount || 500,
+        settlementType: boundary.settlementType || 'daily',
+        notes: boundary.notes || '',
+        lastSettledAt: null
+      };
+    }
 
     if (schedule) {
         // Shared Assignment Logic
