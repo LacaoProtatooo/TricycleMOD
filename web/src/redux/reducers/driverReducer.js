@@ -7,6 +7,8 @@ import {
   rejectDriverLicense,
   deleteDriverLicense,
   fetchLicenseStats,
+  suspendDriver,
+  unsuspendDriver,
 } from '../actions/driverAction';
 
 const initialState = {
@@ -34,6 +36,14 @@ const initialState = {
   deleteSuccess: false,
   deleteError: null,
 
+  // Suspension actions
+  suspendLoading: false,
+  suspendSuccess: false,
+  suspendError: null,
+  unsuspendLoading: false,
+  unsuspendSuccess: false,
+  unsuspendError: null,
+
   // Statistics
   stats: null,
   statsLoading: false,
@@ -51,6 +61,8 @@ const driverSlice = createSlice({
       state.rejectError = null;
       state.deleteError = null;
       state.statsError = null;
+      state.suspendError = null;
+      state.unsuspendError = null;
     },
     clearVerifyStatus: (state) => {
       state.verifySuccess = false;
@@ -67,6 +79,14 @@ const driverSlice = createSlice({
     clearSelectedDriver: (state) => {
       state.selectedDriver = null;
       state.detailsError = null;
+    },
+    clearSuspendStatus: (state) => {
+      state.suspendSuccess = false;
+      state.suspendError = null;
+    },
+    clearUnsuspendStatus: (state) => {
+      state.unsuspendSuccess = false;
+      state.unsuspendError = null;
     },
   },
   extraReducers: (builder) => {
@@ -206,6 +226,70 @@ const driverSlice = createSlice({
         state.statsLoading = false;
         state.statsError = action.payload;
       });
+
+    // Suspend Driver
+    builder
+      .addCase(suspendDriver.pending, (state) => {
+        state.suspendLoading = true;
+        state.suspendError = null;
+      })
+      .addCase(suspendDriver.fulfilled, (state, action) => {
+        state.suspendLoading = false;
+        state.suspendSuccess = true;
+        // Update driver in list
+        const driverId = action.payload._id;
+        const idx = state.drivers.findIndex((d) => d._id === driverId);
+        if (idx !== -1) {
+          state.drivers[idx] = {
+            ...state.drivers[idx],
+            isSuspended: action.payload.isSuspended,
+            suspendedUntil: action.payload.suspendedUntil,
+            suspensionReason: action.payload.suspensionReason,
+          };
+        }
+        // Update selected driver
+        if (state.selectedDriver?._id === driverId) {
+          state.selectedDriver.isSuspended = action.payload.isSuspended;
+          state.selectedDriver.suspendedUntil = action.payload.suspendedUntil;
+          state.selectedDriver.suspensionReason = action.payload.suspensionReason;
+        }
+      })
+      .addCase(suspendDriver.rejected, (state, action) => {
+        state.suspendLoading = false;
+        state.suspendError = action.payload;
+      });
+
+    // Unsuspend Driver
+    builder
+      .addCase(unsuspendDriver.pending, (state) => {
+        state.unsuspendLoading = true;
+        state.unsuspendError = null;
+      })
+      .addCase(unsuspendDriver.fulfilled, (state, action) => {
+        state.unsuspendLoading = false;
+        state.unsuspendSuccess = true;
+        // Update driver in list
+        const driverId = action.payload._id;
+        const idx = state.drivers.findIndex((d) => d._id === driverId);
+        if (idx !== -1) {
+          state.drivers[idx] = {
+            ...state.drivers[idx],
+            isSuspended: false,
+            suspendedUntil: null,
+            suspensionReason: null,
+          };
+        }
+        // Update selected driver
+        if (state.selectedDriver?._id === driverId) {
+          state.selectedDriver.isSuspended = false;
+          state.selectedDriver.suspendedUntil = null;
+          state.selectedDriver.suspensionReason = null;
+        }
+      })
+      .addCase(unsuspendDriver.rejected, (state, action) => {
+        state.unsuspendLoading = false;
+        state.unsuspendError = action.payload;
+      });
   },
 });
 
@@ -215,6 +299,8 @@ export const {
   clearRejectStatus,
   clearDeleteStatus,
   clearSelectedDriver,
+  clearSuspendStatus,
+  clearUnsuspendStatus,
 } = driverSlice.actions;
 
 export default driverSlice.reducer;

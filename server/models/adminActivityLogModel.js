@@ -29,6 +29,8 @@ const adminActivityLogSchema = new mongoose.Schema({
       'BOOKING_CANCEL',
       'NOTIFICATION_SEND',
       'SETTINGS_UPDATE',
+      'DRIVER_SUSPENDED',
+      'DRIVER_UNSUSPENDED',
       'OTHER'
     ],
   },

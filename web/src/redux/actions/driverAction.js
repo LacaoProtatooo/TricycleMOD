@@ -185,3 +185,63 @@ export const fetchLicenseStats = createAsyncThunk(
     }
   }
 );
+
+/**
+ * Suspend a driver
+ */
+export const suspendDriver = createAsyncThunk(
+  'driver/suspendDriver',
+  async ({ driverId, days, reason, ruleViolated, offenseNumber }, thunkAPI) => {
+    try {
+      const token = getToken();
+
+      const res = await fetch(`${API_URL}/admin/drivers/${driverId}/suspend`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ days, reason, ruleViolated, offenseNumber }),
+      });
+
+      const data = await res.json();
+
+      if (data.success) {
+        return data.user;
+      } else {
+        return thunkAPI.rejectWithValue(data.message);
+      }
+    } catch (error) {
+      return thunkAPI.rejectWithValue(error.message);
+    }
+  }
+);
+
+/**
+ * Unsuspend a driver
+ */
+export const unsuspendDriver = createAsyncThunk(
+  'driver/unsuspendDriver',
+  async (driverId, thunkAPI) => {
+    try {
+      const token = getToken();
+
+      const res = await fetch(`${API_URL}/admin/drivers/${driverId}/unsuspend`, {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      });
+
+      const data = await res.json();
+
+      if (data.success) {
+        return data.user;
+      } else {
+        return thunkAPI.rejectWithValue(data.message);
+      }
+    } catch (error) {
+      return thunkAPI.rejectWithValue(error.message);
+    }
+  }
+);

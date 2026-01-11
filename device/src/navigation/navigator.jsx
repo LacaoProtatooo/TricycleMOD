@@ -26,6 +26,7 @@ import NotificationInbox from '../screens/common/notificationInbox';
 import NotificationDetail from '../screens/common/notificationDetail';
 import BookingHistoryDetail from '../screens/common/BookingHistoryDetail';
 import RulesRegulationsScreen from '../screens/common/RulesRegulationsScreen';
+import SuspendedScreen from '../screens/common/SuspendedScreen';
 
 // Drawers
 import AppDrawer from '../components/common/appdrawer';
@@ -43,6 +44,43 @@ const Navigator = () => {
   const [drawerVisible, setDrawerVisible] = useState(false);
   const user = useSelector((state) => state.auth.user);
   const isLoading = useSelector((state) => state.auth.loading);
+
+  // Check if user is suspended driver
+  const isDriverSuspended = user && user.role === 'driver' && user.isSuspended && 
+    user.suspendedUntil && new Date(user.suspendedUntil) > new Date();
+
+  // Determine initial route
+  const getInitialRouteName = () => {
+    if (!user) return 'Login';
+    if (isDriverSuspended) return 'Suspended';
+    if (user.role === 'operator') return 'OperatorScreen';
+    return 'Home';
+  };
+
+  // Navigate to Login when user logs out
+  useEffect(() => {
+    if (!user && !isLoading && navigationRef.isReady()) {
+      // Reset navigation to Login screen
+      navigationRef.dispatch(
+        CommonActions.reset({
+          index: 0,
+          routes: [{ name: 'Login' }],
+        })
+      );
+    }
+  }, [user, isLoading]);
+
+  // Navigate to Suspended screen when driver gets suspended
+  useEffect(() => {
+    if (isDriverSuspended && navigationRef.isReady()) {
+      navigationRef.dispatch(
+        CommonActions.reset({
+          index: 0,
+          routes: [{ name: 'Suspended' }],
+        })
+      );
+    }
+  }, [isDriverSuspended]);
 
   // Animation values
   const slideAnim = useRef(new Animated.Value(-300)).current;
@@ -200,7 +238,7 @@ const Navigator = () => {
           {/* Stack Navigator */}
           <Stack.Navigator 
             screenOptions={{ headerShown: false }}
-            initialRouteName={user ? (user.role === 'operator' ? 'OperatorScreen' : 'Home') : 'Login'}
+            initialRouteName={getInitialRouteName()}
           >
             {/* Always include all screens for navigation to work properly */}
             <Stack.Screen name="Login" component={Login} />
@@ -217,6 +255,7 @@ const Navigator = () => {
             <Stack.Screen name="NotificationDetail" component={NotificationDetail} />
             <Stack.Screen name="BookingHistoryDetail" component={BookingHistoryDetail} />
             <Stack.Screen name="RulesRegulations" component={RulesRegulationsScreen} />
+            <Stack.Screen name="Suspended" component={SuspendedScreen} />
           </Stack.Navigator>
 
           {/* Drawer Overlay with Animation */}

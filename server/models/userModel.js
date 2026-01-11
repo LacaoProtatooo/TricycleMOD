@@ -107,6 +107,27 @@ const userSchema = new mongoose.Schema({
         type: Date,
         default: null,
     },
+  // Suspension system for drivers (WEBTTODA rules)
+  isSuspended: {
+        type: Boolean,
+        default: false,
+    },
+  suspendedUntil: {
+        type: Date,
+        default: null,
+    },
+  suspensionReason: {
+        type: String,
+        default: null,
+    },
+  suspensionHistory: [{
+        suspendedAt: { type: Date },
+        suspendedUntil: { type: Date },
+        reason: { type: String },
+        suspendedBy: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
+        ruleViolated: { type: String },
+        offenseNumber: { type: Number }, // 1st, 2nd, 3rd, 4th offense
+    }],
 }, 
   { timestamps: true }
 );

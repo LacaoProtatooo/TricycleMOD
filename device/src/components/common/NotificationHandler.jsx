@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import * as Notifications from 'expo-notifications';
-import { Platform } from 'react-native';
+import { Platform, Alert } from 'react-native';
 import { useDispatch } from 'react-redux';
 import { registerForPushNotificationsAsync } from '../../utils/notification';
 import { uploadNotifToken } from '../../redux/actions/userAction';
@@ -10,6 +10,8 @@ import {
   updateBookingStatus, 
   receiveDriverOffer 
 } from '../../redux/actions/bookingAction';
+import { logoutUser } from '../../redux/actions/authAction';
+import { useAsyncSQLiteContext } from '../../utils/asyncSQliteProvider';
 
 export default function NotificationHandler() {
   const [expoPushToken, setExpoPushToken] = useState('');
@@ -17,6 +19,7 @@ export default function NotificationHandler() {
   const responseListener = useRef();
   const dispatch = useDispatch();
   const [user, setUser] = useState(null);
+  const db = useAsyncSQLiteContext();
 
   // Fetch user credentials once when the component mounts
   useEffect(() => {
@@ -146,6 +149,30 @@ export default function NotificationHandler() {
           status: 'completed',
           completedAt: new Date().toISOString(),
         }));
+      } else if (type === 'suspension' || type === 'unsuspension') {
+        // Handle suspension/unsuspension - force logout to refresh user status
+        const { action } = notification.request.content.data || {};
+        if (action === 'force_logout') {
+          console.log(`🔒 ${type === 'suspension' ? 'Suspended' : 'Unsuspended'} - forcing logout to refresh status`);
+          const alertTitle = type === 'suspension' ? '⚠️ Account Suspended' : '✅ Suspension Lifted';
+          const alertMessage = type === 'suspension' 
+            ? 'Your account has been suspended. You will be logged out. Please log in again to see your suspension details.'
+            : 'Your suspension has been lifted! You will be logged out. Please log in again to continue operating.';
+          
+          Alert.alert(
+            alertTitle,
+            alertMessage,
+            [
+              {
+                text: 'OK',
+                onPress: () => {
+                  dispatch(logoutUser(db));
+                },
+              },
+            ],
+            { cancelable: false }
+          );
+        }
       }
     });
 

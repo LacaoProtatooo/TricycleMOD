@@ -11,13 +11,58 @@ import {
   rejectDriverLicense,
   deleteDriverLicense,
   fetchLicenseStats,
+  suspendDriver,
+  unsuspendDriver,
 } from "../redux/actions/driverAction";
 import {
   clearVerifyStatus,
   clearRejectStatus,
   clearDeleteStatus,
   clearSelectedDriver,
+  clearSuspendStatus,
+  clearUnsuspendStatus,
 } from "../redux/reducers/driverReducer";
+
+// WEBTTODA Suspension Rules Reference
+const SUSPENSION_PRESETS = [
+  { days: 1, label: "1 Day", description: "Minor offense - 1st violation" },
+  { days: 3, label: "3 Days", description: "Standard offense - 1st/2nd violation" },
+  { days: 7, label: "1 Week", description: "Serious offense - 1st violation" },
+  { days: 14, label: "2 Weeks", description: "Severe offense" },
+  { days: 30, label: "1 Month", description: "Major offense or repeated violations" },
+];
+
+const WEBTTODA_RULES = [
+  { id: 1, category: "Work & Drive Efficiency", rule: "Act of insubordination" },
+  { id: 2, category: "Work & Drive Efficiency", rule: "Illegal lining other than prescribed point" },
+  { id: 3, category: "Work & Drive Efficiency", rule: "Illegal pick-up of passengers" },
+  { id: 4, category: "Work & Drive Efficiency", rule: "Dress code violation (weekdays)" },
+  { id: 5, category: "Work & Drive Efficiency", rule: "Dress code violation (weekends/holidays)" },
+  { id: 6, category: "Work & Drive Efficiency", rule: "Wearing slippers/short pants during weekdays" },
+  { id: 7, category: "Act of Dishonesty", rule: "Failure to pay daily dues" },
+  { id: 8, category: "Act of Dishonesty", rule: "False statement/fraudulent entries" },
+  { id: 9, category: "Act Against Public Policy", rule: "Driving under influence/drinking within premises" },
+  { id: 10, category: "Act Against Public Policy", rule: "Defacing/tearing posters" },
+  { id: 11, category: "Act Against Public Policy", rule: "Fighting in the association" },
+  { id: 12, category: "Act Against Public Policy", rule: "Attacking another member without provocation" },
+  { id: 13, category: "Act Against Public Policy", rule: "Challenging any member to fight" },
+  { id: 14, category: "Act Against Public Policy", rule: "Challenging Officers and Trustees" },
+  { id: 15, category: "Act Against Public Policy", rule: "Discourteous acts against passengers" },
+  { id: 16, category: "Act Against Public Policy", rule: "Reckless driving within playing routes" },
+  { id: 17, category: "Act Against Public Policy", rule: "Causing ill-will/dissension among members" },
+  { id: 18, category: "Act Against Public Policy", rule: "Coercing and intimidating members" },
+  { id: 19, category: "Serious Offenses", rule: "Conviction of crime (1 month+ penalty)" },
+  { id: 20, category: "Serious Offenses", rule: "Making malicious false accusations" },
+  { id: 21, category: "Serious Offenses", rule: "Substituting old parts/appropriating property" },
+  { id: 22, category: "Serious Offenses", rule: "Damaging association property" },
+  { id: 23, category: "Serious Offenses", rule: "Acts of disrespect to executives" },
+  { id: 24, category: "Serious Offenses", rule: "Insulting conduct to officers/trustees" },
+  { id: 25, category: "Serious Offenses", rule: "Disobedience to lawful orders of Marshall" },
+  { id: 26, category: "Serious Offenses", rule: "Failure to attend general meeting" },
+  { id: 27, category: "Serious Offenses", rule: "Failure to observe personal cleanliness" },
+  { id: 28, category: "Repeated Violations", rule: "Three warnings within 1 year" },
+  { id: 29, category: "Repeated Violations", rule: "Three suspensions within 1 year" },
+];
 
 const Drivers = () => {
   const dispatch = useDispatch();
@@ -36,6 +81,10 @@ const Drivers = () => {
     rejectSuccess,
     deleteLoading,
     deleteSuccess,
+    suspendLoading,
+    suspendSuccess,
+    unsuspendLoading,
+    unsuspendSuccess,
     stats,
     statsLoading,
   } = useSelector((state) => state.driver);
@@ -48,11 +97,19 @@ const Drivers = () => {
   // Rejection reason
   const [rejectReason, setRejectReason] = useState("");
 
+  // Suspension form
+  const [suspensionDays, setSuspensionDays] = useState(3);
+  const [suspensionReason, setSuspensionReason] = useState("");
+  const [selectedRule, setSelectedRule] = useState("");
+  const [offenseNumber, setOffenseNumber] = useState(1);
+
   // Modals
   const { isOpen: isDetailsOpen, openModal: openDetailsModal, closeModal: closeDetailsModal } = useModal();
   const { isOpen: isRejectOpen, openModal: openRejectModal, closeModal: closeRejectModal } = useModal();
   const { isOpen: isDeleteOpen, openModal: openDeleteModal, closeModal: closeDeleteModal } = useModal();
   const { isOpen: isImageOpen, openModal: openImageModal, closeModal: closeImageModal } = useModal();
+  const { isOpen: isSuspendOpen, openModal: openSuspendModal, closeModal: closeSuspendModal } = useModal();
+  const { isOpen: isUnsuspendOpen, openModal: openUnsuspendModal, closeModal: closeUnsuspendModal } = useModal();
 
   // License statuses
   const licenseStatuses = {
@@ -104,6 +161,30 @@ const Drivers = () => {
     }
   }, [deleteSuccess, dispatch]);
 
+  useEffect(() => {
+    if (suspendSuccess) {
+      closeSuspendModal();
+      resetSuspensionForm();
+      dispatch(clearSuspendStatus());
+      dispatch(fetchAllDrivers({ page: currentPage, search: searchQuery, licenseStatus: statusFilter }));
+    }
+  }, [suspendSuccess, dispatch]);
+
+  useEffect(() => {
+    if (unsuspendSuccess) {
+      closeUnsuspendModal();
+      dispatch(clearUnsuspendStatus());
+      dispatch(fetchAllDrivers({ page: currentPage, search: searchQuery, licenseStatus: statusFilter }));
+    }
+  }, [unsuspendSuccess, dispatch]);
+
+  const resetSuspensionForm = () => {
+    setSuspensionDays(3);
+    setSuspensionReason("");
+    setSelectedRule("");
+    setOffenseNumber(1);
+  };
+
   const handleViewDriver = (driverId) => {
     dispatch(fetchDriverDetails(driverId));
     openDetailsModal();
@@ -129,6 +210,27 @@ const Drivers = () => {
   const handleDelete = () => {
     if (selectedDriver?.license?._id) {
       dispatch(deleteDriverLicense(selectedDriver.license._id));
+    }
+  };
+
+  const handleSuspend = () => {
+    if (selectedDriver?._id && suspensionDays > 0) {
+      const ruleText = selectedRule 
+        ? WEBTTODA_RULES.find(r => r.id === parseInt(selectedRule))?.rule 
+        : null;
+      dispatch(suspendDriver({
+        driverId: selectedDriver._id,
+        days: suspensionDays,
+        reason: suspensionReason || `Suspended for ${suspensionDays} days`,
+        ruleViolated: ruleText,
+        offenseNumber: offenseNumber,
+      }));
+    }
+  };
+
+  const handleUnsuspend = () => {
+    if (selectedDriver?._id) {
+      dispatch(unsuspendDriver(selectedDriver._id));
     }
   };
 
@@ -357,9 +459,16 @@ const Drivers = () => {
                         <div className="text-sm text-gray-500 dark:text-gray-400">{driver.phone || "No phone"}</div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`inline-flex px-2.5 py-0.5 rounded-full text-xs font-medium ${licenseStatuses[driver.licenseStatus]?.color}`}>
-                          {licenseStatuses[driver.licenseStatus]?.label}
-                        </span>
+                        <div className="flex flex-col gap-1">
+                          <span className={`inline-flex w-fit px-2.5 py-0.5 rounded-full text-xs font-medium ${licenseStatuses[driver.licenseStatus]?.color}`}>
+                            {licenseStatuses[driver.licenseStatus]?.label}
+                          </span>
+                          {driver.isSuspended && (
+                            <span className="inline-flex w-fit px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-400">
+                              ⚠️ Suspended
+                            </span>
+                          )}
+                        </div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <div className="flex items-center gap-1">
@@ -462,6 +571,14 @@ const Drivers = () => {
                       Account Verified
                     </span>
                   )}
+                  {selectedDriver.isSuspended && (
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-700 dark:bg-red-900/20 dark:text-red-400">
+                      <svg className="w-3 h-3 mr-1" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                      </svg>
+                      Suspended
+                    </span>
+                  )}
                 </div>
               </div>
               <div className="text-right">
@@ -497,6 +614,28 @@ const Drivers = () => {
                 <p className="text-sm font-medium text-gray-800 dark:text-white">{formatDate(selectedDriver.lastLogin)}</p>
               </div>
             </div>
+
+            {/* Suspension Status */}
+            {selectedDriver.isSuspended && (
+              <div className="mb-6 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
+                <div className="flex items-start gap-3">
+                  <div className="flex-shrink-0">
+                    <svg className="h-6 w-6 text-red-600 dark:text-red-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z" />
+                    </svg>
+                  </div>
+                  <div className="flex-1">
+                    <h4 className="text-sm font-semibold text-red-800 dark:text-red-300">Driver is Currently Suspended</h4>
+                    <p className="mt-1 text-sm text-red-700 dark:text-red-400">
+                      <strong>Reason:</strong> {selectedDriver.suspensionReason || "No reason provided"}
+                    </p>
+                    <p className="text-sm text-red-700 dark:text-red-400">
+                      <strong>Suspended Until:</strong> {formatDate(selectedDriver.suspendedUntil)}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* License Section */}
             <div className="mb-6">
@@ -579,7 +718,30 @@ const Drivers = () => {
             </div>
 
             {/* Action Buttons */}
-            <div className="flex items-center gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
+            <div className="flex flex-wrap items-center gap-3 pt-4 border-t border-gray-200 dark:border-gray-700">
+              {/* Suspension Actions */}
+              {selectedDriver.isSuspended ? (
+                <button
+                  onClick={openUnsuspendModal}
+                  className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-green-700 bg-green-100 rounded-lg hover:bg-green-200 dark:text-green-400 dark:bg-green-900/20 dark:hover:bg-green-900/40"
+                >
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+                  </svg>
+                  Unsuspend Driver
+                </button>
+              ) : (
+                <button
+                  onClick={openSuspendModal}
+                  className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-orange-700 bg-orange-100 rounded-lg hover:bg-orange-200 dark:text-orange-400 dark:bg-orange-900/20 dark:hover:bg-orange-900/40"
+                >
+                  <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+                  </svg>
+                  Suspend Driver
+                </button>
+              )}
+
               {selectedDriver.license && (
                 <>
                   {selectedDriver.licenseStatus === "pending" && (
@@ -722,6 +884,170 @@ const Drivers = () => {
             className="w-full h-full object-contain max-h-[85vh]"
           />
         )}
+      </Modal>
+
+      {/* Suspend Driver Modal */}
+      <Modal isOpen={isSuspendOpen} onClose={closeSuspendModal} className="max-w-[500px] p-6">
+        <div>
+          <div className="flex items-center gap-3 mb-4">
+            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-orange-100 dark:bg-orange-900/20">
+              <svg className="h-6 w-6 text-orange-600 dark:text-orange-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
+              </svg>
+            </div>
+            <div>
+              <h3 className="text-lg font-semibold text-gray-800 dark:text-white">Suspend Driver</h3>
+              <p className="text-sm text-gray-500 dark:text-gray-400">
+                {selectedDriver?.firstname} {selectedDriver?.lastname}
+              </p>
+            </div>
+          </div>
+
+          {/* Suspension Duration */}
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Suspension Duration
+            </label>
+            <div className="grid grid-cols-5 gap-2 mb-2">
+              {SUSPENSION_PRESETS.map((preset) => (
+                <button
+                  key={preset.days}
+                  onClick={() => setSuspensionDays(preset.days)}
+                  className={`px-3 py-2 text-xs font-medium rounded-lg border transition-all ${
+                    suspensionDays === preset.days
+                      ? "bg-orange-100 border-orange-500 text-orange-700 dark:bg-orange-900/30 dark:border-orange-500 dark:text-orange-400"
+                      : "border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800"
+                  }`}
+                >
+                  {preset.label}
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                value={suspensionDays}
+                onChange={(e) => setSuspensionDays(Math.max(1, parseInt(e.target.value) || 1))}
+                min="1"
+                className="w-20 h-10 rounded-lg border border-gray-300 bg-transparent px-3 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+              />
+              <span className="text-sm text-gray-500 dark:text-gray-400">days</span>
+            </div>
+          </div>
+
+          {/* Rule Violated (WEBTTODA Reference) */}
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Rule Violated (WEBTTODA Rules)
+            </label>
+            <select
+              value={selectedRule}
+              onChange={(e) => setSelectedRule(e.target.value)}
+              className="w-full h-10 rounded-lg border border-gray-300 bg-transparent px-3 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
+            >
+              <option value="">Select a rule (optional)</option>
+              {WEBTTODA_RULES.map((rule) => (
+                <option key={rule.id} value={rule.id}>
+                  #{rule.id} - {rule.rule}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          {/* Offense Number */}
+          <div className="mb-4">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Offense Number
+            </label>
+            <div className="flex gap-2">
+              {[1, 2, 3, 4].map((num) => (
+                <button
+                  key={num}
+                  onClick={() => setOffenseNumber(num)}
+                  className={`flex-1 px-3 py-2 text-sm font-medium rounded-lg border transition-all ${
+                    offenseNumber === num
+                      ? "bg-orange-100 border-orange-500 text-orange-700 dark:bg-orange-900/30 dark:border-orange-500 dark:text-orange-400"
+                      : "border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800"
+                  }`}
+                >
+                  {num === 1 ? "1st" : num === 2 ? "2nd" : num === 3 ? "3rd" : "4th"} Offense
+                </button>
+              ))}
+            </div>
+          </div>
+
+          {/* Reason */}
+          <div className="mb-6">
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
+              Reason for Suspension
+            </label>
+            <textarea
+              value={suspensionReason}
+              onChange={(e) => setSuspensionReason(e.target.value)}
+              placeholder="Describe the reason for this suspension..."
+              rows={3}
+              className="w-full rounded-lg border border-gray-300 bg-transparent px-4 py-2.5 text-sm text-gray-800 placeholder:text-gray-400 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90 dark:placeholder:text-white/30 resize-none"
+            />
+          </div>
+
+          {/* Action Buttons */}
+          <div className="flex gap-3 justify-end">
+            <button
+              onClick={() => {
+                closeSuspendModal();
+                resetSuspensionForm();
+              }}
+              className="px-4 py-2.5 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 dark:text-gray-400 dark:bg-gray-800 dark:hover:bg-gray-700"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleSuspend}
+              disabled={suspendLoading || !suspensionReason.trim()}
+              className="px-4 py-2.5 text-sm font-medium text-white bg-orange-600 rounded-lg hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {suspendLoading ? "Suspending..." : `Suspend for ${suspensionDays} Days`}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Unsuspend Driver Modal */}
+      <Modal isOpen={isUnsuspendOpen} onClose={closeUnsuspendModal} className="max-w-[400px] p-6">
+        <div className="text-center">
+          <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/20">
+            <svg className="h-6 w-6 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+          <h3 className="mt-4 text-lg font-semibold text-gray-800 dark:text-white">
+            Unsuspend Driver
+          </h3>
+          <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
+            Are you sure you want to lift the suspension for{" "}
+            <strong>{selectedDriver?.firstname} {selectedDriver?.lastname}</strong>?
+          </p>
+          {selectedDriver?.suspensionReason && (
+            <p className="mt-2 text-xs text-gray-400 dark:text-gray-500">
+              Original reason: {selectedDriver.suspensionReason}
+            </p>
+          )}
+          <div className="mt-6 flex gap-3 justify-center">
+            <button
+              onClick={closeUnsuspendModal}
+              className="px-4 py-2.5 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 dark:text-gray-400 dark:bg-gray-800 dark:hover:bg-gray-700"
+            >
+              Cancel
+            </button>
+            <button
+              onClick={handleUnsuspend}
+              disabled={unsuspendLoading}
+              className="px-4 py-2.5 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {unsuspendLoading ? "Processing..." : "Unsuspend"}
+            </button>
+          </div>
+        </div>
       </Modal>
     </>
   );

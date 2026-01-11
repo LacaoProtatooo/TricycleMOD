@@ -15,6 +15,10 @@ const SCREEN_WIDTH = Dimensions.get('window').width;
 const AppDrawer = ({ closeDrawer, navigation }) => {
   const [user, setUser] = useState(null);
 
+  // Check if driver is suspended
+  const isDriverSuspended = user && user.role === 'driver' && user.isSuspended && 
+    user.suspendedUntil && new Date(user.suspendedUntil) > new Date();
+
   // Refresh user data every time the drawer is focused
   useFocusEffect(
     useCallback(() => {
@@ -94,6 +98,13 @@ const AppDrawer = ({ closeDrawer, navigation }) => {
                   <Text variant="bodySmall" style={styles.caption}>
                     @{user?.username || 'guest_user'}
                   </Text>
+                  {/* Suspended Badge */}
+                  {isDriverSuspended && (
+                    <View style={styles.suspendedBadge}>
+                      <Ionicons name="ban-outline" size={12} color="#fff" />
+                      <Text style={styles.suspendedBadgeText}>SUSPENDED</Text>
+                    </View>
+                  )}
                 </View>
               </View>
             </View>
@@ -102,8 +113,8 @@ const AppDrawer = ({ closeDrawer, navigation }) => {
 
             {/* NAVIGATION ITEMS */}
             <View style={styles.drawerSection}>
-              {/* Show Home for non-operators */}
-              {user?.role !== 'operator' && (
+              {/* Show Home for non-operators (except suspended drivers) */}
+              {user?.role !== 'operator' && !isDriverSuspended && (
                 <DrawerItem
                   icon={({ focused }) => renderIcon('home', focused)}
                   label="Home"
@@ -113,6 +124,30 @@ const AppDrawer = ({ closeDrawer, navigation }) => {
                   inactiveTintColor={colors.orangeShade8}
                   onPress={() => {
                     navigateSafe('Home');
+                    closeDrawer();
+                  }}
+                />
+              )}
+
+              {/* Show Suspension Status for suspended drivers */}
+              {isDriverSuspended && (
+                <DrawerItem
+                  icon={({ focused }) => (
+                    <View style={styles.iconContainer}>
+                      <Ionicons 
+                        name="ban-outline" 
+                        color={colors.error} 
+                        size={24} 
+                      />
+                    </View>
+                  )}
+                  label="Suspension Status"
+                  labelStyle={[styles.drawerLabel, { color: colors.error }]}
+                  activeBackgroundColor={`${colors.ivory4}CC`}
+                  activeTintColor={colors.error}
+                  inactiveTintColor={colors.error}
+                  onPress={() => {
+                    navigateSafe('Suspended');
                     closeDrawer();
                   }}
                 />
@@ -176,18 +211,21 @@ const AppDrawer = ({ closeDrawer, navigation }) => {
                     }}
                   />
 
-                  <DrawerItem
-                    icon={({ focused }) => renderIcon('people-circle-outline', focused)}
-                    label="Forum"
-                    labelStyle={styles.drawerLabel}
-                    activeBackgroundColor={`${colors.ivory4}CC`}
-                    activeTintColor={colors.primary}
-                    inactiveTintColor={colors.orangeShade8}
-                    onPress={() => {
-                      navigateSafe('Forum');
-                      closeDrawer();
-                    }}
-                  />
+                  {/* Hide Forum for suspended drivers */}
+                  {!isDriverSuspended && (
+                    <DrawerItem
+                      icon={({ focused }) => renderIcon('people-circle-outline', focused)}
+                      label="Forum"
+                      labelStyle={styles.drawerLabel}
+                      activeBackgroundColor={`${colors.ivory4}CC`}
+                      activeTintColor={colors.primary}
+                      inactiveTintColor={colors.orangeShade8}
+                      onPress={() => {
+                        navigateSafe('Forum');
+                        closeDrawer();
+                      }}
+                    />
+                  )}
 
                   <DrawerItem
                     icon={({ focused }) => renderIcon('chatbubble-ellipses-outline', focused)}
@@ -218,8 +256,8 @@ const AppDrawer = ({ closeDrawer, navigation }) => {
                     />
                   )}
 
-                  {/* Only show Sick Leave for drivers */}
-                  {user.role === 'driver' && (
+                  {/* Only show Sick Leave for drivers (not suspended) */}
+                  {user.role === 'driver' && !isDriverSuspended && (
                     <DrawerItem
                       icon={({ focused }) => renderIcon('medical-outline', focused)}
                       label="Sick Leave"
@@ -246,18 +284,22 @@ const AppDrawer = ({ closeDrawer, navigation }) => {
                       closeDrawer();
                     }}
                   />
-                  <DrawerItem
-                    icon={({ focused }) => renderIcon('cube-outline', focused)}
-                    label="Lost & Found"
-                    labelStyle={styles.drawerLabel}
-                    activeBackgroundColor={`${colors.ivory4}CC`}
-                    activeTintColor={colors.primary}
-                    inactiveTintColor={colors.orangeShade8}
-                    onPress={() => {
-                      navigateSafe('LostFound');
-                      closeDrawer();
-                    }}
-                  />
+
+                  {/* Hide Lost & Found for suspended drivers */}
+                  {!isDriverSuspended && (
+                    <DrawerItem
+                      icon={({ focused }) => renderIcon('cube-outline', focused)}
+                      label="Lost & Found"
+                      labelStyle={styles.drawerLabel}
+                      activeBackgroundColor={`${colors.ivory4}CC`}
+                      activeTintColor={colors.primary}
+                      inactiveTintColor={colors.orangeShade8}
+                      onPress={() => {
+                        navigateSafe('LostFound');
+                        closeDrawer();
+                      }}
+                    />
+                  )}
 
                   {/* Rules & Regulations - visible to drivers and operators */}
                   {(user.role === 'driver' || user.role === 'operator') && (
@@ -367,6 +409,22 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: colors.orangeShade5,
     fontFamily: fonts.regular,
+  },
+  suspendedBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.error,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    marginTop: spacing.small,
+  },
+  suspendedBadgeText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '700',
+    marginLeft: 4,
+    letterSpacing: 0.5,
   },
   divider: {
     height: 1,

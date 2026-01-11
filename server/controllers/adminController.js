@@ -1,5 +1,211 @@
 import User from '../models/userModel.js';
 import AdminActivityLog from '../models/adminActivityLogModel.js';
+import { sendNotification } from '../utils/firebase.js';
+
+/**
+ * Suspend a driver (admin only)
+ * POST /api/admin/drivers/:userId/suspend
+ */
+export const suspendDriver = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const { days, reason, ruleViolated, offenseNumber } = req.body;
+    const adminUser = req.user;
+
+    // Validate inputs
+    if (!days || days < 1) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please specify the number of days for suspension',
+      });
+    }
+
+    if (!reason) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide a reason for suspension',
+      });
+    }
+
+    // Find target user
+    const targetUser = await User.findById(userId);
+    if (!targetUser) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found',
+      });
+    }
+
+    // Only drivers can be suspended
+    if (targetUser.role !== 'driver') {
+      return res.status(400).json({
+        success: false,
+        message: 'Only drivers can be suspended',
+      });
+    }
+
+    // Calculate suspension end date
+    const suspendedUntil = new Date();
+    suspendedUntil.setDate(suspendedUntil.getDate() + parseInt(days));
+
+    // Update user suspension status
+    targetUser.isSuspended = true;
+    targetUser.suspendedUntil = suspendedUntil;
+    targetUser.suspensionReason = reason;
+    
+    // Add to suspension history
+    targetUser.suspensionHistory.push({
+      suspendedAt: new Date(),
+      suspendedUntil: suspendedUntil,
+      reason: reason,
+      suspendedBy: adminUser._id,
+      ruleViolated: ruleViolated || null,
+      offenseNumber: offenseNumber || null,
+    });
+
+    await targetUser.save();
+
+    // Log the admin activity
+    await AdminActivityLog.logActivity({
+      adminId: adminUser._id,
+      adminEmail: adminUser.email,
+      adminName: `${adminUser.firstname} ${adminUser.lastname}`,
+      action: 'DRIVER_SUSPENDED',
+      description: `Suspended driver ${targetUser.email} for ${days} days. Reason: ${reason}`,
+      targetUserId: targetUser._id,
+      targetUserEmail: targetUser.email,
+      targetUserName: `${targetUser.firstname} ${targetUser.lastname}`,
+      previousValue: { isSuspended: false },
+      newValue: { isSuspended: true, suspendedUntil, reason, ruleViolated, offenseNumber },
+      ipAddress: req.ip || req.connection?.remoteAddress,
+      userAgent: req.get('User-Agent'),
+    });
+
+    // Send notification to the driver (with force logout)
+    if (targetUser.FCMToken) {
+      await sendNotification(
+        targetUser.FCMToken,
+        '⚠️ Account Suspended',
+        `Your account has been suspended for ${days} days. Reason: ${reason}`,
+        {
+          type: 'suspension',
+          action: 'force_logout',
+          suspendedUntil: suspendedUntil.toISOString(),
+          reason: reason,
+        }
+      );
+    }
+
+    res.status(200).json({
+      success: true,
+      message: `Driver suspended for ${days} days`,
+      user: {
+        _id: targetUser._id,
+        email: targetUser.email,
+        firstname: targetUser.firstname,
+        lastname: targetUser.lastname,
+        isSuspended: targetUser.isSuspended,
+        suspendedUntil: targetUser.suspendedUntil,
+        suspensionReason: targetUser.suspensionReason,
+      },
+    });
+  } catch (error) {
+    console.error('Error suspending driver:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to suspend driver',
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Unsuspend a driver (admin only)
+ * POST /api/admin/drivers/:userId/unsuspend
+ */
+export const unsuspendDriver = async (req, res) => {
+  try {
+    const { userId } = req.params;
+    const adminUser = req.user;
+
+    // Find target user
+    const targetUser = await User.findById(userId);
+    if (!targetUser) {
+      return res.status(404).json({
+        success: false,
+        message: 'User not found',
+      });
+    }
+
+    if (!targetUser.isSuspended) {
+      return res.status(400).json({
+        success: false,
+        message: 'Driver is not currently suspended',
+      });
+    }
+
+    const previousSuspension = {
+      isSuspended: targetUser.isSuspended,
+      suspendedUntil: targetUser.suspendedUntil,
+      suspensionReason: targetUser.suspensionReason,
+    };
+
+    // Remove suspension
+    targetUser.isSuspended = false;
+    targetUser.suspendedUntil = null;
+    targetUser.suspensionReason = null;
+
+    await targetUser.save();
+
+    // Log the admin activity
+    await AdminActivityLog.logActivity({
+      adminId: adminUser._id,
+      adminEmail: adminUser.email,
+      adminName: `${adminUser.firstname} ${adminUser.lastname}`,
+      action: 'DRIVER_UNSUSPENDED',
+      description: `Unsuspended driver ${targetUser.email}`,
+      targetUserId: targetUser._id,
+      targetUserEmail: targetUser.email,
+      targetUserName: `${targetUser.firstname} ${targetUser.lastname}`,
+      previousValue: previousSuspension,
+      newValue: { isSuspended: false, suspendedUntil: null, suspensionReason: null },
+      ipAddress: req.ip || req.connection?.remoteAddress,
+      userAgent: req.get('User-Agent'),
+    });
+
+    // Send notification to the driver (with force logout to refresh status)
+    if (targetUser.FCMToken) {
+      await sendNotification(
+        targetUser.FCMToken,
+        '✅ Suspension Lifted',
+        'Your account suspension has been lifted. You can now continue operating.',
+        {
+          type: 'unsuspension',
+          action: 'force_logout',
+        }
+      );
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Driver suspension lifted',
+      user: {
+        _id: targetUser._id,
+        email: targetUser.email,
+        firstname: targetUser.firstname,
+        lastname: targetUser.lastname,
+        isSuspended: targetUser.isSuspended,
+      },
+    });
+  } catch (error) {
+    console.error('Error unsuspending driver:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to unsuspend driver',
+      error: error.message,
+    });
+  }
+};
 
 /**
  * Change user role (admin only)

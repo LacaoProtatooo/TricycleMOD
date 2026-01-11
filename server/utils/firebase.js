@@ -40,7 +40,50 @@ try {
   console.error('Push notifications will not work until Firebase is properly configured');
 }
 
-export { messaging, auth };
+/**
+ * Send a push notification to a specific device
+ * @param {string} token - FCM device token
+ * @param {string} title - Notification title
+ * @param {string} body - Notification body
+ * @param {object} data - Optional data payload
+ * @returns {Promise} - Firebase messaging response
+ */
+const sendNotification = async (token, title, body, data = {}) => {
+  if (!messaging) {
+    console.warn('Firebase messaging not initialized, skipping notification');
+    return null;
+  }
+
+  if (!token) {
+    console.warn('No FCM token provided, skipping notification');
+    return null;
+  }
+
+  try {
+    const message = {
+      notification: {
+        title,
+        body,
+      },
+      data: {
+        ...data,
+        title,
+        body,
+      },
+      token,
+    };
+
+    const response = await messaging.send(message);
+    console.log('✅ Notification sent successfully:', response);
+    return response;
+  } catch (error) {
+    console.error('❌ Error sending notification:', error.message);
+    // Don't throw - just log the error so the main operation can continue
+    return null;
+  }
+};
+
+export { messaging, auth, sendNotification };
 
 
 
