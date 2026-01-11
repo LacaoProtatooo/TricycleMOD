@@ -21,6 +21,7 @@ import AnnouncementModal from './src/components/common/announcementModal';
 // This is a known issue with react-native-maps and newer React Native versions
 LogBox.ignoreLogs([
   'Unsupported top level event type "topUserLocationChange" dispatched',
+  'Each child in a list should have a unique "key" prop',
 ]);
 
 GoogleSignin.configure({

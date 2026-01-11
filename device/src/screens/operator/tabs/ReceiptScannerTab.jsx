@@ -260,12 +260,15 @@ export default function ReceiptScannerTab({
       }
 
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ['images'],
         quality: 0.8,
+        base64: true,
       });
 
       if (result?.canceled === true) return;
-      let uri = result?.assets?.[0]?.uri || result?.uri;
+      
+      const asset = result?.assets?.[0];
+      const uri = asset?.uri || result?.uri;
 
       if (!uri) {
         Alert.alert('No image selected');
@@ -273,14 +276,24 @@ export default function ReceiptScannerTab({
       }
 
       setImage(uri);
-      // Convert to base64 for saving
-      const base64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
-      setImageBase64(`data:image/jpeg;base64,${base64}`);
       dispatch(clearReceiptResult());
       setShowEditForm(false);
+      
+      // Convert to base64 for saving - try from result first, then fallback to FileSystem
+      try {
+        let base64Data = asset?.base64;
+        if (!base64Data) {
+          base64Data = await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
+        }
+        setImageBase64(`data:image/jpeg;base64,${base64Data}`);
+      } catch (base64Error) {
+        console.warn('Could not convert to base64:', base64Error);
+        // Still allow scanning without base64 - image will be sent as form data
+        setImageBase64(null);
+      }
     } catch (error) {
       console.error('Error picking image:', error);
-      Alert.alert('Error', 'Failed to pick image');
+      Alert.alert('Error', 'Failed to pick image: ' + error.message);
     }
   };
 
@@ -293,12 +306,15 @@ export default function ReceiptScannerTab({
       }
 
       const result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ['images'],
         quality: 0.8,
+        base64: true,
       });
 
       if (result?.canceled === true) return;
-      let uri = result?.assets?.[0]?.uri || result?.uri;
+      
+      const asset = result?.assets?.[0];
+      const uri = asset?.uri || result?.uri;
 
       if (!uri) {
         Alert.alert('No image selected');
@@ -306,13 +322,24 @@ export default function ReceiptScannerTab({
       }
 
       setImage(uri);
-      const base64 = await FileSystem.readAsStringAsync(uri, { encoding: FileSystem.EncodingType.Base64 });
-      setImageBase64(`data:image/jpeg;base64,${base64}`);
       dispatch(clearReceiptResult());
       setShowEditForm(false);
+      
+      // Convert to base64 for saving - try from result first, then fallback to FileSystem
+      try {
+        let base64Data = asset?.base64;
+        if (!base64Data) {
+          base64Data = await FileSystem.readAsStringAsync(uri, { encoding: 'base64' });
+        }
+        setImageBase64(`data:image/jpeg;base64,${base64Data}`);
+      } catch (base64Error) {
+        console.warn('Could not convert to base64:', base64Error);
+        // Still allow scanning without base64 - image will be sent as form data
+        setImageBase64(null);
+      }
     } catch (error) {
       console.error('Error taking photo:', error);
-      Alert.alert('Error', 'Failed to take photo');
+      Alert.alert('Error', 'Failed to take photo: ' + error.message);
     }
   };
 
