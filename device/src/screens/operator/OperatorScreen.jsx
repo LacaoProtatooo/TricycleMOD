@@ -25,7 +25,6 @@ import {
 import OverviewTab from './tabs/OverviewTab';
 import DriversTab from './tabs/DriversTab';
 import SickLeaveTab from './tabs/SickLeaveTab';
-import ForumsTab from './tabs/ForumsTab';
 import ReceiptScannerTab from './tabs/ReceiptScannerTab';
 import DriverComplaintsTab from './tabs/DriverComplaintsTab';
 
@@ -411,12 +410,6 @@ export default function OperatorScreen({ navigation }) {
               statistics={sickLeaveStatistics}
             />
           )}
-        </Tab.Screen>
-        <Tab.Screen 
-          name="Forums"
-          options={{ headerShown: false }}
-        >
-          {() => <ForumsTab token={token} BACKEND={BACKEND} />}
         </Tab.Screen>
         <Tab.Screen 
           name="Complaints"
