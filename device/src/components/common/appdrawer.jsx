@@ -102,19 +102,21 @@ const AppDrawer = ({ closeDrawer, navigation }) => {
 
             {/* NAVIGATION ITEMS */}
             <View style={styles.drawerSection}>
-              {/* Always show Home */}
-              <DrawerItem
-                icon={({ focused }) => renderIcon('home', focused)}
-                label="Home"
-                labelStyle={styles.drawerLabel}
-                activeBackgroundColor={`${colors.ivory4}CC`}
-                activeTintColor={colors.primary}
-                inactiveTintColor={colors.orangeShade8}
-                onPress={() => {
-                  navigateSafe('Home');
-                  closeDrawer();
-                }}
-              />
+              {/* Show Home for non-operators */}
+              {user?.role !== 'operator' && (
+                <DrawerItem
+                  icon={({ focused }) => renderIcon('home', focused)}
+                  label="Home"
+                  labelStyle={styles.drawerLabel}
+                  activeBackgroundColor={`${colors.ivory4}CC`}
+                  activeTintColor={colors.primary}
+                  inactiveTintColor={colors.orangeShade8}
+                  onPress={() => {
+                    navigateSafe('Home');
+                    closeDrawer();
+                  }}
+                />
+              )}
 
               {/* Guest Users Navigation */}
               {!user && (
