@@ -69,6 +69,22 @@ const Complaints = () => {
     withdrawn: "Withdrawn",
   };
 
+  const urgencyColors = {
+    critical: "bg-red-100 text-red-800 border-red-200",
+    high: "bg-orange-100 text-orange-800 border-orange-200",
+    medium: "bg-yellow-100 text-yellow-800 border-yellow-200",
+    low: "bg-green-100 text-green-800 border-green-200",
+    normal: "bg-gray-100 text-gray-800 border-gray-200",
+  };
+
+  const urgencyLabels = {
+    critical: "🚨 CRITICAL",
+    high: "⚠️ HIGH",
+    medium: "📋 MEDIUM",
+    low: "📝 LOW",
+    normal: "📄 NORMAL",
+  };
+
   const actionLabels = {
     warning_issued: "Warning Issued",
     suspension: "Suspension",
@@ -177,41 +193,129 @@ const Complaints = () => {
 
       {/* Statistics Cards */}
       {stats && (
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4 mb-6">
-          <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
-            <p className="text-sm text-gray-500">Total</p>
-            <p className="text-2xl font-bold text-gray-800 dark:text-white">{stats.total}</p>
-          </div>
-          <div className="rounded-xl border border-yellow-200 bg-yellow-50 p-4 dark:border-yellow-800 dark:bg-yellow-900/20">
-            <p className="text-sm text-yellow-600">Pending</p>
-            <p className="text-2xl font-bold text-yellow-700">{stats.pending}</p>
-          </div>
-          <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 dark:border-blue-800 dark:bg-blue-900/20">
-            <p className="text-sm text-blue-600">Under Review</p>
-            <p className="text-2xl font-bold text-blue-700">{stats.underReview}</p>
-          </div>
-          <div className="rounded-xl border border-purple-200 bg-purple-50 p-4 dark:border-purple-800 dark:bg-purple-900/20">
-            <p className="text-sm text-purple-600">Investigating</p>
-            <p className="text-2xl font-bold text-purple-700">{stats.investigating}</p>
-          </div>
-          <div className="rounded-xl border border-green-200 bg-green-50 p-4 dark:border-green-800 dark:bg-green-900/20">
-            <p className="text-sm text-green-600">Resolved</p>
-            <p className="text-2xl font-bold text-green-700">{stats.resolved}</p>
-          </div>
-          <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-900/20">
-            <p className="text-sm text-gray-600">Dismissed</p>
-            <p className="text-2xl font-bold text-gray-700">{stats.dismissed}</p>
-          </div>
-          <div className="rounded-xl border border-red-200 bg-red-50 p-4 dark:border-red-800 dark:bg-red-900/20">
-            <p className="text-sm text-red-600">Low Credibility</p>
-            <p className="text-2xl font-bold text-red-700">{stats.lowCredibility}</p>
+        <div className="space-y-4 mb-6">
+          {/* Priority Alert - High Priority Complaints */}
+          {stats.priority?.needsImmediateAttention > 0 && (
+            <div className="rounded-xl border-2 border-red-300 bg-red-50 p-4 dark:border-red-800 dark:bg-red-900/20">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="flex-shrink-0">
+                    <span className="text-3xl">🚨</span>
+                  </div>
+                  <div>
+                    <p className="text-lg font-bold text-red-800 dark:text-red-200">
+                      {stats.priority.needsImmediateAttention} Complaint{stats.priority.needsImmediateAttention > 1 ? 's' : ''} Need Immediate Attention
+                    </p>
+                    <p className="text-sm text-red-600 dark:text-red-300">
+                      High-priority complaints detected by sentiment analysis
+                    </p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => {
+                    handleFilterChange("priorityOnly", "true");
+                  }}
+                  className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 font-medium text-sm"
+                >
+                  View Priority Complaints
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* Sentiment Priority Cards */}
+          {stats.priority && (
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
+              <button
+                onClick={() => handleFilterChange("urgency", "critical")}
+                className={`rounded-xl border-2 p-3 text-left transition-all hover:shadow-md ${
+                  filters.urgency === "critical" ? "border-red-500 ring-2 ring-red-200" : "border-red-200"
+                } bg-red-50 dark:bg-red-900/20`}
+              >
+                <p className="text-xs text-red-600 font-medium">🚨 CRITICAL</p>
+                <p className="text-2xl font-bold text-red-700">{stats.priority.critical}</p>
+                <p className="text-xs text-red-500">Urgent review</p>
+              </button>
+              <button
+                onClick={() => handleFilterChange("urgency", "high")}
+                className={`rounded-xl border-2 p-3 text-left transition-all hover:shadow-md ${
+                  filters.urgency === "high" ? "border-orange-500 ring-2 ring-orange-200" : "border-orange-200"
+                } bg-orange-50 dark:bg-orange-900/20`}
+              >
+                <p className="text-xs text-orange-600 font-medium">⚠️ HIGH</p>
+                <p className="text-2xl font-bold text-orange-700">{stats.priority.high}</p>
+                <p className="text-xs text-orange-500">Within 24hrs</p>
+              </button>
+              <button
+                onClick={() => handleFilterChange("urgency", "medium")}
+                className={`rounded-xl border-2 p-3 text-left transition-all hover:shadow-md ${
+                  filters.urgency === "medium" ? "border-yellow-500 ring-2 ring-yellow-200" : "border-yellow-200"
+                } bg-yellow-50 dark:bg-yellow-900/20`}
+              >
+                <p className="text-xs text-yellow-600 font-medium">📋 MEDIUM</p>
+                <p className="text-2xl font-bold text-yellow-700">{stats.priority.medium}</p>
+                <p className="text-xs text-yellow-500">Standard</p>
+              </button>
+              <button
+                onClick={() => handleFilterChange("urgency", "low")}
+                className={`rounded-xl border-2 p-3 text-left transition-all hover:shadow-md ${
+                  filters.urgency === "low" ? "border-green-500 ring-2 ring-green-200" : "border-green-200"
+                } bg-green-50 dark:bg-green-900/20`}
+              >
+                <p className="text-xs text-green-600 font-medium">📝 LOW</p>
+                <p className="text-2xl font-bold text-green-700">{stats.priority.low}</p>
+                <p className="text-xs text-green-500">As available</p>
+              </button>
+              <button
+                onClick={() => handleFilterChange("urgency", "")}
+                className={`rounded-xl border-2 p-3 text-left transition-all hover:shadow-md ${
+                  !filters.urgency ? "border-gray-500 ring-2 ring-gray-200" : "border-gray-200"
+                } bg-gray-50 dark:bg-gray-800`}
+              >
+                <p className="text-xs text-gray-600 font-medium">📊 ALL</p>
+                <p className="text-2xl font-bold text-gray-700 dark:text-gray-200">{stats.total}</p>
+                <p className="text-xs text-gray-500">Total complaints</p>
+              </button>
+            </div>
+          )}
+
+          {/* Status Cards */}
+          <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-7 gap-4">
+            <div className="rounded-xl border border-gray-200 bg-white p-4 dark:border-gray-800 dark:bg-white/[0.03]">
+              <p className="text-sm text-gray-500">Total</p>
+              <p className="text-2xl font-bold text-gray-800 dark:text-white">{stats.total}</p>
+            </div>
+            <div className="rounded-xl border border-yellow-200 bg-yellow-50 p-4 dark:border-yellow-800 dark:bg-yellow-900/20">
+              <p className="text-sm text-yellow-600">Pending</p>
+              <p className="text-2xl font-bold text-yellow-700">{stats.pending}</p>
+            </div>
+            <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 dark:border-blue-800 dark:bg-blue-900/20">
+              <p className="text-sm text-blue-600">Under Review</p>
+              <p className="text-2xl font-bold text-blue-700">{stats.underReview}</p>
+            </div>
+            <div className="rounded-xl border border-purple-200 bg-purple-50 p-4 dark:border-purple-800 dark:bg-purple-900/20">
+              <p className="text-sm text-purple-600">Investigating</p>
+              <p className="text-2xl font-bold text-purple-700">{stats.investigating}</p>
+            </div>
+            <div className="rounded-xl border border-green-200 bg-green-50 p-4 dark:border-green-800 dark:bg-green-900/20">
+              <p className="text-sm text-green-600">Resolved</p>
+              <p className="text-2xl font-bold text-green-700">{stats.resolved}</p>
+            </div>
+            <div className="rounded-xl border border-gray-200 bg-gray-50 p-4 dark:border-gray-800 dark:bg-gray-900/20">
+              <p className="text-sm text-gray-600">Dismissed</p>
+              <p className="text-2xl font-bold text-gray-700">{stats.dismissed}</p>
+            </div>
+            <div className="rounded-xl border border-red-200 bg-red-50 p-4 dark:border-red-800 dark:bg-red-900/20">
+              <p className="text-sm text-red-600">Low Credibility</p>
+              <p className="text-2xl font-bold text-red-700">{stats.lowCredibility}</p>
+            </div>
           </div>
         </div>
       )}
 
       {/* Filters */}
       <div className="rounded-xl border border-gray-200 bg-white p-4 mb-6 dark:border-gray-800 dark:bg-white/[0.03]">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
           <div>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Status</label>
             <select
@@ -238,6 +342,20 @@ const Complaints = () => {
               {Object.entries(categoryLabels).map(([key, label]) => (
                 <option key={key} value={key}>{label}</option>
               ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">Priority (AI)</label>
+            <select
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-orange-500 focus:ring-orange-500 dark:border-gray-600 dark:bg-gray-800"
+              value={filters.urgency || ""}
+              onChange={(e) => handleFilterChange("urgency", e.target.value)}
+            >
+              <option value="">All Priorities</option>
+              <option value="critical">🚨 Critical</option>
+              <option value="high">⚠️ High</option>
+              <option value="medium">📋 Medium</option>
+              <option value="low">📝 Low</option>
             </select>
           </div>
           <div>
@@ -270,11 +388,36 @@ const Complaints = () => {
             >
               <option value="createdAt-desc">Newest First</option>
               <option value="createdAt-asc">Oldest First</option>
+              <option value="priority-desc">Highest Priority</option>
               <option value="credibilityScore-desc">Highest Credibility</option>
               <option value="credibilityScore-asc">Lowest Credibility</option>
             </select>
           </div>
         </div>
+        {/* Active filters indicator */}
+        {(filters.urgency || filters.priorityOnly) && (
+          <div className="mt-3 flex items-center gap-2">
+            <span className="text-sm text-gray-500">Active filters:</span>
+            {filters.urgency && (
+              <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium ${urgencyColors[filters.urgency]}`}>
+                {urgencyLabels[filters.urgency]}
+                <button 
+                  onClick={() => handleFilterChange("urgency", "")}
+                  className="ml-1 hover:opacity-70"
+                >×</button>
+              </span>
+            )}
+            {filters.priorityOnly === "true" && (
+              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                🚨 Priority Only
+                <button 
+                  onClick={() => handleFilterChange("priorityOnly", "")}
+                  className="ml-1 hover:opacity-70"
+                >×</button>
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Complaints Table */}
@@ -303,6 +446,7 @@ const Complaints = () => {
             <table className="w-full">
               <thead className="bg-gray-50 dark:bg-gray-800">
                 <tr>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Priority</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Complainant</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Driver</th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase">Category</th>
@@ -315,7 +459,28 @@ const Complaints = () => {
               </thead>
               <tbody className="divide-y divide-gray-200 dark:divide-gray-700">
                 {complaints.map((complaint) => (
-                  <tr key={complaint._id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                  <tr key={complaint._id} className={`hover:bg-gray-50 dark:hover:bg-gray-800/50 ${
+                    complaint.sentimentAnalysis?.flags?.mayRequireImmediateAttention ? 'bg-red-50/50 dark:bg-red-900/10' : ''
+                  }`}>
+                    <td className="px-4 py-4">
+                      {complaint.sentimentAnalysis?.urgency ? (
+                        <div className="flex flex-col items-start gap-1">
+                          <span className={`inline-flex items-center rounded-full px-2 py-1 text-xs font-semibold ${
+                            urgencyColors[complaint.sentimentAnalysis.urgency] || urgencyColors.normal
+                          }`}>
+                            {urgencyLabels[complaint.sentimentAnalysis.urgency] || '📄 N/A'}
+                          </span>
+                          {complaint.sentimentAnalysis.flags?.mayRequireImmediateAttention && (
+                            <span className="text-xs text-red-600 font-medium">⚡ Immediate</span>
+                          )}
+                          <span className="text-xs text-gray-400">
+                            {complaint.sentimentAnalysis.confidence ? `${Math.round(complaint.sentimentAnalysis.confidence * 100)}% conf.` : ''}
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-gray-400">Not analyzed</span>
+                      )}
+                    </td>
                     <td className="px-4 py-4">
                       <div className="flex items-center">
                         <div className="h-10 w-10 flex-shrink-0 rounded-full bg-orange-100 flex items-center justify-center">
@@ -463,6 +628,70 @@ const Complaints = () => {
                         </div>
                       )}
                     </div>
+
+                    {/* AI Sentiment Analysis Card */}
+                    {selectedComplaint.sentimentAnalysis && (
+                      <div className={`rounded-lg p-4 mb-6 border-2 ${
+                        selectedComplaint.sentimentAnalysis.urgency === 'critical' ? 'bg-red-50 border-red-300' :
+                        selectedComplaint.sentimentAnalysis.urgency === 'high' ? 'bg-orange-50 border-orange-300' :
+                        selectedComplaint.sentimentAnalysis.urgency === 'medium' ? 'bg-yellow-50 border-yellow-300' :
+                        'bg-gray-50 border-gray-200'
+                      }`}>
+                        <div className="flex items-center justify-between mb-3">
+                          <h4 className="font-medium text-gray-900 flex items-center gap-2">
+                            🧠 AI Sentiment Analysis
+                            {selectedComplaint.sentimentAnalysis.flags?.mayRequireImmediateAttention && (
+                              <span className="text-xs bg-red-600 text-white px-2 py-0.5 rounded-full animate-pulse">
+                                ⚡ IMMEDIATE ATTENTION
+                              </span>
+                            )}
+                          </h4>
+                          <span className={`inline-flex items-center rounded-full px-3 py-1 text-sm font-bold ${
+                            urgencyColors[selectedComplaint.sentimentAnalysis.urgency] || urgencyColors.normal
+                          }`}>
+                            {urgencyLabels[selectedComplaint.sentimentAnalysis.urgency] || 'N/A'}
+                          </span>
+                        </div>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                          <div>
+                            <p className="text-xs text-gray-500 uppercase">Sentiment</p>
+                            <p className={`font-semibold ${
+                              selectedComplaint.sentimentAnalysis.sentiment === 'negative' ? 'text-red-600' :
+                              selectedComplaint.sentimentAnalysis.sentiment === 'positive' ? 'text-green-600' : 'text-gray-600'
+                            }`}>
+                              {selectedComplaint.sentimentAnalysis.sentiment?.charAt(0).toUpperCase() + 
+                               selectedComplaint.sentimentAnalysis.sentiment?.slice(1)}
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-gray-500 uppercase">Confidence</p>
+                            <p className="font-semibold text-gray-800">
+                              {Math.round((selectedComplaint.sentimentAnalysis.confidence || 0) * 100)}%
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-gray-500 uppercase">Severity Score</p>
+                            <p className="font-semibold text-gray-800">
+                              {selectedComplaint.sentimentAnalysis.severityScore?.toFixed(1) || 'N/A'}/5
+                            </p>
+                          </div>
+                          <div>
+                            <p className="text-xs text-gray-500 uppercase">Description Quality</p>
+                            <p className={`font-semibold ${
+                              selectedComplaint.sentimentAnalysis.descriptionQuality >= 70 ? 'text-green-600' :
+                              selectedComplaint.sentimentAnalysis.descriptionQuality >= 40 ? 'text-yellow-600' : 'text-red-600'
+                            }`}>
+                              {selectedComplaint.sentimentAnalysis.descriptionQuality || 'N/A'}%
+                            </p>
+                          </div>
+                        </div>
+                        {selectedComplaint.sentimentAnalysis.flags?.emotionallyCharged && (
+                          <p className="mt-3 text-sm text-orange-700 bg-orange-100 px-3 py-1 rounded">
+                            ⚡ Emotionally charged language detected - handle with care
+                          </p>
+                        )}
+                      </div>
+                    )}
 
                     {/* Flags Warning */}
                     {selectedComplaint.flags && Object.values(selectedComplaint.flags).some(Boolean) && (

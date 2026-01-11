@@ -5,6 +5,7 @@ import Booking from '../models/bookingModel.js';
 import Tricycle from '../models/tricycleModel.js';
 import cloudinary from '../utils/cloudinaryConfig.js';
 import { messaging } from '../utils/firebase.js';
+import { analyzeComplaint, analyzeSentiment } from '../utils/sentimentAnalysis.js';
 
 /**
  * Complaint Controller
@@ -377,6 +378,84 @@ export const getDriversForComplaint = async (req, res) => {
 };
 
 /**
+ * Analyze complaint sentiment before submission
+ * POST /api/complaints/analyze-sentiment
+ * 
+ * This endpoint allows users to preview sentiment analysis 
+ * before submitting their complaint, providing feedback on 
+ * description quality and urgency.
+ */
+export const analyzeComplaintSentiment = async (req, res) => {
+  try {
+    const { description, category } = req.body;
+    
+    if (!description || description.length < 20) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please provide a description with at least 20 characters',
+      });
+    }
+    
+    // Run sentiment analysis
+    const analysis = await analyzeComplaint(description, category || 'other');
+    
+    // Generate user-friendly feedback (Taglish support)
+    let feedback = {
+      message: '',
+      messageTl: '', // Tagalog translation
+      tone: 'neutral',
+      suggestions: [],
+    };
+    
+    if (analysis.sentiment.sentiment === 'negative' && analysis.sentiment.confidence > 0.7) {
+      feedback.message = 'We understand this was a frustrating experience. Your complaint will be prioritized for review.';
+      feedback.messageTl = 'Naiintindihan namin na nakaka-frustrate ang karanasan mo. Uunahin ang iyong reklamo sa pagsusuri.';
+      feedback.tone = 'empathetic';
+    } else if (analysis.sentiment.sentiment === 'positive') {
+      feedback.message = 'The tone of your description seems positive. Please ensure you\'ve accurately described the incident.';
+      feedback.messageTl = 'Mukhang positibo ang tono ng iyong paglalarawan. Siguraduhing tama ang pagkakasulat ng pangyayari.';
+      feedback.tone = 'advisory';
+    } else {
+      feedback.message = 'Thank you for providing a clear description of the incident.';
+      feedback.messageTl = 'Salamat sa malinaw na paglalarawan ng pangyayari.';
+      feedback.tone = 'neutral';
+    }
+    
+    feedback.suggestions = analysis.validation.suggestions;
+    
+    // Check if Taglish was detected
+    const isTaglish = analysis.sentiment.isTaglish || false;
+    const detectedNegativeWords = analysis.sentiment.taglishIndicators?.negativeWords || [];
+    
+    res.status(200).json({
+      success: true,
+      analysis: {
+        sentiment: analysis.sentiment.sentiment,
+        confidence: Math.round(analysis.sentiment.confidence * 100),
+        urgency: analysis.severity.urgency,
+        severityScore: analysis.severity.severityScore,
+        descriptionQuality: analysis.validation.qualityScore >= 70 ? 'good' : analysis.validation.qualityScore >= 40 ? 'fair' : 'needs_improvement',
+        qualityScore: analysis.validation.qualityScore,
+        isTaglish,
+        detectedIndicators: detectedNegativeWords.length > 0 ? detectedNegativeWords.slice(0, 3) : [],
+      },
+      feedback,
+      flags: {
+        willBePrioritized: analysis.severity.flags.mayRequireImmediateAttention,
+        emotionallyCharged: analysis.severity.flags.emotionallyCharged,
+      },
+    });
+  } catch (error) {
+    console.error('Error analyzing sentiment:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to analyze complaint',
+      error: error.message,
+    });
+  }
+};
+
+/**
  * File a new complaint
  * POST /api/complaints
  */
@@ -494,6 +573,17 @@ export const fileComplaint = async (req, res) => {
       });
     }
     
+    // === SENTIMENT ANALYSIS ===
+    // Analyze the complaint description for sentiment and severity
+    let sentimentAnalysis = null;
+    try {
+      sentimentAnalysis = await analyzeComplaint(description, category);
+      console.log(`🧠 Sentiment Analysis: ${sentimentAnalysis.sentiment.sentiment} (${(sentimentAnalysis.sentiment.confidence * 100).toFixed(1)}% confidence)`);
+      console.log(`📊 Severity: ${sentimentAnalysis.severity.urgency} (${sentimentAnalysis.severity.severityScore}/5)`);
+    } catch (sentimentError) {
+      console.error('Sentiment analysis error (non-blocking):', sentimentError);
+    }
+    
     // Create the complaint
     const complaint = new Complaint({
       complainant: userId,
@@ -511,7 +601,26 @@ export const fileComplaint = async (req, res) => {
       tricycleDetails: tricycleDetails || {},
       submittedFromIP: req.ip || req.connection?.remoteAddress,
       userAgent: req.headers['user-agent'],
+      // Sentiment analysis data
+      sentimentAnalysis: sentimentAnalysis ? {
+        sentiment: sentimentAnalysis.sentiment.sentiment,
+        confidence: sentimentAnalysis.sentiment.confidence,
+        scores: sentimentAnalysis.sentiment.scores,
+        severityScore: sentimentAnalysis.severity.severityScore,
+        urgency: sentimentAnalysis.severity.urgency,
+        descriptionQuality: sentimentAnalysis.validation.qualityScore,
+        flags: sentimentAnalysis.severity.flags,
+        analyzedAt: new Date(),
+      } : null,
     });
+    
+    // Auto-escalate based on sentiment if highly negative and critical category
+    if (sentimentAnalysis?.severity?.flags?.mayRequireImmediateAttention) {
+      complaint.adminNotes.push({
+        note: `🧠 SENTIMENT ALERT: Highly negative sentiment detected (${(sentimentAnalysis.sentiment.confidence * 100).toFixed(1)}% confidence). Urgency: ${sentimentAnalysis.severity.urgency.toUpperCase()}`,
+        addedAt: new Date(),
+      });
+    }
     
     await complaint.save();
     
@@ -759,6 +868,10 @@ export const getRecentBookings = async (req, res) => {
 /**
  * Admin: Get all complaints
  * GET /api/complaints/admin/all
+ * 
+ * Supports filtering by sentiment analysis urgency:
+ * - urgency: 'critical', 'high', 'medium', 'low', 'normal'
+ * - priorityOnly: true (filters complaints with mayRequireImmediateAttention flag)
  */
 export const adminGetAllComplaints = async (req, res) => {
   try {
@@ -772,6 +885,8 @@ export const adminGetAllComplaints = async (req, res) => {
       sortOrder = 'desc',
       minCredibility,
       maxCredibility,
+      urgency,
+      priorityOnly,
     } = req.query;
     
     const skip = (parseInt(page) - 1) * parseInt(limit);
@@ -786,7 +901,25 @@ export const adminGetAllComplaints = async (req, res) => {
       if (maxCredibility) query.credibilityScore.$lte = parseInt(maxCredibility);
     }
     
-    const sort = { [sortBy]: sortOrder === 'desc' ? -1 : 1 };
+    // Filter by sentiment urgency
+    if (urgency) {
+      query['sentimentAnalysis.urgency'] = urgency;
+    }
+    
+    // Filter by high priority (immediate attention required)
+    if (priorityOnly === 'true') {
+      query['sentimentAnalysis.flags.mayRequireImmediateAttention'] = true;
+    }
+    
+    // Default sort: prioritize critical/high urgency complaints
+    let sort = { [sortBy]: sortOrder === 'desc' ? -1 : 1 };
+    if (sortBy === 'priority') {
+      // Custom sort: critical > high > medium > low > normal
+      sort = {
+        'sentimentAnalysis.severityScore': -1,
+        createdAt: -1,
+      };
+    }
     
     const complaints = await Complaint.find(query)
       .populate('complainant', 'firstname lastname username image')
@@ -798,7 +931,7 @@ export const adminGetAllComplaints = async (req, res) => {
     
     const total = await Complaint.countDocuments(query);
     
-    // Get stats
+    // Get stats including sentiment analysis priority stats
     const stats = {
       total: await Complaint.countDocuments(),
       pending: await Complaint.countDocuments({ status: 'pending' }),
@@ -807,6 +940,29 @@ export const adminGetAllComplaints = async (req, res) => {
       resolved: await Complaint.countDocuments({ status: 'resolved' }),
       dismissed: await Complaint.countDocuments({ status: 'dismissed' }),
       lowCredibility: await Complaint.countDocuments({ credibilityScore: { $lt: 30 } }),
+      // Sentiment Analysis Priority Stats
+      priority: {
+        critical: await Complaint.countDocuments({ 
+          'sentimentAnalysis.urgency': 'critical',
+          status: { $nin: ['resolved', 'dismissed', 'withdrawn'] }
+        }),
+        high: await Complaint.countDocuments({ 
+          'sentimentAnalysis.urgency': 'high',
+          status: { $nin: ['resolved', 'dismissed', 'withdrawn'] }
+        }),
+        medium: await Complaint.countDocuments({ 
+          'sentimentAnalysis.urgency': 'medium',
+          status: { $nin: ['resolved', 'dismissed', 'withdrawn'] }
+        }),
+        low: await Complaint.countDocuments({ 
+          'sentimentAnalysis.urgency': 'low',
+          status: { $nin: ['resolved', 'dismissed', 'withdrawn'] }
+        }),
+        needsImmediateAttention: await Complaint.countDocuments({ 
+          'sentimentAnalysis.flags.mayRequireImmediateAttention': true,
+          status: { $nin: ['resolved', 'dismissed', 'withdrawn'] }
+        }),
+      },
     };
     
     res.status(200).json({

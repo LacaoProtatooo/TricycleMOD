@@ -198,6 +198,31 @@ const complaintSchema = new mongoose.Schema({
   // User agent for additional tracking
   userAgent: { type: String },
   
+  // Sentiment Analysis Results (from Hugging Face)
+  sentimentAnalysis: {
+    sentiment: { 
+      type: String, 
+      enum: ['positive', 'negative', 'neutral'],
+    },
+    confidence: { type: Number, min: 0, max: 1 },
+    scores: {
+      POSITIVE: { type: Number },
+      NEGATIVE: { type: Number },
+    },
+    severityScore: { type: Number, min: 0, max: 5 },
+    urgency: { 
+      type: String, 
+      enum: ['low', 'medium', 'normal', 'high', 'critical'],
+    },
+    descriptionQuality: { type: Number, min: 0, max: 100 },
+    flags: {
+      highlyNegative: { type: Boolean, default: false },
+      mayRequireImmediateAttention: { type: Boolean, default: false },
+      emotionallyCharged: { type: Boolean, default: false },
+    },
+    analyzedAt: { type: Date },
+  },
+  
 }, { timestamps: true });
 
 // Indexes for efficient queries

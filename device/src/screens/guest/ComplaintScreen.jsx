@@ -76,6 +76,10 @@ const ComplaintScreen = ({ navigation }) => {
   const [selectedComplaint, setSelectedComplaint] = useState(null);
   const [showComplaintDetail, setShowComplaintDetail] = useState(false);
   
+  // Sentiment Analysis state
+  const [sentimentAnalysis, setSentimentAnalysis] = useState(null);
+  const [analyzingSentiment, setAnalyzingSentiment] = useState(false);
+  
   // Loading states
   const [loading, setLoading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
@@ -242,6 +246,48 @@ const ComplaintScreen = ({ navigation }) => {
   const removeEvidence = (index) => {
     setEvidence(evidence.filter((_, i) => i !== index));
   };
+
+  // Analyze sentiment of description
+  const analyzeSentiment = async () => {
+    if (description.length < 20) {
+      Alert.alert('Description Too Short', 'Please write at least 20 characters to analyze sentiment.');
+      return;
+    }
+    
+    try {
+      setAnalyzingSentiment(true);
+      const token = await getToken(db);
+      if (!token) return;
+      
+      const response = await axios.post(`${API_URL}/analyze-sentiment`, {
+        description,
+        category: selectedCategory,
+      }, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      
+      if (response.data.success) {
+        setSentimentAnalysis(response.data);
+      }
+    } catch (error) {
+      console.error('Error analyzing sentiment:', error);
+    } finally {
+      setAnalyzingSentiment(false);
+    }
+  };
+
+  // Auto-analyze sentiment when description changes (debounced)
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (description.length >= 50 && selectedCategory) {
+        analyzeSentiment();
+      } else {
+        setSentimentAnalysis(null);
+      }
+    }, 1000); // Wait 1 second after user stops typing
+    
+    return () => clearTimeout(timer);
+  }, [description, selectedCategory]);
 
   // Form validation
   const validateForm = () => {
@@ -596,15 +642,113 @@ const ComplaintScreen = ({ navigation }) => {
                 {50 - description.length} more characters needed
               </Text>
             )}
+            
+            {/* Sentiment Analysis Feedback */}
+            {analyzingSentiment && (
+              <View style={styles.sentimentContainer}>
+                <ActivityIndicator size="small" color={colors.primary} />
+                <Text style={styles.sentimentAnalyzing}>Analyzing your complaint...</Text>
+              </View>
+            )}
+            
+            {sentimentAnalysis && !analyzingSentiment && (
+              <View style={[
+                styles.sentimentContainer,
+                sentimentAnalysis.analysis.urgency === 'critical' && styles.sentimentCritical,
+                sentimentAnalysis.analysis.urgency === 'high' && styles.sentimentHigh,
+                sentimentAnalysis.analysis.urgency === 'medium' && styles.sentimentMedium,
+                sentimentAnalysis.analysis.urgency === 'low' && styles.sentimentLow,
+              ]}>
+                <View style={styles.sentimentHeader}>
+                  <Ionicons 
+                    name={
+                      sentimentAnalysis.analysis.sentiment === 'negative' ? 'alert-circle' :
+                      sentimentAnalysis.analysis.sentiment === 'positive' ? 'information-circle' : 'help-circle'
+                    } 
+                    size={20} 
+                    color={
+                      sentimentAnalysis.analysis.urgency === 'critical' ? '#dc3545' :
+                      sentimentAnalysis.analysis.urgency === 'high' ? '#fd7e14' :
+                      sentimentAnalysis.analysis.urgency === 'medium' ? '#ffc107' : '#28a745'
+                    } 
+                  />
+                  <Text style={styles.sentimentTitle}>AI Analysis</Text>
+                  <View style={[
+                    styles.urgencyBadge,
+                    { backgroundColor: 
+                      sentimentAnalysis.analysis.urgency === 'critical' ? '#dc3545' :
+                      sentimentAnalysis.analysis.urgency === 'high' ? '#fd7e14' :
+                      sentimentAnalysis.analysis.urgency === 'medium' ? '#ffc107' : '#28a745'
+                    }
+                  ]}>
+                    <Text style={styles.urgencyText}>
+                      {sentimentAnalysis.analysis.urgency.toUpperCase()}
+                    </Text>
+                  </View>
+                </View>
+                
+                <Text style={styles.sentimentMessage}>{sentimentAnalysis.feedback.message}</Text>
+                
+                <View style={styles.sentimentStats}>
+                  <View style={styles.sentimentStat}>
+                    <Text style={styles.sentimentStatLabel}>Quality</Text>
+                    <Text style={[
+                      styles.sentimentStatValue,
+                      { color: sentimentAnalysis.analysis.qualityScore >= 70 ? '#28a745' : 
+                               sentimentAnalysis.analysis.qualityScore >= 40 ? '#ffc107' : '#dc3545' }
+                    ]}>
+                      {sentimentAnalysis.analysis.descriptionQuality === 'good' ? '✓ Good' :
+                       sentimentAnalysis.analysis.descriptionQuality === 'fair' ? '◐ Fair' : '✗ Needs Work'}
+                    </Text>
+                  </View>
+                  <View style={styles.sentimentStat}>
+                    <Text style={styles.sentimentStatLabel}>Severity</Text>
+                    <Text style={styles.sentimentStatValue}>
+                      {sentimentAnalysis.analysis.severityScore.toFixed(1)}/5
+                    </Text>
+                  </View>
+                  <View style={styles.sentimentStat}>
+                    <Text style={styles.sentimentStatLabel}>Confidence</Text>
+                    <Text style={styles.sentimentStatValue}>
+                      {sentimentAnalysis.analysis.confidence}%
+                    </Text>
+                  </View>
+                </View>
+                
+                {sentimentAnalysis.flags.willBePrioritized && (
+                  <View style={styles.priorityNote}>
+                    <Ionicons name="flash" size={14} color="#dc3545" />
+                    <Text style={styles.priorityNoteText}>Uunahin ang iyong reklamo / This complaint will be prioritized</Text>
+                  </View>
+                )}
+                
+                {/* Show detected Taglish indicator */}
+                {sentimentAnalysis.analysis.isTaglish && (
+                  <View style={styles.taglishBadge}>
+                    <Ionicons name="language" size={14} color="#6c757d" />
+                    <Text style={styles.taglishBadgeText}>Taglish detected / Nakita ang Taglish</Text>
+                  </View>
+                )}
+                
+                {sentimentAnalysis.feedback.suggestions.length > 0 && (
+                  <View style={styles.suggestionsContainer}>
+                    <Text style={styles.suggestionsTitle}>Mga Suhestiyon / Suggestions:</Text>
+                    {sentimentAnalysis.feedback.suggestions.map((suggestion, index) => (
+                      <Text key={index} style={styles.suggestionItem}>• {suggestion}</Text>
+                    ))}
+                  </View>
+                )}
+              </View>
+            )}
           </View>
 
           {/* Evidence Upload */}
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>
-              <Ionicons name="camera-outline" size={18} color={colors.primary} /> Evidence (Required) *
+              <Ionicons name="camera-outline" size={18} color={colors.primary} /> Ebidensya / Evidence (Required) *
             </Text>
             <Text style={styles.sectionSubtitle}>
-              Upload photos as proof (max 5 images). This helps verify your complaint.
+              Mag-upload ng mga litrato bilang patunay (max 5). Makakatulong ito para i-verify ang iyong reklamo.
             </Text>
             
             <View style={styles.evidenceContainer}>
@@ -1233,6 +1377,130 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#dc3545',
     marginTop: 4,
+  },
+  // Sentiment Analysis Styles
+  sentimentContainer: {
+    marginTop: 12,
+    padding: 14,
+    borderRadius: 10,
+    backgroundColor: '#f8f9fa',
+    borderWidth: 1,
+    borderColor: '#e9ecef',
+  },
+  sentimentCritical: {
+    backgroundColor: '#fff5f5',
+    borderColor: '#dc3545',
+  },
+  sentimentHigh: {
+    backgroundColor: '#fff8f0',
+    borderColor: '#fd7e14',
+  },
+  sentimentMedium: {
+    backgroundColor: '#fffbeb',
+    borderColor: '#ffc107',
+  },
+  sentimentLow: {
+    backgroundColor: '#f0fff4',
+    borderColor: '#28a745',
+  },
+  sentimentHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  sentimentTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.orangeShade7,
+    marginLeft: 6,
+    flex: 1,
+  },
+  sentimentAnalyzing: {
+    fontSize: 13,
+    color: '#666',
+    marginLeft: 8,
+  },
+  urgencyBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 12,
+  },
+  urgencyText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  sentimentMessage: {
+    fontSize: 13,
+    color: '#555',
+    marginBottom: 10,
+    lineHeight: 18,
+  },
+  sentimentStats: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    paddingVertical: 8,
+    borderTopWidth: 1,
+    borderTopColor: '#e9ecef',
+  },
+  sentimentStat: {
+    alignItems: 'center',
+  },
+  sentimentStatLabel: {
+    fontSize: 11,
+    color: '#888',
+    marginBottom: 2,
+  },
+  sentimentStatValue: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.orangeShade7,
+  },
+  priorityNote: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+    padding: 8,
+    backgroundColor: '#fff5f5',
+    borderRadius: 6,
+  },
+  priorityNoteText: {
+    fontSize: 12,
+    color: '#dc3545',
+    marginLeft: 6,
+    fontWeight: '500',
+  },
+  taglishBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 8,
+    padding: 6,
+    backgroundColor: '#f8f9fa',
+    borderRadius: 6,
+    alignSelf: 'flex-start',
+  },
+  taglishBadgeText: {
+    fontSize: 11,
+    color: '#6c757d',
+    marginLeft: 4,
+  },
+  suggestionsContainer: {
+    marginTop: 10,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: '#e9ecef',
+  },
+  suggestionsTitle: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#666',
+    marginBottom: 4,
+  },
+  suggestionItem: {
+    fontSize: 12,
+    color: '#555',
+    marginTop: 2,
+    paddingLeft: 4,
   },
   categoriesContainer: {
     gap: 10,

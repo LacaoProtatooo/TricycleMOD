@@ -17,6 +17,7 @@ import {
   operatorGetComplaintDetails,
   operatorAddResponse,
   getDriverComplaintSummary,
+  analyzeComplaintSentiment,
 } from '../controllers/complaintController.js';
 import { protect, authorize } from '../middleware/authMiddleware.js';
 
@@ -35,6 +36,7 @@ router.get('/can-file', protect, canFileComplaint);
 router.get('/drivers', protect, getDriversForComplaint);
 router.get('/recent-bookings', protect, getRecentBookings);
 router.get('/my-complaints', protect, getMyComplaints);
+router.post('/analyze-sentiment', protect, analyzeComplaintSentiment);
 router.post('/', protect, fileComplaint);
 router.get('/:id', protect, getComplaintDetails);
 router.put('/:id/withdraw', protect, withdrawComplaint);

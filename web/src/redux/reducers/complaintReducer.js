@@ -44,6 +44,8 @@ const initialState = {
     sortOrder: 'desc',
     minCredibility: '',
     maxCredibility: '',
+    urgency: '',           // Sentiment analysis urgency filter
+    priorityOnly: '',      // Filter for high priority complaints
   },
 };
 
