@@ -29,6 +29,20 @@ const userActivitySchema = new mongoose.Schema(
       type: String,
       default: null,
     },
+    // Current GPS location for live tracking
+    currentLocation: {
+      latitude: { type: Number, default: null },
+      longitude: { type: Number, default: null },
+      altitude: { type: Number, default: 0 },
+      accuracy: { type: Number, default: 0 },
+      speed: { type: Number, default: 0 },
+      heading: { type: Number, default: 0 },
+      timestamp: { type: Date, default: null },
+    },
+    hasLocation: {
+      type: Boolean,
+      default: false,
+    },
   },
   {
     timestamps: true,
@@ -39,22 +53,36 @@ const userActivitySchema = new mongoose.Schema(
 userActivitySchema.index({ userId: 1 });
 userActivitySchema.index({ isOnline: 1 });
 userActivitySchema.index({ lastSeen: -1 });
+userActivitySchema.index({ isOnline: 1, hasLocation: 1 }); // For live tracking queries
 
-// Static method to update user activity (heartbeat)
-userActivitySchema.statics.updateActivity = async function (userId, deviceInfo = {}) {
+// Static method to update user activity (heartbeat) with optional location
+userActivitySchema.statics.updateActivity = async function (userId, deviceInfo = {}, location = null) {
   const now = new Date();
+  
+  const updateObj = {
+    isOnline: true,
+    lastSeen: now,
+    lastActiveAt: now,
+    ...(deviceInfo.platform && { 'deviceInfo.platform': deviceInfo.platform }),
+    ...(deviceInfo.deviceType && { 'deviceInfo.deviceType': deviceInfo.deviceType }),
+    ...(deviceInfo.appVersion && { 'deviceInfo.appVersion': deviceInfo.appVersion }),
+  };
+
+  // Update location if provided
+  if (location && typeof location.latitude === 'number' && typeof location.longitude === 'number') {
+    updateObj['currentLocation.latitude'] = location.latitude;
+    updateObj['currentLocation.longitude'] = location.longitude;
+    updateObj['currentLocation.altitude'] = location.altitude || 0;
+    updateObj['currentLocation.accuracy'] = location.accuracy || 0;
+    updateObj['currentLocation.speed'] = location.speed || 0;
+    updateObj['currentLocation.heading'] = location.heading || 0;
+    updateObj['currentLocation.timestamp'] = location.timestamp ? new Date(location.timestamp) : now;
+    updateObj.hasLocation = true;
+  }
+
   return this.findOneAndUpdate(
     { userId },
-    {
-      $set: {
-        isOnline: true,
-        lastSeen: now,
-        lastActiveAt: now,
-        ...(deviceInfo.platform && { 'deviceInfo.platform': deviceInfo.platform }),
-        ...(deviceInfo.deviceType && { 'deviceInfo.deviceType': deviceInfo.deviceType }),
-        ...(deviceInfo.appVersion && { 'deviceInfo.appVersion': deviceInfo.appVersion }),
-      },
-    },
+    { $set: updateObj },
     { upsert: true, new: true }
   );
 };

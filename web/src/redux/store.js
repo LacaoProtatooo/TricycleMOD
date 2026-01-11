@@ -11,6 +11,7 @@ import userListReducer from './reducers/userListReducer';
 import adminLogsReducer from './reducers/adminLogsReducer';
 import lostFoundReducer from './reducers/lostFoundReducer';
 import leaderboardReducer from './reducers/leaderboardReducer';
+import liveTrackingReducer from './reducers/liveTrackingReducer';
 
 const store = configureStore({
   reducer: {
@@ -26,6 +27,7 @@ const store = configureStore({
     adminLogs: adminLogsReducer,
     lostFound: lostFoundReducer,
     leaderboard: leaderboardReducer,
+    liveTracking: liveTrackingReducer,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({

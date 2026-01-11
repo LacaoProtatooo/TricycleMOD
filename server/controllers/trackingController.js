@@ -1,4 +1,7 @@
 import TrackingRecord from '../models/trackingRecordModel.js';
+import UserActivity from '../models/userActivityModel.js';
+import User from '../models/userModel.js';
+import Tricycle from '../models/tricycleModel.js';
 import cloudinary from '../utils/cloudinaryConfig.js';
 import { v4 as uuidv4 } from 'uuid';
 
@@ -660,6 +663,157 @@ export const deleteTrip = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: 'Failed to delete trip',
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Get all online drivers with their last known locations (Admin only)
+ * GET /api/tracking/active-drivers
+ * Returns all online drivers (based on UserActivity) with their current GPS location
+ * Location priority: UserActivity.currentLocation (from heartbeat) > TrackingRecord (from trip sync)
+ */
+export const getActiveDrivers = async (req, res) => {
+  try {
+    // First, mark inactive users as offline (users inactive for more than 2 minutes)
+    await UserActivity.markInactiveUsersOffline(2 * 60 * 1000);
+
+    // Find all online drivers from UserActivity
+    const onlineActivities = await UserActivity.find({ isOnline: true })
+      .populate({
+        path: 'userId',
+        match: { role: 'driver' }, // Only get drivers
+        select: 'firstname lastname email phone image role rating tripCount',
+      })
+      .sort({ lastActiveAt: -1 });
+
+    // Filter out activities where userId didn't match (non-drivers)
+    const onlineDriverActivities = onlineActivities.filter(activity => activity.userId !== null);
+
+    // Get user IDs of online drivers
+    const onlineDriverIds = onlineDriverActivities.map(a => a.userId._id);
+
+    // Find any tricycles associated with these drivers
+    const tricycles = await Tricycle.find({ driver: { $in: onlineDriverIds } })
+      .select('driver plateNumber bodyNumber')
+      .lean();
+
+    // Create tricycle lookup map
+    const tricycleMap = {};
+    tricycles.forEach(t => {
+      tricycleMap[t.driver.toString()] = t;
+    });
+
+    // For each online driver, get their location
+    const driversWithLocations = await Promise.all(
+      onlineDriverActivities.map(async (activity) => {
+        const driver = activity.userId;
+        
+        let currentLocation = null;
+        let tripInfo = null;
+        let locationSource = null;
+
+        // PRIORITY 1: Use location from UserActivity heartbeat (most recent real-time location)
+        if (activity.hasLocation && 
+            activity.currentLocation?.latitude !== null && 
+            activity.currentLocation?.longitude !== null) {
+          currentLocation = {
+            latitude: activity.currentLocation.latitude,
+            longitude: activity.currentLocation.longitude,
+            altitude: activity.currentLocation.altitude || 0,
+            speed: activity.currentLocation.speed || 0,
+            heading: activity.currentLocation.heading || 0,
+            timestamp: activity.currentLocation.timestamp,
+          };
+          locationSource = 'heartbeat';
+        }
+
+        // PRIORITY 2: Fallback to TrackingRecord if no heartbeat location
+        if (!currentLocation) {
+          const latestTrack = await TrackingRecord.findOne({
+            $or: [
+              { userId: driver._id },
+              { driverId: driver._id }
+            ],
+            'coordinates.0': { $exists: true }
+          })
+            .sort({ lastSyncAt: -1 })
+            .select('tripId coordinates startTime lastSyncAt status')
+            .lean();
+
+          if (latestTrack && latestTrack.coordinates.length > 0) {
+            const lastCoord = latestTrack.coordinates[latestTrack.coordinates.length - 1];
+            currentLocation = {
+              latitude: lastCoord.latitude,
+              longitude: lastCoord.longitude,
+              altitude: lastCoord.altitude || 0,
+              speed: lastCoord.speed || 0,
+              heading: lastCoord.heading || 0,
+              timestamp: lastCoord.timestamp,
+            };
+            locationSource = 'tracking';
+            tripInfo = {
+              tripId: latestTrack.tripId,
+              startTime: latestTrack.startTime,
+              lastSyncAt: latestTrack.lastSyncAt,
+              status: latestTrack.status,
+              pointCount: latestTrack.coordinates.length,
+            };
+          }
+        }
+
+        // Get associated tricycle
+        const tricycle = tricycleMap[driver._id.toString()];
+
+        return {
+          odriverId: driver._id,
+          driver: {
+            _id: driver._id,
+            name: `${driver.firstname || ''} ${driver.lastname || ''}`.trim() || 'Unknown Driver',
+            email: driver.email,
+            phone: driver.phone,
+            image: driver.image?.url || null,
+            role: driver.role,
+            rating: driver.rating,
+            tripCount: driver.tripCount,
+          },
+          tricycle: tricycle ? {
+            _id: tricycle._id,
+            plateNumber: tricycle.plateNumber,
+            bodyNumber: tricycle.bodyNumber,
+          } : null,
+          currentLocation,
+          locationSource, // 'heartbeat' or 'tracking' - helps debug where location came from
+          tripInfo,
+          activity: {
+            isOnline: activity.isOnline,
+            lastSeen: activity.lastSeen,
+            lastActiveAt: activity.lastActiveAt,
+            platform: activity.deviceInfo?.platform || 'unknown',
+          },
+        };
+      })
+    );
+
+    // Separate drivers with and without locations for better UI handling
+    const driversWithLocation = driversWithLocations.filter(d => d.currentLocation !== null);
+    const driversWithoutLocation = driversWithLocations.filter(d => d.currentLocation === null);
+
+    return res.status(200).json({
+      success: true,
+      count: driversWithLocation.length,
+      totalOnline: driversWithLocations.length,
+      drivers: driversWithLocation,
+      driversNoLocation: driversWithoutLocation,
+      timestamp: new Date(),
+    });
+
+  } catch (error) {
+    console.error('Error getting online drivers:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to get online drivers',
       error: error.message,
     });
   }

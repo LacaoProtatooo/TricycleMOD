@@ -7,6 +7,7 @@ import {
   getTripDetails,
   getTripHistory,
   getActiveTrip,
+  getActiveDrivers,
   exportGPX,
   exportGeoJSON,
   deleteTrip,
@@ -23,6 +24,9 @@ const router = express.Router();
  * Supports both authenticated users (must be verified) and guest tracking via deviceId
  * Logged-in users must have verified accounts to use tracking features
  */
+
+// Admin route for live driver tracking
+router.get('/active-drivers', protect, getActiveDrivers);
 
 // Trip lifecycle routes (requires verified user if logged in, allows device-based guests)
 router.post('/start', optionalVerified, startTrip);

@@ -32,6 +32,7 @@ import BasicTables from "./pages/Tables/BasicTables";
 import FormElements from "./pages/Forms/FormElements";
 import Blank from "./pages/Blank";
 import About from "./pages/About";
+import LiveDriversMap from "./pages/LiveDriversMap";
 import AppLayout from "./layout/AppLayout";
 import { ScrollToTop } from "./components/common/ScrollToTop";
 import Home from "./pages/Dashboard/Home";
@@ -66,6 +67,7 @@ export default function App() {
               <Route path="/leaderboard" element={<Leaderboard />} />
               <Route path="/calendar" element={<Calendar />} />
               <Route path="/announcements" element={<Announcements />} />
+              <Route path="/live-tracking" element={<LiveDriversMap />} />
               <Route path="/blank" element={<Blank />} />
               <Route path="/about" element={<About />} />
 

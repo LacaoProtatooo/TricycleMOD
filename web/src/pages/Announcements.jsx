@@ -108,6 +108,11 @@ const Announcements = () => {
             }));
           }
         },
+        // Close only after selecting both dates in range mode
+        closeOnSelect: false,
+        onClose: () => {
+          // Ensure we have both dates when closing
+        },
       });
     }
 

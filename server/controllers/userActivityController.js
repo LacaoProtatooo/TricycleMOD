@@ -8,13 +8,17 @@ import UserActivity from '../models/userActivityModel.js';
 export const updateHeartbeat = async (req, res) => {
   try {
     const userId = req.user._id;
-    const { platform, deviceType, appVersion } = req.body;
+    const { platform, deviceType, appVersion, location } = req.body;
 
-    await UserActivity.updateActivity(userId, {
-      platform: platform || 'unknown',
-      deviceType: deviceType || '',
-      appVersion: appVersion || '',
-    });
+    await UserActivity.updateActivity(
+      userId,
+      {
+        platform: platform || 'unknown',
+        deviceType: deviceType || '',
+        appVersion: appVersion || '',
+      },
+      location // Pass location data (can be null)
+    );
 
     res.status(200).json({
       success: true,

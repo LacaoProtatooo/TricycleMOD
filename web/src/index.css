@@ -423,6 +423,12 @@ input[type="time"]::-webkit-calendar-picker-indicator {
 }
 .flatpickr-calendar {
   @apply mt-2 !bg-white !rounded-xl !p-5 !border !border-gray-200 !text-gray-500 dark:!bg-gray-dark dark:!border-gray-700 dark:!text-gray-400 dark:!shadow-theme-xl 2xsm:!w-auto;
+  z-index: 99999999 !important;
+}
+
+/* Ensure flatpickr calendar appears above modals */
+.modal .flatpickr-calendar {
+  z-index: 99999999 !important;
 }
 
 .flatpickr-months .flatpickr-prev-month:hover svg,
