@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState, useRef } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator, Alert, Animated } from 'react-native';
 import * as Location from 'expo-location';
+import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing } from '../common/theme';
 
 const QueueCard = ({ token, BACKEND, assignedTricycle, userId }) => {
@@ -274,67 +275,166 @@ const QueueCard = ({ token, BACKEND, assignedTricycle, userId }) => {
 
   return (
     <View style={styles.card}>
-      <Text style={styles.title}>Terminal Queue</Text>
-      {assignedTricycle ? (
-        <Text style={styles.sub}>Body No: {assignedTricycle.bodyNumber} · Plate: {assignedTricycle.plateNumber}</Text>
-      ) : (
-        <Text style={styles.sub}>No tricycle assigned.</Text>
-      )}
+      {/* Header */}
+      <View style={styles.header}>
+        <View style={styles.headerLeft}>
+          <View style={styles.iconCircle}>
+            <Ionicons name="people" size={22} color="#fff" />
+          </View>
+          <View style={styles.headerText}>
+            <Text style={styles.title}>Terminal Queue</Text>
+            {assignedTricycle ? (
+              <View style={styles.tricycleInfo}>
+                <View style={styles.badge}>
+                  <Text style={styles.badgeText}>{assignedTricycle.bodyNumber}</Text>
+                </View>
+                <Text style={styles.plateText}>{assignedTricycle.plateNumber}</Text>
+              </View>
+            ) : (
+              <Text style={styles.noTricycle}>No tricycle assigned</Text>
+            )}
+          </View>
+        </View>
+        {myEntry && (
+          <View style={styles.positionBadge}>
+            <Text style={styles.positionNumber}>{position ?? '—'}</Text>
+            <Text style={styles.positionLabel}>Position</Text>
+          </View>
+        )}
+      </View>
 
+      {/* First in Queue Banner */}
       {isFirst && (
         <View style={styles.banner}>
-          <Text style={styles.bannerText}>You are up next. Proceed to depart.</Text>
+          <Ionicons name="notifications" size={20} color="#f59e0b" />
+          <Text style={styles.bannerText}>You're up next! Proceed to depart.</Text>
         </View>
       )}
 
-      <View style={styles.terminalRow}>
-        <Text style={styles.listTitle}>Terminal</Text>
-        <View style={styles.pillRow}>
+      {/* Terminal Selection */}
+      <View style={styles.terminalSection}>
+        <Text style={styles.sectionTitle}>
+          <Ionicons name="location" size={14} color={colors.orangeShade6} /> Select Terminal
+        </Text>
+        <View style={styles.terminalGrid}>
           {terminals.map((t) => (
             <TouchableOpacity
               key={t.id}
-              style={[styles.pill, terminalId === t.id && styles.pillActive]}
+              style={[styles.terminalCard, terminalId === t.id && styles.terminalCardActive]}
               onPress={() => setTerminalId(t.id)}
             >
-              <Text style={terminalId === t.id ? styles.pillTextActive : styles.pillText}>{t.name}</Text>
+              <Ionicons 
+                name="flag" 
+                size={18} 
+                color={terminalId === t.id ? '#fff' : colors.orangeShade5} 
+              />
+              <Text style={[styles.terminalName, terminalId === t.id && styles.terminalNameActive]}>
+                {t.name}
+              </Text>
             </TouchableOpacity>
           ))}
         </View>
       </View>
 
       {loading ? (
-        <View style={styles.center}><ActivityIndicator color={colors.primary} /></View>
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={styles.loadingText}>Loading queue...</Text>
+        </View>
       ) : (
         <>
+          {/* Status Box when in queue */}
           {myEntry ? (
             <View style={styles.statusBox}>
-              <Text style={styles.statusText}>You are in the queue</Text>
-              <Text style={styles.position}>Position: {position ?? '—'}</Text>
-              <TouchableOpacity style={[styles.btn, styles.depart, (position !== 1) && styles.disabled]} onPress={depart} disabled={joining || position !== 1}>
-                <Text style={styles.btnText}>{joining ? 'Advancing...' : 'Depart / Call next'}</Text>
-              </TouchableOpacity>
-              <TouchableOpacity style={[styles.btn, styles.cancel]} onPress={cancel} disabled={joining}>
-                <Text style={styles.btnText}>Leave queue</Text>
-              </TouchableOpacity>
+              <View style={styles.statusHeader}>
+                <Ionicons name="checkmark-circle" size={24} color="#22c55e" />
+                <Text style={styles.statusTitle}>You're in the Queue!</Text>
+              </View>
+              
+              <View style={styles.actionButtons}>
+                <TouchableOpacity 
+                  style={[styles.actionBtn, styles.departBtn, position !== 1 && styles.disabledBtn]} 
+                  onPress={depart} 
+                  disabled={joining || position !== 1}
+                >
+                  <Ionicons name="car" size={20} color="#fff" />
+                  <Text style={styles.actionBtnText}>
+                    {joining ? 'Processing...' : 'Depart'}
+                  </Text>
+                </TouchableOpacity>
+                
+                <TouchableOpacity 
+                  style={[styles.actionBtn, styles.leaveBtn]} 
+                  onPress={cancel} 
+                  disabled={joining}
+                >
+                  <Ionicons name="exit-outline" size={20} color="#fff" />
+                  <Text style={styles.actionBtnText}>Leave</Text>
+                </TouchableOpacity>
+              </View>
             </View>
           ) : (
             <TouchableOpacity
-              style={[styles.btn, (!assignedTricycle || !terminalId) && styles.disabled]}
+              style={[styles.joinBtn, (!assignedTricycle || !terminalId) && styles.disabledBtn]}
               onPress={join}
               disabled={!assignedTricycle || !terminalId || joining}
             >
-              <Text style={styles.btnText}>{joining ? 'Joining...' : 'Join queue'}</Text>
+              <Ionicons name="add-circle" size={22} color="#fff" />
+              <Text style={styles.joinBtnText}>
+                {joining ? 'Joining Queue...' : 'Join Queue'}
+              </Text>
             </TouchableOpacity>
           )}
 
-          <Text style={styles.listTitle}>Current queue ({terminalId || 'select terminal'})</Text>
-          {queue.slice(0, 5).map((q, idx) => (
-            <View key={q._id} style={styles.row}>
-              <Text style={styles.rowText}>{idx + 1}. {q.bodyNumber}</Text>
-              <Text style={styles.rowSub}>{q.tricycle?.plateNumber || '—'}</Text>
+          {/* Queue List */}
+          <View style={styles.queueSection}>
+            <View style={styles.queueHeader}>
+              <Text style={styles.sectionTitle}>
+                <Ionicons name="list" size={14} color={colors.orangeShade6} /> Queue List
+              </Text>
+              <View style={styles.queueCount}>
+                <Text style={styles.queueCountText}>{queue.length}</Text>
+              </View>
             </View>
-          ))}
-          {queue.length === 0 && <Text style={styles.empty}>No one is queued yet.</Text>}
+            
+            {queue.length === 0 ? (
+              <View style={styles.emptyQueue}>
+                <Ionicons name="hourglass-outline" size={40} color={colors.ivory3} />
+                <Text style={styles.emptyText}>No one in queue</Text>
+                <Text style={styles.emptySubtext}>Be the first to join!</Text>
+              </View>
+            ) : (
+              <View style={styles.queueList}>
+                {queue.slice(0, 5).map((q, idx) => {
+                  const isMe = String(q.driver?._id || q.driver?.id || q.driver) === String(userId);
+                  return (
+                    <View key={q._id} style={[styles.queueItem, isMe && styles.queueItemHighlight]}>
+                      <View style={[styles.queuePosition, idx === 0 && styles.queuePositionFirst]}>
+                        <Text style={[styles.queuePositionText, idx === 0 && styles.queuePositionTextFirst]}>
+                          {idx + 1}
+                        </Text>
+                      </View>
+                      <View style={styles.queueItemInfo}>
+                        <Text style={[styles.queueBodyNumber, isMe && styles.queueTextHighlight]}>
+                          {q.bodyNumber}
+                          {isMe && <Text style={styles.youTag}> (You)</Text>}
+                        </Text>
+                        <Text style={styles.queuePlate}>{q.tricycle?.plateNumber || '—'}</Text>
+                      </View>
+                      {idx === 0 && (
+                        <View style={styles.nextBadge}>
+                          <Text style={styles.nextBadgeText}>NEXT</Text>
+                        </View>
+                      )}
+                    </View>
+                  );
+                })}
+                {queue.length > 5 && (
+                  <Text style={styles.moreText}>+{queue.length - 5} more in queue</Text>
+                )}
+              </View>
+            )}
+          </View>
         </>
       )}
     </View>
@@ -344,36 +444,321 @@ const QueueCard = ({ token, BACKEND, assignedTricycle, userId }) => {
 const styles = StyleSheet.create({
   card: {
     marginTop: spacing.medium,
-    backgroundColor: colors.ivory4,
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 8,
+    elevation: 4,
+    overflow: 'hidden',
+  },
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
     padding: spacing.medium,
+    backgroundColor: colors.primary,
+  },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  iconCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  headerText: {
+    marginLeft: 12,
+    flex: 1,
+  },
+  title: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  tricycleInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  badge: {
+    backgroundColor: 'rgba(255,255,255,0.25)',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  badgeText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 12,
+  },
+  plateText: {
+    color: 'rgba(255,255,255,0.8)',
+    fontSize: 12,
+    marginLeft: 8,
+  },
+  noTricycle: {
+    color: 'rgba(255,255,255,0.7)',
+    fontSize: 12,
+    marginTop: 2,
+  },
+  positionBadge: {
+    backgroundColor: '#fff',
+    paddingHorizontal: 14,
+    paddingVertical: 8,
     borderRadius: 12,
+    alignItems: 'center',
+    minWidth: 60,
+  },
+  positionNumber: {
+    fontSize: 24,
+    fontWeight: '800',
+    color: colors.primary,
+  },
+  positionLabel: {
+    fontSize: 10,
+    color: colors.orangeShade5,
+    fontWeight: '600',
+  },
+  banner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fef3c7',
+    paddingVertical: 12,
+    paddingHorizontal: spacing.medium,
+    borderBottomWidth: 1,
+    borderBottomColor: '#fcd34d',
+  },
+  bannerText: {
+    color: '#92400e',
+    fontWeight: '600',
+    marginLeft: 10,
+    flex: 1,
+  },
+  terminalSection: {
+    padding: spacing.medium,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.ivory2,
+  },
+  sectionTitle: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.orangeShade6,
+    marginBottom: 10,
+  },
+  terminalGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: 8,
+  },
+  terminalCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    borderRadius: 10,
+    backgroundColor: colors.ivory2,
     borderWidth: 1,
     borderColor: colors.ivory3,
   },
-  title: { fontSize: 16, fontWeight: '700', color: colors.orangeShade7 },
-  sub: { marginTop: 4, color: colors.orangeShade5, fontSize: 12 },
-  center: { padding: spacing.medium, alignItems: 'center' },
-  statusBox: { marginTop: spacing.small, padding: spacing.small, backgroundColor: colors.ivory1, borderRadius: 10, borderWidth: 1, borderColor: colors.ivory3 },
-  statusText: { color: colors.orangeShade7, fontWeight: '700' },
-  position: { marginTop: 4, color: colors.orangeShade5 },
-  banner: { marginTop: spacing.small, padding: spacing.small, backgroundColor: '#ffe8cc', borderRadius: 10, borderWidth: 1, borderColor: colors.orangeShade3 },
-  bannerText: { color: colors.orangeShade7, fontWeight: '700' },
-  btn: { marginTop: spacing.small, backgroundColor: colors.primary, paddingVertical: 10, borderRadius: 8, alignItems: 'center' },
-  disabled: { opacity: 0.6 },
-  depart: { backgroundColor: '#0d6efd' },
-  cancel: { backgroundColor: '#b02a37' },
-  btnText: { color: colors.ivory1, fontWeight: '700' },
-  listTitle: { marginTop: spacing.medium, fontWeight: '700', color: colors.orangeShade6 },
-  terminalRow: { marginTop: spacing.small },
-  pillRow: { flexDirection: 'row', flexWrap: 'wrap', marginTop: spacing.xsmall, gap: 6 },
-  pill: { paddingVertical: 6, paddingHorizontal: 10, borderRadius: 12, borderWidth: 1, borderColor: colors.ivory3, backgroundColor: colors.ivory1 },
-  pillActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-  pillText: { color: colors.orangeShade7, fontWeight: '600' },
-  pillTextActive: { color: colors.ivory1, fontWeight: '700' },
-  row: { flexDirection: 'row', justifyContent: 'space-between', paddingVertical: 6, borderBottomWidth: 1, borderBottomColor: colors.ivory3 },
-  rowText: { color: colors.orangeShade7 },
-  rowSub: { color: colors.orangeShade5, fontSize: 12 },
-  empty: { marginTop: spacing.small, color: colors.orangeShade5 },
+  terminalCardActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  terminalName: {
+    marginLeft: 6,
+    fontWeight: '600',
+    color: colors.orangeShade6,
+    fontSize: 13,
+  },
+  terminalNameActive: {
+    color: '#fff',
+  },
+  loadingContainer: {
+    padding: spacing.xlarge,
+    alignItems: 'center',
+  },
+  loadingText: {
+    marginTop: 10,
+    color: colors.orangeShade5,
+  },
+  statusBox: {
+    margin: spacing.medium,
+    padding: spacing.medium,
+    backgroundColor: '#f0fdf4',
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#bbf7d0',
+  },
+  statusHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 12,
+  },
+  statusTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#166534',
+    marginLeft: 8,
+  },
+  actionButtons: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  actionBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    borderRadius: 10,
+    gap: 6,
+  },
+  departBtn: {
+    backgroundColor: '#0d6efd',
+  },
+  leaveBtn: {
+    backgroundColor: '#dc2626',
+  },
+  disabledBtn: {
+    opacity: 0.5,
+  },
+  actionBtnText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 14,
+  },
+  joinBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primary,
+    marginHorizontal: spacing.medium,
+    marginTop: spacing.medium,
+    paddingVertical: 14,
+    borderRadius: 12,
+    gap: 8,
+  },
+  joinBtnText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 16,
+  },
+  queueSection: {
+    padding: spacing.medium,
+  },
+  queueHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 12,
+  },
+  queueCount: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  queueCountText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 12,
+  },
+  emptyQueue: {
+    alignItems: 'center',
+    paddingVertical: spacing.large,
+  },
+  emptyText: {
+    marginTop: 10,
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.orangeShade5,
+  },
+  emptySubtext: {
+    fontSize: 13,
+    color: colors.orangeShade4,
+    marginTop: 4,
+  },
+  queueList: {
+    gap: 8,
+  },
+  queueItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.ivory1,
+    padding: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: colors.ivory2,
+  },
+  queueItemHighlight: {
+    backgroundColor: '#fef3c7',
+    borderColor: '#fcd34d',
+  },
+  queuePosition: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: colors.ivory3,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  queuePositionFirst: {
+    backgroundColor: colors.primary,
+  },
+  queuePositionText: {
+    fontWeight: '700',
+    color: colors.orangeShade6,
+    fontSize: 14,
+  },
+  queuePositionTextFirst: {
+    color: '#fff',
+  },
+  queueItemInfo: {
+    flex: 1,
+    marginLeft: 12,
+  },
+  queueBodyNumber: {
+    fontWeight: '700',
+    color: colors.orangeShade7,
+    fontSize: 15,
+  },
+  queueTextHighlight: {
+    color: '#92400e',
+  },
+  youTag: {
+    fontWeight: '600',
+    fontSize: 12,
+    color: '#f59e0b',
+  },
+  queuePlate: {
+    fontSize: 12,
+    color: colors.orangeShade5,
+    marginTop: 2,
+  },
+  nextBadge: {
+    backgroundColor: '#22c55e',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+  },
+  nextBadgeText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: '800',
+  },
+  moreText: {
+    textAlign: 'center',
+    color: colors.orangeShade5,
+    fontSize: 13,
+    marginTop: 8,
+  },
 });
 
 export default QueueCard;
