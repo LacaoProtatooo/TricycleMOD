@@ -13,6 +13,10 @@ import {
   adminResolveComplaint,
   adminAddNote,
   adminGetDriverComplaints,
+  operatorGetDriverComplaints,
+  operatorGetComplaintDetails,
+  operatorAddResponse,
+  getDriverComplaintSummary,
 } from '../controllers/complaintController.js';
 import { protect, authorize } from '../middleware/authMiddleware.js';
 
@@ -34,6 +38,14 @@ router.get('/my-complaints', protect, getMyComplaints);
 router.post('/', protect, fileComplaint);
 router.get('/:id', protect, getComplaintDetails);
 router.put('/:id/withdraw', protect, withdrawComplaint);
+
+// Operator routes (requires operator role)
+router.get('/operator/my-drivers', protect, authorize('operator'), operatorGetDriverComplaints);
+router.get('/operator/:id', protect, authorize('operator'), operatorGetComplaintDetails);
+router.post('/operator/:id/response', protect, authorize('operator'), operatorAddResponse);
+
+// Driver summary (for operators and admins)
+router.get('/driver-summary/:driverId', protect, authorize('admin', 'operator'), getDriverComplaintSummary);
 
 // Admin routes (requires admin role)
 router.get('/admin/all', protect, authorize('admin'), adminGetAllComplaints);
