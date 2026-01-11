@@ -21,6 +21,14 @@ export default function About() {
     },
   ];
 
+  const advisor = {
+    name: "Dr. Rico S. Santos",
+    role: "Technical Advisor",
+    title: "Former MTICS Adviser '20-'23",
+    institution: "Technological University of the Philippines",
+    image: "/images/user/doc_rico.jpg",
+  };
+
   const features = [
     {
       icon: (
@@ -433,6 +441,46 @@ export default function About() {
                 </div>
               </div>
             ))}
+          </div>
+        </div>
+
+        {/* Technical Advisor Section */}
+        <div className="rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-white/[0.03] lg:p-8">
+          <div className="text-center mb-8">
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
+              Technical Advisor
+            </h2>
+            <p className="text-gray-600 dark:text-gray-400">
+              Guiding our technical direction
+            </p>
+            <div className="w-16 h-1 bg-orange-500 mx-auto mt-4 rounded-full"></div>
+          </div>
+
+          <div className="max-w-md mx-auto">
+            <div className="rounded-xl border border-orange-200 bg-gradient-to-br from-orange-50 to-orange-100 p-8 dark:border-orange-800 dark:from-orange-900/20 dark:to-orange-800/20 text-center">
+              <div className="w-32 h-32 rounded-full mx-auto mb-4 overflow-hidden border-4 border-orange-300 dark:border-orange-700 shadow-lg">
+                <img
+                  src={advisor.image}
+                  alt={advisor.name}
+                  className="w-full h-full object-cover"
+                />
+              </div>
+              <h3 className="text-xl font-bold text-gray-900 dark:text-white mb-2">
+                {advisor.name}
+              </h3>
+              <span className="inline-flex items-center gap-2 px-4 py-1.5 text-sm font-medium text-white bg-orange-500 rounded-full mb-3">
+                <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+                </svg>
+                {advisor.role}
+              </span>
+              <p className="text-orange-700 dark:text-orange-300 text-sm font-medium mb-1">
+                {advisor.title}
+              </p>
+              <p className="text-gray-600 dark:text-gray-400 text-sm">
+                {advisor.institution}
+              </p>
+            </div>
           </div>
         </div>
 

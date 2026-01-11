@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import { Modal } from "../components/ui/modal";
 import { useModal } from "../hooks/useModal";
@@ -32,36 +32,42 @@ const SUSPENSION_PRESETS = [
   { days: 30, label: "1 Month", description: "Major offense or repeated violations" },
 ];
 
+// WEBTTODA Suspension Rules Reference with full penalties
 const WEBTTODA_RULES = [
-  { id: 1, category: "Work & Drive Efficiency", rule: "Act of insubordination" },
-  { id: 2, category: "Work & Drive Efficiency", rule: "Illegal lining other than prescribed point" },
-  { id: 3, category: "Work & Drive Efficiency", rule: "Illegal pick-up of passengers" },
-  { id: 4, category: "Work & Drive Efficiency", rule: "Dress code violation (weekdays)" },
-  { id: 5, category: "Work & Drive Efficiency", rule: "Dress code violation (weekends/holidays)" },
-  { id: 6, category: "Work & Drive Efficiency", rule: "Wearing slippers/short pants during weekdays" },
-  { id: 7, category: "Act of Dishonesty", rule: "Failure to pay daily dues" },
-  { id: 8, category: "Act of Dishonesty", rule: "False statement/fraudulent entries" },
-  { id: 9, category: "Act Against Public Policy", rule: "Driving under influence/drinking within premises" },
-  { id: 10, category: "Act Against Public Policy", rule: "Defacing/tearing posters" },
-  { id: 11, category: "Act Against Public Policy", rule: "Fighting in the association" },
-  { id: 12, category: "Act Against Public Policy", rule: "Attacking another member without provocation" },
-  { id: 13, category: "Act Against Public Policy", rule: "Challenging any member to fight" },
-  { id: 14, category: "Act Against Public Policy", rule: "Challenging Officers and Trustees" },
-  { id: 15, category: "Act Against Public Policy", rule: "Discourteous acts against passengers" },
-  { id: 16, category: "Act Against Public Policy", rule: "Reckless driving within playing routes" },
-  { id: 17, category: "Act Against Public Policy", rule: "Causing ill-will/dissension among members" },
-  { id: 18, category: "Act Against Public Policy", rule: "Coercing and intimidating members" },
-  { id: 19, category: "Serious Offenses", rule: "Conviction of crime (1 month+ penalty)" },
-  { id: 20, category: "Serious Offenses", rule: "Making malicious false accusations" },
-  { id: 21, category: "Serious Offenses", rule: "Substituting old parts/appropriating property" },
-  { id: 22, category: "Serious Offenses", rule: "Damaging association property" },
-  { id: 23, category: "Serious Offenses", rule: "Acts of disrespect to executives" },
-  { id: 24, category: "Serious Offenses", rule: "Insulting conduct to officers/trustees" },
-  { id: 25, category: "Serious Offenses", rule: "Disobedience to lawful orders of Marshall" },
-  { id: 26, category: "Serious Offenses", rule: "Failure to attend general meeting" },
-  { id: 27, category: "Serious Offenses", rule: "Failure to observe personal cleanliness" },
-  { id: 28, category: "Repeated Violations", rule: "Three warnings within 1 year" },
-  { id: 29, category: "Repeated Violations", rule: "Three suspensions within 1 year" },
+  // Category I: Work & Drive Efficiency
+  { id: 1, category: "Work & Drive Efficiency", rule: "Act of insubordination", offense: "Any act of insubordination", penalties: ["Suspension 3 days", "Suspension 1 week", "Suspension 1 month or dismissal", "Dismissal"], defaultDays: [3, 7, 30, 0] },
+  { id: 2, category: "Work & Drive Efficiency", rule: "Illegal lining other than prescribed point", offense: "Illegal lining other than prescribed point", penalties: ["Suspension 3 days", "Suspension 1 week", "Suspension 1 month or dismissal", "Dismissal"], defaultDays: [3, 7, 30, 0] },
+  { id: 3, category: "Work & Drive Efficiency", rule: "Illegal pick-up of passengers", offense: "Illegal pick-up of passengers", penalties: ["Suspension 3 days", "Suspension 1 week", "Suspension 1 month or dismissal", "Dismissal"], defaultDays: [3, 7, 30, 0] },
+  { id: 4, category: "Work & Drive Efficiency", rule: "Dress code violation (weekdays)", offense: "Wearing sandos, short pants and sandals from Monday to Friday (not authorized except during rainy days)", penalties: ["Suspension 3 days", "Suspension 1 week", "Suspension 1 month or dismissal", "Dismissal"], defaultDays: [3, 7, 30, 0] },
+  { id: 5, category: "Work & Drive Efficiency", rule: "Dress code violation (weekends/holidays)", offense: "Wearing sandos during Saturday, Sunday and Holiday (not authorized)", penalties: ["Suspension 3 days", "Suspension 1 week", "Suspension 1 month or dismissal", "Dismissal"], defaultDays: [3, 7, 30, 0] },
+  { id: 6, category: "Work & Drive Efficiency", rule: "Wearing slippers/short pants during weekdays", offense: "Wearing slippers and short pants during weekdays", penalties: ["Suspension 3 days", "Suspension 1 week", "Suspension 1 month or dismissal", "Dismissal"], defaultDays: [3, 7, 30, 0] },
+  // Category II: Act of Dishonesty
+  { id: 7, category: "Act of Dishonesty", rule: "Failure to pay daily dues", offense: "Failure and/or refusing to pay the daily dues", penalties: ["Suspension 1 day", "Suspension 3 days", "Suspension 1 month or dismissal", "Dismissal"], defaultDays: [1, 3, 30, 0] },
+  { id: 8, category: "Act of Dishonesty", rule: "False statement/fraudulent entries", offense: "FALSE STATEMENT – Any applicant who had been accepted for membership and later found out to have fraudulent entries in order to 'influence' approval", penalties: ["Dismissal"], defaultDays: [0] },
+  // Category III: Act Against Public Policy
+  { id: 9, category: "Act Against Public Policy", rule: "Driving under influence/drinking within premises", offense: "Driving under the influence of liquor, drug and/or participating in any drinking spree within the WEBTTODA premises or any form of illegal gambling within the route", penalties: ["Suspension 1 week", "Dismissal"], defaultDays: [7, 0] },
+  { id: 10, category: "Act Against Public Policy", rule: "Defacing/tearing posters", offense: "Defacing and/or tearing down posters of the association from bulletin board, or adding insulting words and/or pictures or marks", penalties: ["Suspension 1 week", "Suspension 1 month", "Dismissal"], defaultDays: [7, 30, 0] },
+  { id: 11, category: "Act Against Public Policy", rule: "Fighting in the association", offense: "Fighting in the association regardless of the cause", penalties: ["Suspension 1 week", "Dismissal"], defaultDays: [7, 0] },
+  { id: 12, category: "Act Against Public Policy", rule: "Attacking another member without provocation", offense: "Attacking another member without any provocation causing bodily harm and/or injury", penalties: ["Suspension 1 week", "Dismissal"], defaultDays: [7, 0] },
+  { id: 13, category: "Act Against Public Policy", rule: "Challenging any member to fight", offense: "Challenging any member to fight", penalties: ["Suspension 2 weeks", "Dismissal"], defaultDays: [14, 0] },
+  { id: 14, category: "Act Against Public Policy", rule: "Challenging Officers and Trustees", offense: "Challenging Officers and Trustees", penalties: ["Suspension 2 weeks or dismissal", "Dismissal"], defaultDays: [14, 0] },
+  { id: 15, category: "Act Against Public Policy", rule: "Discourteous acts against passengers", offense: "Discourteous Acts Committed against passengers within the association playing route area", penalties: ["Suspension 3 days", "Suspension 1 week", "Dismissal"], defaultDays: [3, 7, 0] },
+  { id: 16, category: "Act Against Public Policy", rule: "Reckless driving within playing routes", offense: "Reckless driving within the WEBTTODA playing routes", penalties: ["Suspension 1 week or dismissal", "Suspension 1 week"], defaultDays: [7, 7] },
+  { id: 17, category: "Act Against Public Policy", rule: "Causing ill-will/dissension among members", offense: "Cause ill-will and dissension or create cliques and/or intrigues among the officers, trustees and members", penalties: ["Suspension 1 week", "Suspension 1 month or dismissal", "Dismissal"], defaultDays: [7, 30, 0] },
+  { id: 18, category: "Act Against Public Policy", rule: "Coercing and intimidating members", offense: "Treating coercing and intimidating below members", penalties: ["Suspension 1 week", "Suspension 1 month", "Dismissal"], defaultDays: [7, 30, 0] },
+  // Category IV: Serious Offenses
+  { id: 19, category: "Serious Offenses", rule: "Conviction of crime (1 month+ penalty)", offense: "Conviction of any crime where the penalty is for one (1) month or more", penalties: ["Dismissal"], defaultDays: [0] },
+  { id: 20, category: "Serious Offenses", rule: "Making malicious false accusations", offense: "Making malicious false accusation and statement concerning the good name of the association", penalties: ["Dismissal"], defaultDays: [0] },
+  { id: 21, category: "Serious Offenses", rule: "Substituting old parts/appropriating property", offense: "Substituting old parts for operators owned property and appropriating same", penalties: ["Dismissal"], defaultDays: [0] },
+  { id: 22, category: "Serious Offenses", rule: "Damaging association property", offense: "Misusing, destroying, defacing and/or damaging association property", penalties: ["Suspension 1 week or Dismissal"], defaultDays: [7] },
+  { id: 23, category: "Serious Offenses", rule: "Acts of disrespect to executives", offense: "Acts of disrespect or discourtesy to the association executive", penalties: ["Suspension 1 month", "Dismissal"], defaultDays: [30, 0] },
+  { id: 24, category: "Serious Offenses", rule: "Insulting conduct to officers/trustees", offense: "Insulting and/or unbecoming conduct and/or language to the association officers and trustees", penalties: ["Suspension 2 weeks", "Dismissal"], defaultDays: [14, 0] },
+  { id: 25, category: "Serious Offenses", rule: "Disobedience to lawful orders of Marshall", offense: "Disobedience to lawful orders of Marshall", penalties: ["Suspension 2 weeks or dismissal", "Dismissal"], defaultDays: [14, 0] },
+  { id: 26, category: "Serious Offenses", rule: "Failure to attend general meeting", offense: "Failure to attend the general meeting during the designated time and place especially drivers without valid reason", penalties: ["Suspension 1 day", "Suspension 3 days", "Dismissal"], defaultDays: [1, 3, 0] },
+  { id: 27, category: "Serious Offenses", rule: "Failure to observe personal cleanliness", offense: "Failure to observe personal cleanliness, uncouth clothings", penalties: ["Warning", "Suspension 3 days", "Suspension 1 week", "Dismissal"], defaultDays: [0, 3, 7, 0] },
+  // Category V: Repeated Violations
+  { id: 28, category: "Repeated Violations", rule: "Three warnings within 1 year", offense: "Three warning within a period of one (1) year last violation", penalties: ["Suspension 1 week"], defaultDays: [7] },
+  { id: 29, category: "Repeated Violations", rule: "Three suspensions within 1 year", offense: "Three suspension within a period of one (1) year last violation", penalties: ["Dismissal"], defaultDays: [0] },
 ];
 
 const Drivers = () => {
@@ -102,6 +108,9 @@ const Drivers = () => {
   const [suspensionReason, setSuspensionReason] = useState("");
   const [selectedRule, setSelectedRule] = useState("");
   const [offenseNumber, setOffenseNumber] = useState(1);
+  const [hoveredRule, setHoveredRule] = useState(null);
+  const [isRuleDropdownOpen, setIsRuleDropdownOpen] = useState(false);
+  const ruleDropdownRef = useRef(null);
 
   // Modals
   const { isOpen: isDetailsOpen, openModal: openDetailsModal, closeModal: closeDetailsModal } = useModal();
@@ -178,11 +187,42 @@ const Drivers = () => {
     }
   }, [unsuspendSuccess, dispatch]);
 
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (ruleDropdownRef.current && !ruleDropdownRef.current.contains(event.target)) {
+        setIsRuleDropdownOpen(false);
+        setHoveredRule(null);
+      }
+    };
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  // Auto-update suspension days based on selected rule and offense number
+  useEffect(() => {
+    if (selectedRule) {
+      const rule = WEBTTODA_RULES.find(r => r.id === parseInt(selectedRule));
+      if (rule && rule.defaultDays && rule.defaultDays.length > 0) {
+        const offenseIdx = Math.min(offenseNumber - 1, rule.defaultDays.length - 1);
+        const days = rule.defaultDays[offenseIdx];
+        if (days === 0) {
+          // Dismissal - set to a high number to indicate termination
+          setSuspensionDays(0);
+        } else {
+          setSuspensionDays(days);
+        }
+      }
+    }
+  }, [selectedRule, offenseNumber]);
+
   const resetSuspensionForm = () => {
     setSuspensionDays(3);
     setSuspensionReason("");
     setSelectedRule("");
     setOffenseNumber(1);
+    setHoveredRule(null);
+    setIsRuleDropdownOpen(false);
   };
 
   const handleViewDriver = (driverId) => {
@@ -214,16 +254,27 @@ const Drivers = () => {
   };
 
   const handleSuspend = () => {
-    if (selectedDriver?._id && suspensionDays > 0) {
-      const ruleText = selectedRule 
-        ? WEBTTODA_RULES.find(r => r.id === parseInt(selectedRule))?.rule 
+    if (selectedDriver?._id && (suspensionDays > 0 || suspensionDays === 0)) {
+      const ruleObj = selectedRule 
+        ? WEBTTODA_RULES.find(r => r.id === parseInt(selectedRule))
         : null;
+      const ruleText = ruleObj?.rule || null;
+      const penaltyIdx = Math.min(offenseNumber - 1, (ruleObj?.penalties?.length || 1) - 1);
+      const penalty = ruleObj?.penalties?.[penaltyIdx] || null;
+      
+      // If dismissal (0 days), set a very long suspension period (e.g., 3650 days = 10 years)
+      const effectiveDays = suspensionDays === 0 ? 3650 : suspensionDays;
+      
       dispatch(suspendDriver({
         driverId: selectedDriver._id,
-        days: suspensionDays,
-        reason: suspensionReason || `Suspended for ${suspensionDays} days`,
+        days: effectiveDays,
+        reason: suspensionReason || (suspensionDays === 0 
+          ? `Dismissed from WEBTTODA - ${ruleText || 'Rule violation'}` 
+          : `Suspended for ${suspensionDays} days`),
         ruleViolated: ruleText,
         offenseNumber: offenseNumber,
+        penalty: penalty,
+        isDismissal: suspensionDays === 0,
       }));
     }
   };
@@ -927,52 +978,178 @@ const Drivers = () => {
               <input
                 type="number"
                 value={suspensionDays}
-                onChange={(e) => setSuspensionDays(Math.max(1, parseInt(e.target.value) || 1))}
-                min="1"
+                onChange={(e) => setSuspensionDays(Math.max(0, parseInt(e.target.value) || 0))}
+                min="0"
                 className="w-20 h-10 rounded-lg border border-gray-300 bg-transparent px-3 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
               />
-              <span className="text-sm text-gray-500 dark:text-gray-400">days</span>
+              <span className="text-sm text-gray-500 dark:text-gray-400">
+                {suspensionDays === 0 ? "(Dismissal)" : "days"}
+              </span>
             </div>
           </div>
 
-          {/* Rule Violated (WEBTTODA Reference) */}
-          <div className="mb-4">
+          {/* Rule Violated (WEBTTODA Reference) - Custom Dropdown with Tooltips */}
+          <div className="mb-4" ref={ruleDropdownRef}>
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
               Rule Violated (WEBTTODA Rules)
             </label>
-            <select
-              value={selectedRule}
-              onChange={(e) => setSelectedRule(e.target.value)}
-              className="w-full h-10 rounded-lg border border-gray-300 bg-transparent px-3 text-sm text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90"
-            >
-              <option value="">Select a rule (optional)</option>
-              {WEBTTODA_RULES.map((rule) => (
-                <option key={rule.id} value={rule.id}>
-                  #{rule.id} - {rule.rule}
-                </option>
-              ))}
-            </select>
+            <div className="relative">
+              {/* Dropdown Trigger */}
+              <button
+                type="button"
+                onClick={() => setIsRuleDropdownOpen(!isRuleDropdownOpen)}
+                className="w-full h-10 rounded-lg border border-gray-300 bg-transparent px-3 text-sm text-left text-gray-800 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-700 dark:bg-gray-900 dark:text-white/90 flex items-center justify-between"
+              >
+                <span className={selectedRule ? "" : "text-gray-400 dark:text-gray-500"}>
+                  {selectedRule 
+                    ? `#${selectedRule} - ${WEBTTODA_RULES.find(r => r.id === parseInt(selectedRule))?.rule}` 
+                    : "Select a rule (optional)"}
+                </span>
+                <svg className={`w-4 h-4 transition-transform ${isRuleDropdownOpen ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+                </svg>
+              </button>
+
+              {/* Dropdown Menu */}
+              {isRuleDropdownOpen && (
+                <div className="absolute z-50 w-full mt-1 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg max-h-60 overflow-y-auto">
+                  {/* Clear Selection Option */}
+                  <div
+                    onClick={() => {
+                      setSelectedRule("");
+                      setIsRuleDropdownOpen(false);
+                      setHoveredRule(null);
+                    }}
+                    className="px-3 py-2 text-sm text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-700 cursor-pointer border-b border-gray-100 dark:border-gray-700"
+                  >
+                    Clear selection
+                  </div>
+                  
+                  {/* Group by Category */}
+                  {["Work & Drive Efficiency", "Act of Dishonesty", "Act Against Public Policy", "Serious Offenses", "Repeated Violations"].map((category) => (
+                    <div key={category}>
+                      <div className="px-3 py-1.5 text-xs font-semibold text-gray-400 dark:text-gray-500 bg-gray-50 dark:bg-gray-900/50 sticky top-0">
+                        {category}
+                      </div>
+                      {WEBTTODA_RULES.filter(r => r.category === category).map((rule) => (
+                        <div
+                          key={rule.id}
+                          onClick={() => {
+                            setSelectedRule(rule.id.toString());
+                            setIsRuleDropdownOpen(false);
+                            setHoveredRule(null);
+                          }}
+                          onMouseEnter={() => setHoveredRule(rule)}
+                          onMouseLeave={() => setHoveredRule(null)}
+                          className={`relative px-3 py-2 text-sm cursor-pointer transition-colors ${
+                            selectedRule === rule.id.toString()
+                              ? "bg-orange-50 text-orange-700 dark:bg-orange-900/30 dark:text-orange-400"
+                              : "text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
+                          }`}
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="truncate pr-2">#{rule.id} - {rule.rule}</span>
+                            <svg className="w-4 h-4 text-gray-400 flex-shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                            </svg>
+                          </div>
+
+                          {/* Tooltip on hover */}
+                          {hoveredRule?.id === rule.id && (
+                            <div className="absolute left-full top-0 ml-2 w-72 p-3 bg-gray-900 dark:bg-gray-700 text-white rounded-lg shadow-xl z-[60] pointer-events-none">
+                              <div className="text-xs font-semibold text-orange-400 mb-1">Rule #{rule.id}</div>
+                              <div className="text-sm font-medium mb-2">{rule.offense}</div>
+                              <div className="text-xs text-gray-300 mb-2">Category: {rule.category}</div>
+                              <div className="border-t border-gray-700 dark:border-gray-600 pt-2 mt-2">
+                                <div className="text-xs font-semibold text-gray-400 mb-1">Penalties:</div>
+                                {rule.penalties.map((penalty, idx) => (
+                                  <div key={idx} className="text-xs text-gray-300 flex items-center gap-1">
+                                    <span className="text-orange-400">{idx + 1}{idx === 0 ? "st" : idx === 1 ? "nd" : idx === 2 ? "rd" : "th"}:</span>
+                                    <span className={penalty === "Dismissal" ? "text-red-400 font-medium" : ""}>{penalty}</span>
+                                  </div>
+                                ))}
+                              </div>
+                              {/* Arrow pointing left */}
+                              <div className="absolute left-0 top-4 -translate-x-1 w-2 h-2 bg-gray-900 dark:bg-gray-700 rotate-45"></div>
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            
+            {/* Selected Rule Info */}
+            {selectedRule && (
+              <div className="mt-2 p-2 bg-orange-50 dark:bg-orange-900/20 border border-orange-200 dark:border-orange-800 rounded-lg">
+                <div className="text-xs text-orange-700 dark:text-orange-400">
+                  <strong>Selected:</strong> {WEBTTODA_RULES.find(r => r.id === parseInt(selectedRule))?.offense}
+                </div>
+                <div className="text-xs text-orange-600 dark:text-orange-500 mt-1">
+                  <strong>Penalty ({offenseNumber === 1 ? "1st" : offenseNumber === 2 ? "2nd" : offenseNumber === 3 ? "3rd" : "4th"} offense):</strong>{" "}
+                  {(() => {
+                    const rule = WEBTTODA_RULES.find(r => r.id === parseInt(selectedRule));
+                    if (rule) {
+                      const idx = Math.min(offenseNumber - 1, rule.penalties.length - 1);
+                      return rule.penalties[idx];
+                    }
+                    return "N/A";
+                  })()}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Offense Number */}
           <div className="mb-4">
             <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">
               Offense Number
+              {selectedRule && (
+                <span className="ml-2 text-xs text-gray-500 dark:text-gray-400">
+                  (Max: {WEBTTODA_RULES.find(r => r.id === parseInt(selectedRule))?.penalties?.length || 4} offenses)
+                </span>
+              )}
             </label>
             <div className="flex gap-2">
-              {[1, 2, 3, 4].map((num) => (
-                <button
-                  key={num}
-                  onClick={() => setOffenseNumber(num)}
-                  className={`flex-1 px-3 py-2 text-sm font-medium rounded-lg border transition-all ${
-                    offenseNumber === num
-                      ? "bg-orange-100 border-orange-500 text-orange-700 dark:bg-orange-900/30 dark:border-orange-500 dark:text-orange-400"
-                      : "border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800"
-                  }`}
-                >
-                  {num === 1 ? "1st" : num === 2 ? "2nd" : num === 3 ? "3rd" : "4th"} Offense
-                </button>
-              ))}
+              {[1, 2, 3, 4].map((num) => {
+                const selectedRuleObj = selectedRule ? WEBTTODA_RULES.find(r => r.id === parseInt(selectedRule)) : null;
+                const maxOffenses = selectedRuleObj?.penalties?.length || 4;
+                const isDisabled = num > maxOffenses;
+                const penaltyText = selectedRuleObj?.penalties?.[num - 1] || "";
+                
+                return (
+                  <button
+                    key={num}
+                    onClick={() => !isDisabled && setOffenseNumber(num)}
+                    disabled={isDisabled}
+                    title={isDisabled ? "Not applicable for this rule" : penaltyText}
+                    className={`flex-1 px-3 py-2 text-sm font-medium rounded-lg border transition-all ${
+                      isDisabled
+                        ? "border-gray-200 text-gray-300 bg-gray-50 cursor-not-allowed dark:border-gray-700 dark:text-gray-600 dark:bg-gray-800/50"
+                        : offenseNumber === num
+                          ? penaltyText?.includes("Dismissal")
+                            ? "bg-red-100 border-red-500 text-red-700 dark:bg-red-900/30 dark:border-red-500 dark:text-red-400"
+                            : "bg-orange-100 border-orange-500 text-orange-700 dark:bg-orange-900/30 dark:border-orange-500 dark:text-orange-400"
+                          : "border-gray-300 text-gray-700 hover:bg-gray-50 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-800"
+                    }`}
+                  >
+                    <span>{num === 1 ? "1st" : num === 2 ? "2nd" : num === 3 ? "3rd" : "4th"}</span>
+                    {selectedRuleObj && !isDisabled && (
+                      <span className={`block text-[10px] mt-0.5 ${penaltyText?.includes("Dismissal") ? "text-red-500 dark:text-red-400" : "text-gray-500 dark:text-gray-400"}`}>
+                        {penaltyText?.includes("Dismissal") ? "⚠ Dismissal" : 
+                         penaltyText?.includes("1 day") ? "1 day" :
+                         penaltyText?.includes("3 days") ? "3 days" :
+                         penaltyText?.includes("1 week") ? "1 week" :
+                         penaltyText?.includes("2 weeks") ? "2 weeks" :
+                         penaltyText?.includes("1 month") ? "1 month" :
+                         penaltyText?.includes("Warning") ? "Warning" : ""}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
             </div>
           </div>
 
@@ -1004,9 +1181,17 @@ const Drivers = () => {
             <button
               onClick={handleSuspend}
               disabled={suspendLoading || !suspensionReason.trim()}
-              className="px-4 py-2.5 text-sm font-medium text-white bg-orange-600 rounded-lg hover:bg-orange-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              className={`px-4 py-2.5 text-sm font-medium text-white rounded-lg disabled:opacity-50 disabled:cursor-not-allowed ${
+                suspensionDays === 0 
+                  ? "bg-red-600 hover:bg-red-700" 
+                  : "bg-orange-600 hover:bg-orange-700"
+              }`}
             >
-              {suspendLoading ? "Suspending..." : `Suspend for ${suspensionDays} Days`}
+              {suspendLoading 
+                ? "Processing..." 
+                : suspensionDays === 0 
+                  ? "Dismiss Driver" 
+                  : `Suspend for ${suspensionDays} Day${suspensionDays > 1 ? 's' : ''}`}
             </button>
           </div>
         </div>

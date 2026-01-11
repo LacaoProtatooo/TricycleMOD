@@ -39,6 +39,14 @@ const About = () => {
     }
   ];
 
+  const advisor = {
+    name: "Dr. Rico S. Santos",
+    image: require("../../../assets/doc_rico.jpg"),
+    role: "Technical Advisor",
+    title: "Former MTICS Adviser '20-'23",
+    institution: "Technological University of the Philippines"
+  };
+
   const openLink = (url) => {
     Linking.openURL(url).catch(err =>
       console.error("Couldn't open link", err)
@@ -213,6 +221,31 @@ const About = () => {
                 </View>
               </TouchableOpacity>
             ))}
+          </View>
+        </View>
+
+        {/* Technical Advisor Section */}
+        <View style={styles.advisorSection}>
+          <Text style={styles.advisorMainTitle}>Technical Advisor</Text>
+          <Text style={styles.advisorSubtitle}>Guiding our technical direction</Text>
+          <View style={styles.teamDivider} />
+          
+          <View style={styles.advisorCard}>
+            <View style={styles.advisorImageWrapper}>
+              <View style={styles.advisorImageGlow}>
+                <Image source={advisor.image} style={styles.advisorImage} />
+              </View>
+            </View>
+            
+            <View style={styles.advisorInfo}>
+              <Text style={styles.advisorName}>{advisor.name}</Text>
+              <View style={styles.advisorRoleBadge}>
+                <Ionicons name="school" size={14} color={colors.ivory1} />
+                <Text style={styles.advisorRoleText}>{advisor.role}</Text>
+              </View>
+              <Text style={styles.advisorTitle}>{advisor.title}</Text>
+              <Text style={styles.advisorInstitution}>{advisor.institution}</Text>
+            </View>
           </View>
         </View>
 
@@ -565,6 +598,96 @@ const styles = StyleSheet.create({
     color: colors.ivory1,
     fontSize: 14,
     fontWeight: '600',
+  },
+
+  // Advisor Section
+  advisorSection: {
+    paddingVertical: spacing.large,
+    paddingHorizontal: spacing.medium,
+    backgroundColor: colors.ivory2,
+  },
+  advisorMainTitle: {
+    fontSize: 24,
+    fontWeight: 'bold',
+    color: colors.primary,
+    textAlign: 'center',
+    marginBottom: spacing.small / 2,
+  },
+  advisorSubtitle: {
+    fontSize: 14,
+    color: colors.orangeShade7,
+    textAlign: 'center',
+    marginBottom: spacing.medium,
+  },
+  advisorCard: {
+    backgroundColor: colors.ivory1,
+    borderRadius: 20,
+    padding: spacing.large,
+    alignItems: 'center',
+    shadowColor: colors.orangeShade8,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 6,
+    borderWidth: 2,
+    borderColor: colors.orangeShade2,
+  },
+  advisorImageWrapper: {
+    marginBottom: spacing.medium,
+  },
+  advisorImageGlow: {
+    padding: 4,
+    borderRadius: 75,
+    backgroundColor: colors.orangeShade1,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.4,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  advisorImage: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    borderWidth: 4,
+    borderColor: colors.ivory1,
+  },
+  advisorInfo: {
+    alignItems: 'center',
+  },
+  advisorName: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: colors.orangeShade8,
+    marginBottom: spacing.small,
+    textAlign: 'center',
+  },
+  advisorRoleBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.primary,
+    paddingHorizontal: spacing.medium,
+    paddingVertical: 8,
+    borderRadius: 20,
+    gap: 6,
+    marginBottom: spacing.small,
+  },
+  advisorRoleText: {
+    fontSize: 14,
+    color: colors.ivory1,
+    fontWeight: '600',
+  },
+  advisorTitle: {
+    fontSize: 14,
+    color: colors.orangeShade6,
+    fontWeight: '600',
+    marginBottom: 4,
+    textAlign: 'center',
+  },
+  advisorInstitution: {
+    fontSize: 13,
+    color: colors.orangeShade7,
+    textAlign: 'center',
   },
 
   // Footer
