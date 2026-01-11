@@ -25,6 +25,7 @@ import LostFoundScreen from '../screens/common/LostFoundScreen';
 import NotificationInbox from '../screens/common/notificationInbox';
 import NotificationDetail from '../screens/common/notificationDetail';
 import BookingHistoryDetail from '../screens/common/BookingHistoryDetail';
+import RulesRegulationsScreen from '../screens/common/RulesRegulationsScreen';
 
 // Drawers
 import AppDrawer from '../components/common/appdrawer';
@@ -215,6 +216,7 @@ const Navigator = () => {
             <Stack.Screen name="NotificationInbox" component={NotificationInbox} />
             <Stack.Screen name="NotificationDetail" component={NotificationDetail} />
             <Stack.Screen name="BookingHistoryDetail" component={BookingHistoryDetail} />
+            <Stack.Screen name="RulesRegulations" component={RulesRegulationsScreen} />
           </Stack.Navigator>
 
           {/* Drawer Overlay with Animation */}

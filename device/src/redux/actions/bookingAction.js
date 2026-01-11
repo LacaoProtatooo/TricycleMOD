@@ -242,8 +242,9 @@ export const respondToOffer = ({ bookingId, accepted, db }) => async (dispatch) 
 
 /**
  * Complete the trip (user confirms arrival at destination)
+ * This is called when user confirms the driver's completion
  */
-export const completeTrip = ({ bookingId, db }) => async (dispatch) => {
+export const completeTrip = ({ bookingId, db, confirmed = true, disputeReason = null }) => async (dispatch) => {
   try {
     dispatch({ type: BOOKING_TYPES.COMPLETE_TRIP_REQUEST });
 
@@ -256,8 +257,8 @@ export const completeTrip = ({ bookingId, db }) => async (dispatch) => {
     };
 
     const { data } = await axios.post(
-      `${API_URL}/${bookingId}/complete`,
-      {},
+      `${API_URL}/${bookingId}/confirm-completion`,
+      { confirmed, disputeReason },
       config
     );
 
