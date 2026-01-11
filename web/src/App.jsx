@@ -18,15 +18,7 @@ import Notifications from "./pages/Notifications";
 import AdminLogs from "./pages/AdminLogs";
 import LostFound from "./pages/LostFound";
 import Leaderboard from "./pages/Leaderboard";
-<<<<<<< Updated upstream
-<<<<<<< Updated upstream
 import Complaints from "./pages/Complaints";
-=======
-import RulesRegulations from "./pages/RulesRegulations";
->>>>>>> Stashed changes
-=======
->>>>>>> Stashed changes
-import RulesRegulations from "./pages/RulesRegulations";
 import RulesRegulations from "./pages/RulesRegulations";
 import Videos from "./pages/UiElements/Videos";
 import Images from "./pages/UiElements/Images";
