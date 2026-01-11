@@ -23,7 +23,7 @@ import {
   Dimensions,
   FlatList,
 } from 'react-native';
-import MapView, { Marker, Circle, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
+import MapView, { Marker, Circle, Polyline, Polygon, PROVIDER_GOOGLE } from 'react-native-maps';
 import * as Location from 'expo-location';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -34,6 +34,15 @@ import Constants from 'expo-constants';
 import { colors, spacing } from '../../components/common/theme';
 import { useAsyncSQLiteContext } from '../../utils/asyncSQliteProvider';
 import { getToken } from '../../utils/jwtStorage';
+import {
+  WEBTODA_SERVICE_AREA,
+  WEBTODA_ROUTE_COORDINATES,
+  validatePickupLocation,
+  validateDestinationLocation,
+  getServiceAreaRegion,
+  getServiceAreaPolygon,
+  getDistanceToRoute,
+} from '../../utils/gpxParser';
 import {
   createBooking,
   getActiveBooking,
@@ -48,10 +57,13 @@ import {
 const BACKEND_URL = Constants.expoConfig?.extra?.BACKEND_URL || 'http://192.168.254.105:5000';
 const API_URL = `${BACKEND_URL}/api/booking`;
 
-// Service area bounds (Taguig City area)
+// Use WEBTODA GPX-based service area instead of generic circle
+// The service area is defined by the GPX route with buffer zones
 const SERVICE_AREA = {
-  center: { latitude: 14.5176, longitude: 121.0509 },
-  radiusKm: 5, // 5km radius from center
+  ...WEBTODA_SERVICE_AREA,
+  // Keep backward compatibility
+  center: WEBTODA_SERVICE_AREA.center,
+  radiusKm: 2, // Approximate coverage (actual area is polygon-based)
 };
 
 // Trip completion radius (300 meters)
@@ -116,6 +128,11 @@ const BookingScreen = ({ navigation }) => {
   const [disputeReason, setDisputeReason] = useState('');
   const [isConfirming, setIsConfirming] = useState(false);
   
+  // WEBTODA area warning state
+  const [destinationWarning, setDestinationWarning] = useState(null);
+  const [showAreaWarningModal, setShowAreaWarningModal] = useState(false);
+  const [pendingDestination, setPendingDestination] = useState(null);
+  
   // Cancellation report modal
   const [showCancellationModal, setShowCancellationModal] = useState(false);
   const [cancellationDetails, setCancellationDetails] = useState(null);
@@ -127,12 +144,8 @@ const BookingScreen = ({ navigation }) => {
   const watchRef = useRef(null);
   const pollingRef = useRef(null);
 
-  const [region, setRegion] = useState({
-    latitude: SERVICE_AREA.center.latitude,
-    longitude: SERVICE_AREA.center.longitude,
-    latitudeDelta: 0.05,
-    longitudeDelta: 0.05,
-  });
+  // Initialize region with WEBTODA service area
+  const [region, setRegion] = useState(getServiceAreaRegion());
 
   useEffect(() => {
     requestPermissions();
@@ -339,36 +352,65 @@ const BookingScreen = ({ navigation }) => {
     return R * c; // Distance in meters
   };
 
+  // Check if pickup location is within WEBTODA service area (based on GPX route)
   const isWithinServiceArea = (latitude, longitude) => {
-    const distance = calculateDistance(
-      latitude,
-      longitude,
-      SERVICE_AREA.center.latitude,
-      SERVICE_AREA.center.longitude
-    );
-    return distance <= SERVICE_AREA.radiusKm * 1000;
+    const validation = validatePickupLocation(latitude, longitude);
+    return validation.valid;
   };
 
+  // Handle map press for selecting pickup/destination
   const handleMapPress = (event) => {
     if (!selectingLocationType) return;
 
     const { latitude, longitude } = event.nativeEvent.coordinate;
 
-    if (!isWithinServiceArea(latitude, longitude)) {
-      Alert.alert(
-        'Outside Service Area',
-        'Please select a location within the service area.'
-      );
-      return;
-    }
-
     if (selectingLocationType === 'pickup') {
+      // Validate pickup is within WEBTODA GPX route area
+      const pickupValidation = validatePickupLocation(latitude, longitude);
+      
+      if (!pickupValidation.valid) {
+        Alert.alert(
+          'Outside WEBTODA Service Area',
+          pickupValidation.message + '\n\nThe highlighted route shows the WEBTODA coverage area.',
+          [{ text: 'OK' }]
+        );
+        return;
+      }
+      
       setPickupLocation({ latitude, longitude });
+      setSelectingLocationType(null);
     } else if (selectingLocationType === 'destination') {
-      setDestinationLocation({ latitude, longitude });
+      // Validate destination - allow but warn if outside area
+      const destValidation = validateDestinationLocation(latitude, longitude);
+      
+      if (destValidation.additionalChargeExpected) {
+        // Store pending destination and show warning modal
+        setPendingDestination({ latitude, longitude });
+        setDestinationWarning(destValidation);
+        setShowAreaWarningModal(true);
+      } else {
+        setDestinationLocation({ latitude, longitude });
+        setDestinationWarning(null);
+        setSelectingLocationType(null);
+      }
     }
-    
-    setSelectingLocationType(null);
+  };
+
+  // Confirm destination that is outside service area
+  const handleConfirmOutsideDestination = () => {
+    if (pendingDestination) {
+      setDestinationLocation(pendingDestination);
+      setPendingDestination(null);
+      setShowAreaWarningModal(false);
+      setSelectingLocationType(null);
+    }
+  };
+
+  // Cancel destination selection when outside area
+  const handleCancelOutsideDestination = () => {
+    setPendingDestination(null);
+    setShowAreaWarningModal(false);
+    setDestinationWarning(null);
   };
 
   const handleStartBooking = () => {
@@ -516,6 +558,10 @@ const BookingScreen = ({ navigation }) => {
     setReportReason('');
     setDisputeReason('');
     setShowCompletionModal(false);
+    // Reset WEBTODA area warning states
+    setDestinationWarning(null);
+    setShowAreaWarningModal(false);
+    setPendingDestination(null);
     dispatch(resetBookingState());
     
     if (watchRef.current) {
@@ -792,13 +838,36 @@ const BookingScreen = ({ navigation }) => {
         showsUserLocation={true}
         showsMyLocationButton={false}
       >
-        {/* Service area circle */}
-        <Circle
-          center={SERVICE_AREA.center}
-          radius={SERVICE_AREA.radiusKm * 1000}
-          strokeColor="rgba(255,140,0,0.3)"
-          fillColor="rgba(255,140,0,0.05)"
+        {/* WEBTODA Service Area Polygon Boundary */}
+        <Polygon
+          coordinates={getServiceAreaPolygon()}
+          strokeColor="rgba(255,140,0,0.6)"
+          fillColor="rgba(255,140,0,0.08)"
+          strokeWidth={2}
         />
+
+        {/* WEBTODA GPX Route - Main service route reference */}
+        <Polyline
+          coordinates={WEBTODA_ROUTE_COORDINATES}
+          strokeColor={colors.primary}
+          strokeWidth={4}
+          lineCap="round"
+          lineJoin="round"
+        />
+
+        {/* Route buffer visualization (150m pickup zone) */}
+        {bookingStatus === BOOKING_STATUS.SELECTING_LOCATIONS && selectingLocationType === 'pickup' && (
+          WEBTODA_ROUTE_COORDINATES.filter((_, index) => index % 5 === 0).map((coord, index) => (
+            <Circle
+              key={`buffer-${index}`}
+              center={coord}
+              radius={WEBTODA_SERVICE_AREA.maxPickupDistance}
+              strokeColor="rgba(40,167,69,0.2)"
+              fillColor="rgba(40,167,69,0.05)"
+              strokeWidth={1}
+            />
+          ))
+        )}
 
         {/* Pickup marker */}
         {pickupLocation && (
@@ -806,7 +875,20 @@ const BookingScreen = ({ navigation }) => {
             coordinate={pickupLocation}
             title="Pickup Location"
             draggable={bookingStatus === BOOKING_STATUS.SELECTING_LOCATIONS}
-            onDragEnd={(e) => setPickupLocation(e.nativeEvent.coordinate)}
+            onDragEnd={(e) => {
+              const { latitude, longitude } = e.nativeEvent.coordinate;
+              const validation = validatePickupLocation(latitude, longitude);
+              if (!validation.valid) {
+                Alert.alert(
+                  'Outside WEBTODA Service Area',
+                  validation.message,
+                  [{ text: 'OK' }]
+                );
+                // Reset to previous location by not updating
+                return;
+              }
+              setPickupLocation({ latitude, longitude });
+            }}
           >
             <View style={styles.pickupMarker}>
               <Ionicons name="locate" size={20} color="#fff" />
@@ -818,21 +900,37 @@ const BookingScreen = ({ navigation }) => {
         {destinationLocation && (
           <Marker
             coordinate={destinationLocation}
-            title="Destination"
+            title={destinationWarning ? "Destination (Outside Area)" : "Destination"}
             draggable={bookingStatus === BOOKING_STATUS.SELECTING_LOCATIONS}
-            onDragEnd={(e) => setDestinationLocation(e.nativeEvent.coordinate)}
+            onDragEnd={(e) => {
+              const { latitude, longitude } = e.nativeEvent.coordinate;
+              const validation = validateDestinationLocation(latitude, longitude);
+              if (validation.additionalChargeExpected) {
+                setDestinationWarning(validation);
+              } else {
+                setDestinationWarning(null);
+              }
+              setDestinationLocation({ latitude, longitude });
+            }}
           >
-            <View style={styles.destinationMarker}>
-              <Ionicons name="flag" size={20} color="#fff" />
+            <View style={[
+              styles.destinationMarker,
+              destinationWarning && styles.destinationMarkerWarning
+            ]}>
+              <Ionicons 
+                name={destinationWarning ? "warning" : "flag"} 
+                size={20} 
+                color="#fff" 
+              />
             </View>
           </Marker>
         )}
 
-        {/* Route line */}
+        {/* Route line from pickup to destination */}
         {pickupLocation && destinationLocation && (
           <Polyline
             coordinates={[pickupLocation, destinationLocation]}
-            strokeColor={colors.primary}
+            strokeColor={destinationWarning ? '#dc3545' : colors.primary}
             strokeWidth={3}
             lineDashPattern={[10, 5]}
           />
@@ -851,11 +949,34 @@ const BookingScreen = ({ navigation }) => {
 
       {/* Location selection hint */}
       {selectingLocationType && (
-        <View style={styles.selectionHint}>
-          <Ionicons name="hand-left-outline" size={20} color="#fff" />
+        <View style={[
+          styles.selectionHint,
+          selectingLocationType === 'pickup' && styles.selectionHintPickup
+        ]}>
+          <Ionicons 
+            name={selectingLocationType === 'pickup' ? "navigate-circle-outline" : "flag-outline"} 
+            size={20} 
+            color="#fff" 
+          />
           <Text style={styles.selectionHintText}>
-            Tap on the map to set your {selectingLocationType} location
+            {selectingLocationType === 'pickup' 
+              ? 'Tap within the WEBTODA route (orange line) to set pickup'
+              : 'Tap anywhere to set destination (charges may apply outside area)'}
           </Text>
+        </View>
+      )}
+
+      {/* WEBTODA Route Legend */}
+      {bookingStatus === BOOKING_STATUS.SELECTING_LOCATIONS && (
+        <View style={styles.routeLegend}>
+          <View style={styles.legendItem}>
+            <View style={[styles.legendLine, { backgroundColor: colors.primary }]} />
+            <Text style={styles.legendText}>WEBTODA Route</Text>
+          </View>
+          <View style={styles.legendItem}>
+            <View style={[styles.legendDot, { backgroundColor: 'rgba(255,140,0,0.6)' }]} />
+            <Text style={styles.legendText}>Service Area</Text>
+          </View>
         </View>
       )}
 
@@ -873,7 +994,8 @@ const BookingScreen = ({ navigation }) => {
           <View style={styles.panelContent}>
             <Text style={styles.panelTitle}>Book a Special Trip</Text>
             <Text style={styles.panelDescription}>
-              Request a private tricycle trip to your destination. Set your own fare!
+              Request a private tricycle trip within the WEBTODA service area (shown on map). 
+              Pickup must be along the route. Additional charges apply for destinations outside the area.
             </Text>
             <TouchableOpacity
               style={styles.primaryButton}
@@ -905,7 +1027,9 @@ const BookingScreen = ({ navigation }) => {
               <View style={styles.locationInfo}>
                 <Text style={styles.locationLabel}>Pickup Location</Text>
                 <Text style={styles.locationValue}>
-                  {pickupLocation ? 'Location set (tap to change)' : 'Tap to set on map'}
+                  {pickupLocation 
+                    ? 'Within WEBTODA area ✓' 
+                    : 'Tap on WEBTODA route to set'}
                 </Text>
               </View>
               {pickupLocation && (
@@ -919,22 +1043,51 @@ const BookingScreen = ({ navigation }) => {
                 styles.locationButton,
                 selectingLocationType === 'destination' && styles.locationButtonActive,
                 destinationLocation && styles.locationButtonSet,
+                destinationWarning && styles.locationButtonWarning,
               ]}
               onPress={() => setSelectingLocationType('destination')}
             >
-              <View style={[styles.locationIcon, { backgroundColor: colors.primary }]}>
-                <Ionicons name="flag" size={16} color="#fff" />
+              <View style={[
+                styles.locationIcon, 
+                { backgroundColor: destinationWarning ? '#dc3545' : colors.primary }
+              ]}>
+                <Ionicons 
+                  name={destinationWarning ? "warning" : "flag"} 
+                  size={16} 
+                  color="#fff" 
+                />
               </View>
               <View style={styles.locationInfo}>
                 <Text style={styles.locationLabel}>Destination</Text>
-                <Text style={styles.locationValue}>
-                  {destinationLocation ? 'Location set (tap to change)' : 'Tap to set on map'}
+                <Text style={[
+                  styles.locationValue,
+                  destinationWarning && styles.locationValueWarning
+                ]}>
+                  {destinationLocation 
+                    ? (destinationWarning 
+                        ? 'Outside area - Extra charges apply' 
+                        : 'Location set (tap to change)')
+                    : 'Tap to set on map'}
                 </Text>
               </View>
-              {destinationLocation && (
+              {destinationLocation && !destinationWarning && (
                 <Ionicons name="checkmark-circle" size={20} color="#28a745" />
               )}
+              {destinationWarning && (
+                <Ionicons name="alert-circle" size={20} color="#dc3545" />
+              )}
             </TouchableOpacity>
+
+            {/* Warning banner if destination is outside area */}
+            {destinationWarning && (
+              <View style={styles.areaWarningBanner}>
+                <Ionicons name="information-circle" size={18} color="#856404" />
+                <Text style={styles.areaWarningText}>
+                  Destination is {Math.round(destinationWarning.distance)}m outside WEBTODA area. 
+                  Additional charges expected.
+                </Text>
+              </View>
+            )}
 
             <View style={styles.buttonRow}>
               <TouchableOpacity
@@ -1408,6 +1561,66 @@ const BookingScreen = ({ navigation }) => {
           </View>
         </View>
       </Modal>
+
+      {/* WEBTODA Area Warning Modal - Shown when destination is outside service area */}
+      <Modal
+        visible={showAreaWarningModal}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={handleCancelOutsideDestination}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.areaWarningModal}>
+            <View style={styles.areaWarningHeader}>
+              <Ionicons name="warning" size={50} color="#f0ad4e" />
+              <Text style={styles.areaWarningTitle}>Outside WEBTODA Area</Text>
+              <Text style={styles.areaWarningSubtitle}>
+                Your selected destination is beyond the regular WEBTODA service coverage.
+              </Text>
+            </View>
+
+            {destinationWarning && (
+              <View style={styles.areaWarningDetails}>
+                <View style={styles.areaWarningDetailRow}>
+                  <Ionicons name="navigate-outline" size={20} color={colors.orangeShade5} />
+                  <Text style={styles.areaWarningDetailText}>
+                    Distance from route: {Math.round(destinationWarning.distance)}m
+                  </Text>
+                </View>
+                <View style={styles.areaWarningDetailRow}>
+                  <Ionicons name="cash-outline" size={20} color="#dc3545" />
+                  <Text style={[styles.areaWarningDetailText, { color: '#dc3545' }]}>
+                    Additional charges expected
+                  </Text>
+                </View>
+              </View>
+            )}
+
+            <View style={styles.areaWarningInfo}>
+              <Ionicons name="information-circle-outline" size={18} color="#856404" />
+              <Text style={styles.areaWarningInfoText}>
+                The orange highlighted route on the map shows the regular WEBTODA service area. 
+                Destinations outside this area may incur additional fare based on distance.
+              </Text>
+            </View>
+
+            <View style={styles.areaWarningButtons}>
+              <TouchableOpacity
+                style={styles.areaWarningCancelButton}
+                onPress={handleCancelOutsideDestination}
+              >
+                <Text style={styles.areaWarningCancelText}>Choose Another Location</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.areaWarningConfirmButton}
+                onPress={handleConfirmOutsideDestination}
+              >
+                <Text style={styles.areaWarningConfirmText}>Proceed Anyway</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -1506,10 +1719,50 @@ const styles = StyleSheet.create({
     paddingHorizontal: spacing.medium,
     borderRadius: 10,
   },
+  selectionHintPickup: {
+    backgroundColor: '#28a745',
+  },
   selectionHintText: {
     color: '#fff',
     fontWeight: '600',
     marginLeft: spacing.small,
+    fontSize: 13,
+    flex: 1,
+  },
+
+  // Route Legend
+  routeLegend: {
+    position: 'absolute',
+    top: 130,
+    left: spacing.medium,
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    padding: spacing.small,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: colors.ivory3,
+  },
+  legendItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginVertical: 2,
+  },
+  legendLine: {
+    width: 20,
+    height: 4,
+    borderRadius: 2,
+    marginRight: 8,
+  },
+  legendDot: {
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    marginRight: 8,
+    borderWidth: 1,
+    borderColor: 'rgba(255,140,0,0.3)',
+  },
+  legendText: {
+    fontSize: 11,
+    color: colors.orangeShade6,
   },
 
   // Map controls
@@ -1555,6 +1808,10 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 6,
     elevation: 6,
+  },
+  destinationMarkerWarning: {
+    backgroundColor: '#dc3545',
+    borderColor: '#fff3cd',
   },
 
   // Bottom Panel
@@ -1641,6 +1898,10 @@ const styles = StyleSheet.create({
   locationButtonSet: {
     backgroundColor: colors.ivory3,
   },
+  locationButtonWarning: {
+    borderColor: '#dc3545',
+    backgroundColor: '#fff5f5',
+  },
   locationIcon: {
     width: 36,
     height: 36,
@@ -1661,6 +1922,28 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: colors.orangeShade5,
     marginTop: 2,
+  },
+  locationValueWarning: {
+    color: '#dc3545',
+    fontWeight: '500',
+  },
+
+  // Area warning banner
+  areaWarningBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff3cd',
+    padding: spacing.small,
+    borderRadius: 8,
+    marginBottom: spacing.small,
+    borderWidth: 1,
+    borderColor: '#ffc107',
+  },
+  areaWarningText: {
+    flex: 1,
+    fontSize: 12,
+    color: '#856404',
+    marginLeft: spacing.small,
   },
 
   // Fare input
@@ -2246,6 +2529,95 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     marginLeft: spacing.small,
+  },
+
+  // WEBTODA Area Warning Modal
+  areaWarningModal: {
+    backgroundColor: colors.ivory1,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: spacing.large,
+    paddingBottom: 40,
+    marginHorizontal: spacing.medium,
+    marginTop: 'auto',
+    marginBottom: 'auto',
+    borderRadius: 24,
+  },
+  areaWarningHeader: {
+    alignItems: 'center',
+    marginBottom: spacing.large,
+  },
+  areaWarningTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: '#f0ad4e',
+    marginTop: spacing.medium,
+    textAlign: 'center',
+  },
+  areaWarningSubtitle: {
+    fontSize: 14,
+    color: colors.orangeShade5,
+    textAlign: 'center',
+    marginTop: spacing.small,
+    paddingHorizontal: spacing.medium,
+  },
+  areaWarningDetails: {
+    backgroundColor: colors.ivory4,
+    borderRadius: 12,
+    padding: spacing.medium,
+    marginBottom: spacing.medium,
+  },
+  areaWarningDetailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: spacing.small,
+  },
+  areaWarningDetailText: {
+    fontSize: 14,
+    color: colors.orangeShade7,
+    marginLeft: spacing.small,
+    fontWeight: '500',
+  },
+  areaWarningInfo: {
+    flexDirection: 'row',
+    backgroundColor: '#fff3cd',
+    padding: spacing.medium,
+    borderRadius: 12,
+    marginBottom: spacing.large,
+    alignItems: 'flex-start',
+  },
+  areaWarningInfoText: {
+    flex: 1,
+    fontSize: 13,
+    color: '#856404',
+    marginLeft: spacing.small,
+    lineHeight: 18,
+  },
+  areaWarningButtons: {
+    gap: spacing.small,
+  },
+  areaWarningCancelButton: {
+    backgroundColor: colors.ivory4,
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    marginBottom: spacing.small,
+  },
+  areaWarningCancelText: {
+    color: colors.orangeShade6,
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  areaWarningConfirmButton: {
+    backgroundColor: '#f0ad4e',
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+  },
+  areaWarningConfirmText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
   },
 });
 
