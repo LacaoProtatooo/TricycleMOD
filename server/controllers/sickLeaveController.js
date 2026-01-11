@@ -153,6 +153,62 @@ export const cancelSickLeave = async (req, res) => {
     }
 };
 
+// Get a specific sick leave by ID (operator can only view if driver is assigned to them)
+export const getSickLeaveById = async (req, res) => {
+    try {
+        const { id } = req.params;
+        const userId = req.user.id;
+        const userRole = req.user.role;
+
+        const sickLeave = await SickLeave.findById(id)
+            .populate('driver', 'firstname lastname username email phone image')
+            .populate('reviewedBy', 'firstname lastname');
+
+        if (!sickLeave) {
+            return res.status(404).json({ success: false, message: "Sick leave not found" });
+        }
+
+        // If the user is the driver who filed the sick leave, allow access
+        if (sickLeave.driver._id.toString() === userId) {
+            return res.status(200).json({ success: true, data: sickLeave });
+        }
+
+        // If the user is an operator, check if the driver is assigned to them
+        if (userRole === 'operator') {
+            const tricycles = await Tricycle.find({ operator: userId });
+            const driverIds = new Set();
+            tricycles.forEach(t => {
+                if (t.driver) driverIds.add(t.driver.toString());
+                if (t.schedules) {
+                    t.schedules.forEach(s => {
+                        if (s.driver) driverIds.add(s.driver.toString());
+                    });
+                }
+            });
+
+            if (!driverIds.has(sickLeave.driver._id.toString())) {
+                return res.status(403).json({ 
+                    success: false, 
+                    message: "Not authorized to view this sick leave. This driver is not assigned to your tricycles." 
+                });
+            }
+
+            return res.status(200).json({ success: true, data: sickLeave });
+        }
+
+        // If the user is an admin, allow access
+        if (userRole === 'admin') {
+            return res.status(200).json({ success: true, data: sickLeave });
+        }
+
+        // Otherwise, deny access
+        return res.status(403).json({ success: false, message: "Not authorized to view this sick leave" });
+    } catch (error) {
+        console.error("Error fetching sick leave:", error);
+        res.status(500).json({ success: false, message: "Server Error" });
+    }
+};
+
 // Get sick leaves for the operator (all drivers assigned to operator's tricycles)
 export const getOperatorSickLeaves = async (req, res) => {
     try {

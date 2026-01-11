@@ -132,6 +132,8 @@ export default function OperatorScreen({ navigation }) {
     
     try {
       dispatch(fetchOperatorData({ token: authToken, BACKEND }));
+      // Also fetch sick leaves to ensure fresh data for the logged-in operator
+      dispatch(fetchSickLeaves({ token: authToken, BACKEND }));
     } catch (e) {
       console.error('Error fetching operator data:', e);
     } finally {
