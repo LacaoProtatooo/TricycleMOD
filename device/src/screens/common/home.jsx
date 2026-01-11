@@ -17,7 +17,6 @@ import { getUserCredentials } from '../../utils/userStorage';
 import DashboardTab from '../dashboard/DashboardTab';
 import MapsTab from '../dashboard/MapsTab';
 import ChatMenu from '../message/chatMenu';
-import LostFoundScreen from './LostFoundScreen';
 import GuestMain from '../guest/main';
 import DriverBookingScreen from '../driver/DriverBookingScreen';
 import LeaderboardTab from '../dashboard/LeaderboardTab';
@@ -129,16 +128,6 @@ const Home = () => {
           options={{ 
             tabBarIcon: ({ color, size }) => (
               <Ionicons name="chatbubble-ellipses-outline" size={size} color={color} />
-            ) 
-          }}
-        />
-        <Tab.Screen
-          name="LostFound"
-          component={LostFoundScreen}
-          options={{ 
-            title: 'Lost & Found',
-            tabBarIcon: ({ color, size }) => (
-              <Ionicons name="cube-outline" size={size} color={color} />
             ) 
           }}
         />

@@ -25,10 +25,10 @@ export const storeToken = async (dbInstance, token) => {
     return;
   }
   try {
-    // Wrap in a transaction so that runAsync is available
-    await dbInstance.withTransactionAsync(async () => {
-      await dbInstance.runAsync("INSERT INTO users (token) VALUES (?);", [token]);
-    });
+    // Clear existing tokens first, then insert new one
+    // Use execAsync directly to avoid transaction locking issues
+    await dbInstance.execAsync("DELETE FROM users;");
+    await dbInstance.runAsync("INSERT INTO users (token) VALUES (?);", [token]);
     console.log("Token stored successfully");
     console.log("Stored token:", token);
   } catch (error) {
@@ -57,13 +57,12 @@ export const removeToken = async (dbInstance) => {
     return;
   }
   try {
-    await dbInstance.withTransactionAsync(async () => {
-      await dbInstance.runAsync("DELETE FROM users;");
-    });
+    // Use execAsync directly without transaction to avoid database locking
+    await dbInstance.execAsync("DELETE FROM users;");
     console.log("Token removed successfully");
   } catch (error) {
     console.error("Error removing token", error);
-    throw error;
+    // Don't throw - allow logout to continue even if token removal fails
   }
 };
 

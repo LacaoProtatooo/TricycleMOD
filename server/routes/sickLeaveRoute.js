@@ -3,6 +3,7 @@ import {
     createSickLeave, 
     getDriverSickLeaves, 
     getOperatorSickLeaves, 
+    getSickLeaveById,
     approveSickLeave,
     rejectSickLeave,
     cancelSickLeave
@@ -15,11 +16,16 @@ const router = express.Router();
 // Driver routes
 router.post("/", authUser, createSickLeave);
 router.get("/driver", authUser, getDriverSickLeaves);
-router.patch("/:id/cancel", authUser, cancelSickLeave);
 
-// Operator routes
+// Operator routes (must come before /:id to avoid conflict)
 router.get("/operator", authUser, operatorOnly, getOperatorSickLeaves);
 router.patch("/:id/approve", authUser, operatorOnly, approveSickLeave);
 router.patch("/:id/reject", authUser, operatorOnly, rejectSickLeave);
+
+// Get specific sick leave by ID (driver can see own, operator can see only assigned drivers)
+router.get("/:id", authUser, getSickLeaveById);
+
+// Cancel must come after specific routes
+router.patch("/:id/cancel", authUser, cancelSickLeave);
 
 export default router;

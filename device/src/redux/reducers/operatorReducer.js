@@ -15,6 +15,7 @@ import {
 import {
   approveSickLeave,
 } from '../actions/operatorAction';
+import { logoutUser } from '../actions/authAction';
 
 const initialState = {
   // Operator overview data
@@ -263,6 +264,35 @@ const operatorSlice = createSlice({
       })
       .addCase(fetchExpenseSummary.rejected, (state, action) => {
         state.loadingSummary = false;
+      })
+      
+      // ========== LOGOUT - Clear all operator data ==========
+      .addCase(logoutUser.fulfilled, (state) => {
+        // Reset to initial state when user logs out
+        state.tricycles = [];
+        state.drivers = [];
+        state.availableDrivers = [];
+        state.sickLeaves = [];
+        state.sickLeaveStatistics = null;
+        state.receiptResult = null;
+        state.receipts = [];
+        state.receiptsPagination = null;
+        state.categoryTotals = {};
+        state.expenseSummary = null;
+        state.loading = false;
+        state.loadingSickLeaves = false;
+        state.loadingReceipt = false;
+        state.loadingReceipts = false;
+        state.savingReceipt = false;
+        state.deletingReceipt = false;
+        state.loadingSummary = false;
+        state.assigning = false;
+        state.creating = false;
+        state.unassigning = false;
+        state.error = null;
+        state.errorSickLeaves = null;
+        state.errorReceipt = null;
+        state.errorReceipts = null;
       });
   },
 });
