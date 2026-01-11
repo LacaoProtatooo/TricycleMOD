@@ -88,7 +88,7 @@ const AppDrawer = ({ closeDrawer, navigation }) => {
                       ? { uri: user.image.url }
                       : defaultAvatar
                   }
-                  size={120}
+                  size={80}
                   style={styles.avatar}
                 />
                 <View style={styles.userTextContainer}>
@@ -357,6 +357,7 @@ const styles = StyleSheet.create({
   },
   container: {
     width: SCREEN_WIDTH * 0.6, // Takes half of screen width - LEFT SIDE
+    height: SCREEN_HEIGHT, // Full height for proper scrolling
     backgroundColor: colors.background,
     shadowColor: '#000',
     shadowOffset: { width: 2, height: 0 }, // Changed to positive for right shadow
@@ -373,8 +374,8 @@ const styles = StyleSheet.create({
   },
   drawerContent: {
     flex: 1,
-    paddingTop: 20,
-    paddingBottom: 40,
+    paddingTop: 10,
+    paddingBottom: 20,
   },
   closeButton: {
     alignSelf: 'flex-end',
@@ -388,13 +389,13 @@ const styles = StyleSheet.create({
   avatarContainer: {
     flexDirection: 'column',
     alignItems: 'center',
-    paddingVertical: spacing.medium,
+    paddingVertical: spacing.small,
   },
   avatar: {
     backgroundColor: colors.ivory4,
     borderWidth: 1,
     borderColor: colors.primary,
-    marginBottom: spacing.large,
+    marginBottom: spacing.medium,
   },
   userTextContainer: {
     alignItems: 'center',
