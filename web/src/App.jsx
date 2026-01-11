@@ -18,7 +18,11 @@ import Notifications from "./pages/Notifications";
 import AdminLogs from "./pages/AdminLogs";
 import LostFound from "./pages/LostFound";
 import Leaderboard from "./pages/Leaderboard";
+<<<<<<< Updated upstream
 import Complaints from "./pages/Complaints";
+=======
+import RulesRegulations from "./pages/RulesRegulations";
+>>>>>>> Stashed changes
 import Videos from "./pages/UiElements/Videos";
 import Images from "./pages/UiElements/Images";
 import Alerts from "./pages/UiElements/Alerts";
@@ -67,6 +71,7 @@ export default function App() {
               <Route path="/lost-found" element={<LostFound />} />
               <Route path="/complaints" element={<Complaints />} />
               <Route path="/leaderboard" element={<Leaderboard />} />
+              <Route path="/rules-regulations" element={<RulesRegulations />} />
               <Route path="/calendar" element={<Calendar />} />
               <Route path="/announcements" element={<Announcements />} />
               <Route path="/live-tracking" element={<LiveDriversMap />} />

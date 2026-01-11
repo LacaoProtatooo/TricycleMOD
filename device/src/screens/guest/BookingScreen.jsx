@@ -47,7 +47,6 @@ import {
   createBooking,
   getActiveBooking,
   respondToOffer,
-  completeTrip,
   rateDriver,
   cancelBooking,
   clearBookingError,
@@ -471,38 +470,6 @@ const BookingScreen = ({ navigation }) => {
       // Go back to setting fare
       setBookingStatus(BOOKING_STATUS.SETTING_FARE);
     }
-  };
-
-  const handleCompleteTrip = () => {
-    if (!destinationLocation || !userLocation) return;
-
-    const distance = calculateDistance(
-      userLocation.latitude,
-      userLocation.longitude,
-      destinationLocation.latitude,
-      destinationLocation.longitude
-    );
-
-    const completeBooking = () => {
-      if (currentBooking) {
-        dispatch(completeTrip({ bookingId: currentBooking._id, db }));
-      }
-    };
-
-    if (distance > COMPLETION_RADIUS_METERS) {
-      // Show warning but allow completion
-      Alert.alert(
-        'Not at Destination',
-        `You are ${Math.round(distance)}m away from your destination (recommended: within ${COMPLETION_RADIUS_METERS}m).\n\nAre you sure you want to complete the trip?`,
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Complete Anyway', onPress: completeBooking },
-        ]
-      );
-      return;
-    }
-
-    completeBooking();
   };
 
   const handleSubmitRating = () => {
@@ -1271,23 +1238,20 @@ const BookingScreen = ({ navigation }) => {
               </View>
             )}
 
-            <TouchableOpacity
-              style={[
-                styles.completeButton,
-                distanceToDestination > COMPLETION_RADIUS_METERS && styles.buttonDisabled,
-              ]}
-              onPress={handleCompleteTrip}
-              disabled={distanceToDestination > COMPLETION_RADIUS_METERS}
-            >
-              <Ionicons name="checkmark-circle-outline" size={22} color="#fff" />
-              <Text style={styles.completeButtonText}>Complete Trip</Text>
-            </TouchableOpacity>
-            
-            {distanceToDestination > COMPLETION_RADIUS_METERS && (
-              <Text style={styles.completionHint}>
-                You must be within {COMPLETION_RADIUS_METERS}m of destination to complete
+            <View style={styles.tripProgressInfo}>
+              <Ionicons name="car-outline" size={20} color={colors.orangeShade5} />
+              <Text style={styles.tripProgressText}>
+                Enjoy your ride! The driver will mark the trip complete when you arrive.
               </Text>
-            )}
+            </View>
+            
+            <TouchableOpacity
+              style={styles.cancelTripButton}
+              onPress={handleCancelBooking}
+            >
+              <Ionicons name="close-circle-outline" size={20} color="#dc3545" />
+              <Text style={styles.cancelTripButtonText}>Cancel Trip</Text>
+            </TouchableOpacity>
           </View>
         )}
       </View>
@@ -2122,6 +2086,37 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     color: colors.orangeShade7,
+    marginLeft: spacing.small,
+  },
+  tripProgressInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.ivory3,
+    padding: spacing.medium,
+    borderRadius: 12,
+    marginBottom: spacing.medium,
+  },
+  tripProgressText: {
+    flex: 1,
+    fontSize: 14,
+    color: colors.orangeShade6,
+    marginLeft: spacing.small,
+    lineHeight: 20,
+  },
+  cancelTripButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+    borderRadius: 12,
+    borderWidth: 1,
+    borderColor: '#dc3545',
+    backgroundColor: 'transparent',
+  },
+  cancelTripButtonText: {
+    color: '#dc3545',
+    fontSize: 14,
+    fontWeight: '600',
     marginLeft: spacing.small,
   },
   completeButton: {

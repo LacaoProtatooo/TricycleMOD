@@ -258,6 +258,22 @@ const AppDrawer = ({ closeDrawer, navigation }) => {
                       closeDrawer();
                     }}
                   />
+
+                  {/* Rules & Regulations - visible to drivers and operators */}
+                  {(user.role === 'driver' || user.role === 'operator') && (
+                    <DrawerItem
+                      icon={({ focused }) => renderIcon('document-text-outline', focused)}
+                      label="Rules & Regulations"
+                      labelStyle={styles.drawerLabel}
+                      activeBackgroundColor={`${colors.ivory4}CC`}
+                      activeTintColor={colors.primary}
+                      inactiveTintColor={colors.orangeShade8}
+                      onPress={() => {
+                        navigateSafe('RulesRegulations');
+                        closeDrawer();
+                      }}
+                    />
+                  )}
                   <Divider style={styles.divider} />
                 </>
               )}
