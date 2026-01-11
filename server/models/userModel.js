@@ -102,6 +102,11 @@ const userSchema = new mongoose.Schema({
         type: mongoose.Schema.Types.ObjectId,
         ref: 'Announcement',
     }],
+  // Complaint system - ban until date for users who file false complaints
+  complaintBanUntil: {
+        type: Date,
+        default: null,
+    },
 }, 
   { timestamps: true }
 );

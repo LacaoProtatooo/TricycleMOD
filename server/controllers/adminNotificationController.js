@@ -1,11 +1,13 @@
 import Booking from '../models/bookingModel.js';
 import Announcement from '../models/announcementModel.js';
+import Complaint from '../models/complaintModel.js';
 import AdminNotificationRead from '../models/adminNotificationModel.js';
 
 /**
  * Get admin notifications
  * - Booking disputes
  * - Announcements expiring within 1 day
+ * - New complaints
  */
 export const getAdminNotifications = async (req, res) => {
   try {
@@ -50,6 +52,59 @@ export const getAdminNotifications = async (req, res) => {
           driver: booking.driver,
           createdAt: booking.disputedAt || booking.updatedAt,
           isRead,
+        });
+      });
+    }
+
+    // Get pending/investigating complaints
+    if (!type || type === 'complaint') {
+      const pendingComplaints = await Complaint.find({ 
+        status: { $in: ['pending', 'under_review', 'investigating'] }
+      })
+        .populate('complainant', 'firstname lastname email phone image')
+        .populate('driver', 'firstname lastname email phone image')
+        .sort({ createdAt: -1 })
+        .limit(50);
+
+      pendingComplaints.forEach(complaint => {
+        const notificationId = `complaint_${complaint._id}`;
+        const isRead = readIds.has(notificationId);
+        
+        // Skip read notifications if showRead is false
+        if (showRead === 'false' && isRead) return;
+        
+        const categoryLabels = {
+          rude_behavior: 'Rude Behavior',
+          overcharging: 'Overcharging',
+          unsafe_driving: 'Unsafe Driving',
+          route_deviation: 'Route Deviation',
+          vehicle_condition: 'Vehicle Condition',
+          refusal_of_service: 'Refusal of Service',
+          harassment: 'Harassment',
+          discrimination: 'Discrimination',
+          intoxicated_driving: 'Intoxicated Driving',
+          other: 'Other',
+        };
+        
+        notifications.push({
+          _id: notificationId,
+          type: 'complaint',
+          title: `Driver Complaint: ${categoryLabels[complaint.category] || complaint.category}`,
+          message: `${complaint.complainant?.firstname || 'User'} filed a complaint against ${complaint.driver?.firstname || 'Driver'} ${complaint.driver?.lastname || ''}`,
+          complaint: {
+            _id: complaint._id,
+            category: complaint.category,
+            categoryLabel: categoryLabels[complaint.category] || complaint.category,
+            status: complaint.status,
+            description: complaint.description,
+            credibilityScore: complaint.credibilityScore,
+            evidenceCount: complaint.evidence?.length || 0,
+          },
+          complainant: complaint.complainant,
+          driver: complaint.driver,
+          createdAt: complaint.createdAt,
+          isRead,
+          priority: complaint.credibilityScore >= 70 ? 'high' : complaint.credibilityScore >= 40 ? 'medium' : 'low',
         });
       });
     }
@@ -149,12 +204,23 @@ export const getAdminNotificationCounts = async (req, res) => {
       if (!readIds.has(`expiring_${a._id}`)) expiringCount++;
     });
 
+    // Count pending complaints (unread only)
+    const pendingComplaints = await Complaint.find({ 
+      status: { $in: ['pending', 'under_review', 'investigating'] }
+    }).select('_id');
+    
+    let complaintCount = 0;
+    pendingComplaints.forEach(c => {
+      if (!readIds.has(`complaint_${c._id}`)) complaintCount++;
+    });
+
     res.status(200).json({
       success: true,
       counts: {
         disputes: disputeCount,
         expiring: expiringCount,
-        total: disputeCount + expiringCount,
+        complaints: complaintCount,
+        total: disputeCount + expiringCount + complaintCount,
       }
     });
   } catch (error) {
@@ -224,6 +290,12 @@ export const markAllNotificationsAsRead = async (req, res) => {
       expiryDate: { $ne: null, $lte: oneDayFromNow, $gt: now }
     }).select('_id');
     expiringAnnouncements.forEach(a => notificationIds.push(`expiring_${a._id}`));
+
+    // Get pending complaints
+    const pendingComplaints = await Complaint.find({ 
+      status: { $in: ['pending', 'under_review', 'investigating'] }
+    }).select('_id');
+    pendingComplaints.forEach(c => notificationIds.push(`complaint_${c._id}`));
 
     // Mark all as read (using upsert to avoid duplicates)
     const bulkOps = notificationIds.map(notificationId => ({

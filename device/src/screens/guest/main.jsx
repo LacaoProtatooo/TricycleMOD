@@ -14,6 +14,7 @@ import GuestWeather from './weather';
 import GuestMaps from './maps';
 import GuestTracking from './tracking';
 import BookingScreen from './BookingScreen';
+import ComplaintScreen from './ComplaintScreen';
 
 const Tab = createBottomTabNavigator();
 
@@ -68,6 +69,15 @@ const GuestMain = () => {
           options={{
             tabBarIcon: ({ color, size }) => (
               <Ionicons name="navigate-circle-outline" size={size} color={color} />
+            ),
+          }}
+        />
+        <Tab.Screen
+          name="Complaints"
+          component={ComplaintScreen}
+          options={{
+            tabBarIcon: ({ color, size }) => (
+              <Ionicons name="flag-outline" size={size} color={color} />
             ),
           }}
         />

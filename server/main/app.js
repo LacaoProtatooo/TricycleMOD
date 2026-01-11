@@ -20,6 +20,7 @@ import dashboardRoutes from '../routes/dashboardRoute.js';
 import userActivityRoutes from '../routes/userActivityRoute.js';
 import adminRoutes from '../routes/adminRoute.js';
 import leaderboardRoutes from '../routes/leaderboardRoute.js';
+import complaintRoutes from '../routes/complaintRoute.js';
 
 
 const app = express();
@@ -75,6 +76,7 @@ app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/activity', userActivityRoutes);
 app.use('/api/admin', adminRoutes);
 app.use('/api/leaderboard', leaderboardRoutes);
+app.use('/api/complaints', complaintRoutes);
 
 
 // Fallback for unknown routes
