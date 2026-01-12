@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import {
   View,
   Text,
@@ -8,10 +8,12 @@ import {
 } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Avatar } from 'react-native-paper';
+import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing, fonts } from '../../components/common/theme';
 import { getUserCredentials } from '../../utils/userStorage';
 import { getToken } from '../../utils/jwtStorage';
 import { useAsyncSQLiteContext } from '../../utils/asyncSQliteProvider';
+import { getCodingDayStatus, getCodingDayName } from '../../utils/codingDayUtils';
 import defaultAvatar from '../../../assets/webttrac_logo_bgrm.png';
 import StatCard from '../../components/home/StatCard';
 import MaintenanceTracker from '../../components/home/MaintenanceTracker';
@@ -101,6 +103,21 @@ const DashboardTab = () => {
   // Stats removed: rating stat hidden on maintenance/dashboard
   const statsData = [];
 
+  // Calculate coding day status
+  const codingDayStatus = useMemo(() => {
+    if (!assignedTricycle) return null;
+    
+    // Debug logging - remove after testing
+    console.log('=== DASHBOARD CODING DAY DEBUG ===');
+    console.log('Assigned Tricycle:', assignedTricycle?.plateNumber);
+    console.log('Coding Day Value:', assignedTricycle?.codingDay);
+    console.log('Coding Day Type:', typeof assignedTricycle?.codingDay);
+    console.log('Today (getDay):', new Date().getDay());
+    console.log('==================================');
+    
+    return getCodingDayStatus(assignedTricycle.codingDay);
+  }, [assignedTricycle]);
+
   return (
     <SafeAreaView style={styles.container}>
       <WeatherAdvisoryModal />
@@ -127,6 +144,37 @@ const DashboardTab = () => {
         </View>
 
         {/* Stats removed (rating hidden) */}
+
+        {/* Coding Day Status Card */}
+        {codingDayStatus && assignedTricycle?.codingDay !== null && assignedTricycle?.codingDay !== undefined && (
+          <View style={[
+            styles.codingDayCard,
+            codingDayStatus.isCodingDay ? styles.codingDayActive : styles.codingDayInactive
+          ]}>
+            <View style={styles.codingDayHeader}>
+              <Ionicons 
+                name={codingDayStatus.isCodingDay ? "ban" : "calendar"} 
+                size={24} 
+                color={codingDayStatus.isCodingDay ? '#721c24' : '#155724'} 
+              />
+              <Text style={[
+                styles.codingDayTitle,
+                { color: codingDayStatus.isCodingDay ? '#721c24' : '#155724' }
+              ]}>
+                {codingDayStatus.isCodingDay ? 'Coding Day - Cannot Operate' : 'Coding Day Schedule'}
+              </Text>
+            </View>
+            <Text style={[
+              styles.codingDayText,
+              { color: codingDayStatus.isCodingDay ? '#721c24' : '#383d41' }
+            ]}>
+              {codingDayStatus.isCodingDay 
+                ? `Today is ${getCodingDayName(assignedTricycle.codingDay)}. You cannot operate this tricycle today. ${codingDayStatus.hoursRemaining} hour${codingDayStatus.hoursRemaining !== 1 ? 's' : ''} until coding ends.`
+                : `Your coding day is every ${getCodingDayName(assignedTricycle.codingDay)}. ${codingDayStatus.message}`
+              }
+            </Text>
+          </View>
+        )}
 
         {/* NEW: Weather for today + following hours */}
         <WeatherWidget />
@@ -180,5 +228,35 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginBottom: spacing.medium,
+  },
+  // Coding Day Card Styles
+  codingDayCard: {
+    borderRadius: 12,
+    padding: spacing.medium,
+    marginBottom: spacing.medium,
+  },
+  codingDayActive: {
+    backgroundColor: '#f8d7da',
+    borderWidth: 1,
+    borderColor: '#f5c6cb',
+  },
+  codingDayInactive: {
+    backgroundColor: '#d4edda',
+    borderWidth: 1,
+    borderColor: '#c3e6cb',
+  },
+  codingDayHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  codingDayTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    marginLeft: 10,
+  },
+  codingDayText: {
+    fontSize: 13,
+    lineHeight: 18,
   },
 });

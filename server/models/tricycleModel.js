@@ -48,6 +48,21 @@ const tricycleSchema = new mongoose.Schema({
         type: Number,
         default: 0
     },
+    // Number Coding Day - The day of the week when the tricycle cannot operate
+    // Based on MMDA-style number coding scheme
+    codingDay: {
+        type: Number,
+        min: 0,  // 0 = Sunday
+        max: 6,  // 6 = Saturday
+        default: null,  // null means no coding day assigned
+        validate: {
+            validator: function(v) {
+                // Allow null/undefined or valid day numbers (0-6)
+                return v === null || v === undefined || (Number.isInteger(v) && v >= 0 && v <= 6);
+            },
+            message: 'Coding day must be a number between 0 (Sunday) and 6 (Saturday)'
+        }
+    },
     // Certificate of Registration (CR) Fields
     crData: {
         mvFileNumber: { type: String, trim: true },

@@ -10,16 +10,30 @@ import {
   Dimensions,
   ActivityIndicator,
   RefreshControl,
+  Alert,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing } from '../../../components/common/theme';
 import VehicleDiagnostic, { getWearColor } from '../../../components/home/VehicleDiagnostic';
+import { getCodingDayName, isTodayCodingDay } from '../../../utils/codingDayUtils';
 import Constants from 'expo-constants';
 import { getToken } from '../../../utils/jwtStorage';
 import { useAsyncSQLiteContext } from '../../../utils/asyncSQliteProvider';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
 const BACKEND = (Constants?.expoConfig?.extra?.BACKEND_URL) || (Constants?.manifest?.extra?.BACKEND_URL) || 'http://192.168.254.105:5000';
+
+// Coding days for picker
+const CODING_DAYS = [
+  { value: null, label: 'No Coding Day' },
+  { value: 0, label: 'Sunday' },
+  { value: 1, label: 'Monday' },
+  { value: 2, label: 'Tuesday' },
+  { value: 3, label: 'Wednesday' },
+  { value: 4, label: 'Thursday' },
+  { value: 5, label: 'Friday' },
+  { value: 6, label: 'Saturday' },
+];
 
 // Maintenance schedule intervals
 const MAINTENANCE_INTERVALS = {
@@ -111,13 +125,16 @@ const MaintenanceItemCard = ({ itemKey, currentKm, lastServiceKm, onMarkDone }) 
 export default function TricycleDetailsModal({
   visible,
   onClose,
-  selectedTricycle
+  selectedTricycle,
+  onTricycleUpdated
 }) {
   const db = useAsyncSQLiteContext();
   const [activeTab, setActiveTab] = useState('info');
   const [tricycleData, setTricycleData] = useState(null);
   const [loading, setLoading] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [showCodingDayPicker, setShowCodingDayPicker] = useState(false);
+  const [updatingCodingDay, setUpdatingCodingDay] = useState(false);
 
   // Get tricycle ID (handle both id and _id)
   const tricycleId = selectedTricycle?._id || selectedTricycle?.id;
@@ -211,6 +228,44 @@ export default function TricycleDetailsModal({
       fetchTricycleData();
     } catch (error) {
       console.error('Error marking maintenance:', error);
+    }
+  };
+
+  // Handle updating coding day
+  const handleUpdateCodingDay = async (newCodingDay) => {
+    if (!currentTricycleId) return;
+    
+    setUpdatingCodingDay(true);
+    try {
+      const token = await getToken(db);
+      const res = await fetch(`${BACKEND}/api/tricycles/${currentTricycleId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({
+          codingDay: newCodingDay
+        })
+      });
+      
+      const data = await res.json();
+      if (data.success) {
+        Alert.alert('Success', `Coding day updated to ${newCodingDay !== null ? getCodingDayName(newCodingDay) : 'None'}`);
+        setShowCodingDayPicker(false);
+        fetchTricycleData();
+        // Notify parent to refresh
+        if (onTricycleUpdated) {
+          onTricycleUpdated();
+        }
+      } else {
+        Alert.alert('Error', data.message || 'Failed to update coding day');
+      }
+    } catch (error) {
+      console.error('Error updating coding day:', error);
+      Alert.alert('Error', 'Failed to update coding day');
+    } finally {
+      setUpdatingCodingDay(false);
     }
   };
 
@@ -321,6 +376,41 @@ export default function TricycleDetailsModal({
           ))}
         </View>
       )}
+
+      {/* Coding Day Section */}
+      <View style={localStyles.section}>
+        <Text style={localStyles.sectionTitle}>
+          <Ionicons name="ban" size={16} color={colors.orangeShade6} /> Coding Day Restriction
+        </Text>
+        <View style={[
+          localStyles.codingDayCard,
+          isTodayCodingDay(tricycle?.codingDay) && localStyles.codingDayCardActive
+        ]}>
+          <View style={localStyles.codingDayInfo}>
+            <Text style={localStyles.codingDayLabel}>
+              {tricycle?.codingDay !== null && tricycle?.codingDay !== undefined
+                ? `Every ${getCodingDayName(tricycle.codingDay)}`
+                : 'No coding day set'}
+            </Text>
+            {isTodayCodingDay(tricycle?.codingDay) && (
+              <View style={localStyles.codingTodayBadge}>
+                <Ionicons name="warning" size={12} color="#721c24" />
+                <Text style={localStyles.codingTodayText}>CODING TODAY</Text>
+              </View>
+            )}
+          </View>
+          <TouchableOpacity
+            style={localStyles.codingDayEditBtn}
+            onPress={() => setShowCodingDayPicker(true)}
+          >
+            <Ionicons name="create-outline" size={18} color={colors.primary} />
+            <Text style={localStyles.codingDayEditText}>Edit</Text>
+          </TouchableOpacity>
+        </View>
+        <Text style={localStyles.codingDayHint}>
+          The driver cannot operate this tricycle on the coding day.
+        </Text>
+      </View>
     </ScrollView>
   );
 
@@ -518,6 +608,55 @@ export default function TricycleDetailsModal({
           </View>
         </View>
       </View>
+
+      {/* Coding Day Picker Modal */}
+      <Modal visible={showCodingDayPicker} animationType="slide" transparent>
+        <View style={localStyles.pickerOverlay}>
+          <View style={localStyles.pickerContainer}>
+            <View style={localStyles.pickerHeader}>
+              <Text style={localStyles.pickerTitle}>Select Coding Day</Text>
+              <TouchableOpacity onPress={() => setShowCodingDayPicker(false)}>
+                <Ionicons name="close" size={24} color={colors.orangeShade6} />
+              </TouchableOpacity>
+            </View>
+            <Text style={localStyles.pickerSubtitle}>
+              Choose the day when this tricycle cannot operate
+            </Text>
+            <ScrollView style={localStyles.pickerList}>
+              {CODING_DAYS.map((day) => (
+                <TouchableOpacity
+                  key={day.value === null ? 'none' : day.value}
+                  style={[
+                    localStyles.pickerItem,
+                    tricycle?.codingDay === day.value && localStyles.pickerItemSelected
+                  ]}
+                  onPress={() => handleUpdateCodingDay(day.value)}
+                  disabled={updatingCodingDay}
+                >
+                  <Text style={[
+                    localStyles.pickerItemText,
+                    tricycle?.codingDay === day.value && localStyles.pickerItemTextSelected
+                  ]}>
+                    {day.label}
+                  </Text>
+                  {tricycle?.codingDay === day.value && (
+                    <Ionicons name="checkmark-circle" size={22} color="#fff" />
+                  )}
+                  {updatingCodingDay && tricycle?.codingDay !== day.value && (
+                    <ActivityIndicator size="small" color={colors.primary} />
+                  )}
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+            <TouchableOpacity
+              style={localStyles.pickerCancelBtn}
+              onPress={() => setShowCodingDayPicker(false)}
+            >
+              <Text style={localStyles.pickerCancelText}>Cancel</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </Modal>
   );
 }
@@ -964,5 +1103,133 @@ const localStyles = StyleSheet.create({
     fontSize: 12,
     color: colors.orangeShade5,
     marginRight: 16,
+  },
+
+  // Coding Day Styles
+  codingDayCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.white,
+    padding: 14,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#e2e3e5',
+  },
+  codingDayCardActive: {
+    backgroundColor: '#f8d7da',
+    borderColor: '#f5c6cb',
+  },
+  codingDayInfo: {
+    flex: 1,
+  },
+  codingDayLabel: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.orangeShade7,
+  },
+  codingTodayBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f5c6cb',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 10,
+    marginTop: 6,
+    alignSelf: 'flex-start',
+  },
+  codingTodayText: {
+    fontSize: 10,
+    fontWeight: 'bold',
+    color: '#721c24',
+    marginLeft: 4,
+  },
+  codingDayEditBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.ivory3,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  codingDayEditText: {
+    fontSize: 13,
+    color: colors.primary,
+    marginLeft: 4,
+    fontWeight: '500',
+  },
+  codingDayHint: {
+    fontSize: 11,
+    color: colors.orangeShade5,
+    marginTop: 8,
+    fontStyle: 'italic',
+  },
+
+  // Coding Day Picker Modal
+  pickerOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  pickerContainer: {
+    backgroundColor: colors.white,
+    borderRadius: 16,
+    padding: 20,
+    width: '100%',
+    maxWidth: 340,
+    maxHeight: '70%',
+  },
+  pickerHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  pickerTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: colors.orangeShade7,
+  },
+  pickerSubtitle: {
+    fontSize: 13,
+    color: colors.orangeShade5,
+    marginBottom: 16,
+  },
+  pickerList: {
+    maxHeight: 300,
+  },
+  pickerItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 14,
+    backgroundColor: '#f5f5f5',
+    borderRadius: 10,
+    marginBottom: 8,
+  },
+  pickerItemSelected: {
+    backgroundColor: colors.primary,
+  },
+  pickerItemText: {
+    fontSize: 16,
+    color: '#333',
+  },
+  pickerItemTextSelected: {
+    color: '#fff',
+    fontWeight: 'bold',
+  },
+  pickerCancelBtn: {
+    marginTop: 12,
+    padding: 14,
+    alignItems: 'center',
+    backgroundColor: '#6c757d',
+    borderRadius: 10,
+  },
+  pickerCancelText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '600',
   },
 });

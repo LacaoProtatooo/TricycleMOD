@@ -10,7 +10,7 @@
  * - View booking/trip history
  */
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   View,
   StyleSheet,
@@ -37,6 +37,7 @@ import Constants from 'expo-constants';
 import { colors, spacing } from '../../components/common/theme';
 import { getToken } from '../../utils/jwtStorage';
 import { useAsyncSQLiteContext } from '../../utils/asyncSQliteProvider';
+import { getCodingDayStatus, getCodingDayName } from '../../utils/codingDayUtils';
 
 const BACKEND_URL = Constants.expoConfig?.extra?.BACKEND_URL || 'http://192.168.254.105:5000';
 const API_URL = `${BACKEND_URL}/api/booking`;
@@ -96,6 +97,15 @@ const DriverBookingScreen = ({ navigation }) => {
   const [counterOffer, setCounterOffer] = useState('');
   const [offerMessage, setOfferMessage] = useState('');
   const [tripHistory, setTripHistory] = useState([]);
+
+  // Assigned tricycle for coding day
+  const [assignedTricycle, setAssignedTricycle] = useState(null);
+
+  // Calculate coding day status
+  const codingDayStatus = useMemo(() => {
+    if (!assignedTricycle) return null;
+    return getCodingDayStatus(assignedTricycle.codingDay);
+  }, [assignedTricycle]);
 
   // Koding/Boundary state
   const [showKodingModal, setShowKodingModal] = useState(false);
@@ -187,6 +197,22 @@ const DriverBookingScreen = ({ navigation }) => {
         } else {
           Alert.alert('Authentication Required', 'Please login to access driver booking.');
           return;
+        }
+      }
+
+      // Fetch assigned tricycle for coding day check
+      if (token) {
+        try {
+          const trikeRes = await axios.get(`${BACKEND_URL}/api/tricycles`, {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          if (trikeRes.data.success && trikeRes.data.data?.length > 0) {
+            const tricycle = trikeRes.data.data[0];
+            setAssignedTricycle(tricycle);
+            console.log('Assigned tricycle codingDay:', tricycle.codingDay);
+          }
+        } catch (trikeError) {
+          console.warn('Error fetching tricycle for coding day:', trikeError);
         }
       }
 
@@ -451,6 +477,16 @@ const DriverBookingScreen = ({ navigation }) => {
   };
 
   const handleAcceptBooking = async (booking) => {
+    // Check coding day restriction before accepting
+    if (codingDayStatus?.isCodingDay) {
+      Alert.alert(
+        'Coding Day Restriction',
+        'You cannot accept bookings on your coding day.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
     if (!authToken) {
       Alert.alert('Error', 'Authentication required');
       return;
@@ -620,6 +656,16 @@ const DriverBookingScreen = ({ navigation }) => {
   // ==================== UI HANDLERS ====================
 
   const toggleOnlineStatus = () => {
+    // Check coding day restriction before going online
+    if (codingDayStatus?.isCodingDay && !isOnline) {
+      Alert.alert(
+        'Coding Day Restriction',
+        `Today is ${getCodingDayName(assignedTricycle?.codingDay)}. You cannot go online or accept trips on your coding day.`,
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
     if (isOnline) {
       setIsOnline(false);
       setNearbyBookings([]);
@@ -1087,6 +1133,19 @@ const DriverBookingScreen = ({ navigation }) => {
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+      {/* Coding Day Banner */}
+      {codingDayStatus?.isCodingDay && (
+        <View style={styles.codingDayBanner}>
+          <Ionicons name="ban" size={20} color="#fff" />
+          <View style={{ marginLeft: 10, flex: 1 }}>
+            <Text style={styles.codingDayBannerTitle}>Coding Day - Cannot Accept Trips</Text>
+            <Text style={styles.codingDayBannerText}>
+              Your tricycle is on coding today ({getCodingDayName(assignedTricycle?.codingDay)}).
+            </Text>
+          </View>
+        </View>
+      )}
+
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerLeft}>
@@ -1094,19 +1153,26 @@ const DriverBookingScreen = ({ navigation }) => {
           <View style={styles.headerTitleSection}>
             <Text style={styles.headerTitle}>Driver Bookings</Text>
             <Text style={styles.headerSubtitle}>
-              {isOnline
-                ? nearbyBookings.length > 0
-                  ? `${nearbyBookings.length} request${nearbyBookings.length > 1 ? 's' : ''} nearby`
-                  : 'Searching for passengers...'
-                : 'You are offline'}
+              {codingDayStatus?.isCodingDay
+                ? 'Coding day - trips disabled'
+                : isOnline
+                  ? nearbyBookings.length > 0
+                    ? `${nearbyBookings.length} request${nearbyBookings.length > 1 ? 's' : ''} nearby`
+                    : 'Searching for passengers...'
+                  : 'You are offline'}
             </Text>
           </View>
         </View>
 
         {/* Online toggle */}
         <TouchableOpacity
-          style={[styles.onlineToggle, isOnline && styles.onlineToggleActive]}
+          style={[
+            styles.onlineToggle, 
+            isOnline && styles.onlineToggleActive,
+            codingDayStatus?.isCodingDay && styles.onlineToggleDisabled
+          ]}
           onPress={toggleOnlineStatus}
+          disabled={codingDayStatus?.isCodingDay}
         >
           <View style={[styles.toggleIndicator, isOnline && styles.toggleIndicatorActive]} />
           <Text style={[styles.toggleLabel, isOnline && styles.toggleLabelActive]}>
@@ -1563,7 +1629,7 @@ const DriverBookingScreen = ({ navigation }) => {
         animationType="slide"
         onRequestClose={() => setShowHistoryModal(false)}
       >
-        <SafeAreaView style={styles.historyModalContainer} edges={['top', 'bottom']}>>
+        <SafeAreaView style={styles.historyModalContainer} edges={['top', 'bottom']}>
           <View style={styles.historyModalHeader}>
             <Text style={styles.historyModalTitle}>Trip History</Text>
             <TouchableOpacity onPress={() => setShowHistoryModal(false)}>
@@ -1780,6 +1846,25 @@ const styles = StyleSheet.create({
     color: colors.orangeShade5 || '#666',
   },
 
+  // Coding Day Banner
+  codingDayBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#dc3545',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  codingDayBannerTitle: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 14,
+  },
+  codingDayBannerText: {
+    color: '#fff',
+    fontSize: 12,
+    marginTop: 2,
+  },
+
   // Header
   header: {
     flexDirection: 'row',
@@ -1822,6 +1907,9 @@ const styles = StyleSheet.create({
   onlineToggleActive: {
     backgroundColor: '#d4edda',
     borderColor: '#28a745',
+  },
+  onlineToggleDisabled: {
+    opacity: 0.5,
   },
   toggleIndicator: {
     width: 10,

@@ -87,7 +87,7 @@ function segmentDurationMs(meters) {
   return seconds * 1000;
 }
 
-export default function TrackingMap({ follow = true, onEnterTerminalZone, odometerSeed }) {
+export default function TrackingMap({ follow = true, onEnterTerminalZone, odometerSeed, codingDayRestricted = false }) {
   const mapRef = useRef(null);
   const [region, setRegion] = useState(null);
   const [positions, setPositions] = useState([]);
@@ -465,6 +465,16 @@ export default function TrackingMap({ follow = true, onEnterTerminalZone, odomet
   };
 
   const startRecording = async () => {
+    // Check if coding day restriction is active
+    if (codingDayRestricted) {
+      Alert.alert(
+        'Coding Day Restriction',
+        'You cannot start a trip on your coding day. Please wait until tomorrow to operate this tricycle.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
     if (isRecording) {
       Alert.alert('Recording', 'Trip recording is already active');
       return;

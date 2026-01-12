@@ -235,7 +235,7 @@ export const getTricycle = async (req, res) => {
 // ==================== CREATE TRICYCLE ====================
 export const createTricycle = async (req, res) => {
   try {
-    const { plateNumber, bodyNumber, model, driver, status, currentOdometer } = req.body;
+    const { plateNumber, bodyNumber, model, driver, status, currentOdometer, codingDay } = req.body;
 
     // Validate required fields (bodyNumber is optional)
     if (!plateNumber || !model) {
@@ -243,6 +243,17 @@ export const createTricycle = async (req, res) => {
         success: false,
         message: "Plate number and model are required.",
       });
+    }
+
+    // Validate coding day if provided
+    if (codingDay !== undefined && codingDay !== null) {
+      const codingDayNum = parseInt(codingDay, 10);
+      if (isNaN(codingDayNum) || codingDayNum < 0 || codingDayNum > 6) {
+        return res.status(400).json({
+          success: false,
+          message: "Coding day must be a number between 0 (Sunday) and 6 (Saturday).",
+        });
+      }
     }
 
     // Get operator from authenticated user (if available) or from request body
@@ -295,6 +306,7 @@ export const createTricycle = async (req, res) => {
       driver: driver || null,
       status: status || "unavailable",
       currentOdometer: currentOdometer || 0,
+      codingDay: codingDay !== undefined && codingDay !== null ? parseInt(codingDay, 10) : null,
       images: imageLinks,
     });
 
@@ -339,7 +351,18 @@ export const updateTricycle = async (req, res) => {
       }
     }
 
-    const { plateNumber, bodyNumber, model, operator, driver, status, existingImages = [] } = req.body;
+    const { plateNumber, bodyNumber, model, operator, driver, status, existingImages = [], codingDay } = req.body;
+
+    // Validate coding day if provided
+    if (codingDay !== undefined && codingDay !== null && codingDay !== '') {
+      const codingDayNum = parseInt(codingDay, 10);
+      if (isNaN(codingDayNum) || codingDayNum < 0 || codingDayNum > 6) {
+        return res.status(400).json({
+          success: false,
+          message: "Coding day must be a number between 0 (Sunday) and 6 (Saturday).",
+        });
+      }
+    }
 
     // Upload new images to Cloudinary (if any)
     let newImageLinks = [];
@@ -365,6 +388,16 @@ export const updateTricycle = async (req, res) => {
       ...newImageLinks,
     ];
 
+    // Handle coding day - allow setting to null to remove the restriction
+    let codingDayValue = tricycle.codingDay;
+    if (codingDay !== undefined) {
+      if (codingDay === null || codingDay === '' || codingDay === 'null') {
+        codingDayValue = null;
+      } else {
+        codingDayValue = parseInt(codingDay, 10);
+      }
+    }
+
     const updatedData = {
       plateNumber: plateNumber || tricycle.plateNumber,
       bodyNumber: bodyNumber || tricycle.bodyNumber,
@@ -373,6 +406,7 @@ export const updateTricycle = async (req, res) => {
       operator: (req.user && req.user.role === 'operator') ? req.user.id : (operator || tricycle.operator),
       driver: driver || tricycle.driver,
       status: status || tricycle.status,
+      codingDay: codingDayValue,
       images: updatedImages,
     };
 

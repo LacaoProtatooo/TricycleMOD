@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, Image } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import styles from './operatorStyles';
 import { colors, spacing } from '../../components/common/theme';
+import { getCodingDayName, isTodayCodingDay } from '../../utils/codingDayUtils';
 
 // Tricycle logo
 const TricycleLogo = require('../../../assets/webttrac_logo_bgrm.png');
@@ -153,6 +154,35 @@ export default function TricycleListItem({
               </>
             )}
           </View>
+          {/* Coding Day Badge */}
+          {tricycle.codingDay !== null && tricycle.codingDay !== undefined && (
+            <View style={{ 
+              flexDirection: 'row', 
+              alignItems: 'center', 
+              marginTop: 6,
+              backgroundColor: isTodayCodingDay(tricycle.codingDay) ? '#f8d7da' : '#e2e3e5',
+              paddingHorizontal: 8,
+              paddingVertical: 3,
+              borderRadius: 12,
+              alignSelf: 'flex-start',
+            }}>
+              <Ionicons 
+                name={isTodayCodingDay(tricycle.codingDay) ? "ban" : "calendar-outline"} 
+                size={12} 
+                color={isTodayCodingDay(tricycle.codingDay) ? '#721c24' : '#495057'} 
+              />
+              <Text style={{ 
+                fontSize: 11, 
+                color: isTodayCodingDay(tricycle.codingDay) ? '#721c24' : '#495057',
+                marginLeft: 4,
+                fontWeight: '500',
+              }}>
+                {isTodayCodingDay(tricycle.codingDay) 
+                  ? 'Coding Today' 
+                  : `Coding: ${getCodingDayName(tricycle.codingDay, true)}`}
+              </Text>
+            </View>
+          )}
         </View>
         <View style={styles.right}>
           <Ionicons name="chevron-forward" size={20} color={colors.orangeShade5} />

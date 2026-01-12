@@ -8,7 +8,7 @@
  * - Complete trips within destination radius
  */
 
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import {
   View,
   StyleSheet,
@@ -33,6 +33,7 @@ import Constants from 'expo-constants';
 import { colors, spacing } from '../../components/common/theme';
 import { getToken } from '../../utils/jwtStorage';
 import { useAsyncSQLiteContext } from '../../utils/asyncSQliteProvider';
+import { getCodingDayStatus, getCodingDayName } from '../../utils/codingDayUtils';
 
 const BACKEND = (Constants?.expoConfig?.extra?.BACKEND_URL) || 'http://192.168.1.1:5000';
 const COMPLETION_RADIUS_METERS = 300;
@@ -52,6 +53,13 @@ const DriverBookingScreen = () => {
   const [activeBooking, setActiveBooking] = useState(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [assignedTricycle, setAssignedTricycle] = useState(null);
+  
+  // Calculate coding day status
+  const codingDayStatus = useMemo(() => {
+    if (!assignedTricycle) return null;
+    return getCodingDayStatus(assignedTricycle.codingDay);
+  }, [assignedTricycle]);
   
   // Modal states
   const [showOfferModal, setShowOfferModal] = useState(false);
@@ -93,9 +101,24 @@ const DriverBookingScreen = () => {
       setLoading(true);
       
       // Get auth token
+      let token = null;
       if (db) {
-        const token = await getToken(db);
+        token = await getToken(db);
         setAuthToken(token);
+      }
+      
+      // Fetch assigned tricycle for coding day check
+      if (token) {
+        try {
+          const trikeRes = await axios.get(`${BACKEND}/api/tricycles`, {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+          if (trikeRes.data.success && trikeRes.data.data?.length > 0) {
+            setAssignedTricycle(trikeRes.data.data[0]);
+          }
+        } catch (trikeError) {
+          console.warn('Error fetching tricycle:', trikeError);
+        }
       }
       
       // Request location permission
@@ -206,6 +229,16 @@ const DriverBookingScreen = () => {
   };
 
   const toggleOnlineStatus = async () => {
+    // Check coding day restriction
+    if (codingDayStatus?.isCodingDay && !isOnline) {
+      Alert.alert(
+        'Coding Day Restriction',
+        `Today is ${getCodingDayName(assignedTricycle?.codingDay)}. You cannot go online or accept trips on your coding day.`,
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
     if (isOnline) {
       setIsOnline(false);
       setNearbyBookings([]);
@@ -216,6 +249,16 @@ const DriverBookingScreen = () => {
   };
 
   const handleAcceptBooking = async (booking, withCounterOffer = false) => {
+    // Check coding day restriction before accepting
+    if (codingDayStatus?.isCodingDay) {
+      Alert.alert(
+        'Coding Day Restriction',
+        'You cannot accept bookings on your coding day.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
     if (!authToken) {
       Alert.alert('Error', 'Authentication required');
       return;
@@ -418,6 +461,21 @@ const DriverBookingScreen = () => {
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+      {/* Coding Day Warning Banner */}
+      {codingDayStatus && codingDayStatus.isCodingDay && (
+        <View style={styles.codingDayBanner}>
+          <View style={styles.codingDayContent}>
+            <Ionicons name="warning" size={22} color="#fff" />
+            <View style={styles.codingDayTextContainer}>
+              <Text style={styles.codingDayTitle}>🚫 Coding Day - Cannot Accept Trips</Text>
+              <Text style={styles.codingDayMessage}>
+                Today is {getCodingDayName(assignedTricycle?.codingDay)}. You cannot accept bookings today.
+              </Text>
+            </View>
+          </View>
+        </View>
+      )}
+
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerContent}>
@@ -650,6 +708,30 @@ const styles = StyleSheet.create({
   loadingText: {
     marginTop: spacing.medium,
     color: colors.orangeShade5,
+  },
+
+  // Coding Day Banner
+  codingDayBanner: {
+    backgroundColor: '#dc3545',
+    padding: spacing.medium,
+  },
+  codingDayContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  codingDayTextContainer: {
+    marginLeft: spacing.medium,
+    flex: 1,
+  },
+  codingDayTitle: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  codingDayMessage: {
+    color: '#fff',
+    fontSize: 12,
+    marginTop: 2,
   },
 
   // Header

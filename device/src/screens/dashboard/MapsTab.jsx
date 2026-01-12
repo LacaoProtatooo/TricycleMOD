@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useMemo } from "react";
 import { StyleSheet, View, TouchableOpacity, Text, Modal, Alert } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from '@expo/vector-icons';
@@ -8,6 +8,7 @@ import QueueCard from '../../components/home/QueueCard';
 import { useAsyncSQLiteContext } from '../../utils/asyncSQliteProvider';
 import { getToken } from '../../utils/jwtStorage';
 import { getUserCredentials } from '../../utils/userStorage';
+import { getCodingDayStatus, getCodingDayName } from '../../utils/codingDayUtils';
 import Constants from 'expo-constants';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
@@ -21,6 +22,21 @@ const MapsTab = () => {
   const [authToken, setAuthToken] = useState(null);
   const [queueVisible, setQueueVisible] = useState(false);
   const [odometerSeed, setOdometerSeed] = useState(null);
+
+  // Calculate coding day status based on assigned tricycle
+  const codingDayStatus = useMemo(() => {
+    if (!assignedTricycle) return null;
+    
+    // Debug logging - remove after testing
+    console.log('=== CODING DAY DEBUG ===');
+    console.log('Assigned Tricycle:', assignedTricycle?.plateNumber);
+    console.log('Coding Day Value:', assignedTricycle?.codingDay);
+    console.log('Coding Day Type:', typeof assignedTricycle?.codingDay);
+    console.log('Today (getDay):', new Date().getDay());
+    console.log('========================');
+    
+    return getCodingDayStatus(assignedTricycle.codingDay);
+  }, [assignedTricycle]);
 
   useEffect(() => {
     if (db) {
@@ -74,9 +90,47 @@ const MapsTab = () => {
 
   return (
     <SafeAreaView style={styles.container}>
+      {/* Coding Day Warning Banner */}
+      {codingDayStatus && codingDayStatus.isCodingDay && (
+        <View style={styles.codingDayBanner}>
+          <View style={styles.codingDayContent}>
+            <Ionicons name="warning" size={24} color="#fff" />
+            <View style={styles.codingDayTextContainer}>
+              <Text style={styles.codingDayTitle}>🚫 Coding Day - Cannot Operate</Text>
+              <Text style={styles.codingDayMessage}>
+                Today is {getCodingDayName(assignedTricycle?.codingDay)}. You cannot drive this tricycle today.
+              </Text>
+              <Text style={styles.codingDaySubtext}>
+                {codingDayStatus.hoursRemaining} hour{codingDayStatus.hoursRemaining !== 1 ? 's' : ''} until coding ends
+              </Text>
+            </View>
+          </View>
+        </View>
+      )}
+
+      {/* Coding Day Reminder (not today) */}
+      {codingDayStatus && !codingDayStatus.isCodingDay && codingDayStatus.severity === 'warning' && (
+        <View style={styles.codingDayReminder}>
+          <Ionicons name="calendar" size={18} color="#856404" />
+          <Text style={styles.codingDayReminderText}>
+            Reminder: Tomorrow is your coding day ({getCodingDayName(assignedTricycle?.codingDay)})
+          </Text>
+        </View>
+      )}
+
       <TrackingMap
         odometerSeed={odometerSeed}
+        codingDayRestricted={codingDayStatus?.isCodingDay || false}
         onEnterTerminalZone={(terminal) => {
+          // Don't allow queue actions on coding day
+          if (codingDayStatus?.isCodingDay) {
+            Alert.alert(
+              'Coding Day Restriction',
+              'You cannot join the queue on your coding day.',
+              [{ text: 'OK' }]
+            );
+            return;
+          }
           Alert.alert(
             'Terminal zone',
             `You are in ${terminal.name}. Join the queue.`,
@@ -129,10 +183,51 @@ const styles = StyleSheet.create({
     flex: 1,
     backgroundColor: colors.background,
   },
+  codingDayBanner: {
+    backgroundColor: '#dc3545',
+    padding: spacing.medium,
+    zIndex: 10,
+  },
+  codingDayContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  codingDayTextContainer: {
+    marginLeft: spacing.medium,
+    flex: 1,
+  },
+  codingDayTitle: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+  codingDayMessage: {
+    color: '#fff',
+    fontSize: 13,
+    marginTop: 2,
+  },
+  codingDaySubtext: {
+    color: 'rgba(255,255,255,0.8)',
+    fontSize: 12,
+    marginTop: 4,
+  },
+  codingDayReminder: {
+    backgroundColor: '#fff3cd',
+    padding: spacing.small,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 10,
+  },
+  codingDayReminderText: {
+    color: '#856404',
+    fontSize: 13,
+    marginLeft: spacing.small,
+  },
   fabContainer: {
     position: 'absolute',
     right: spacing.large,
-    top: spacing.large,
+    top: 80,
     zIndex: 5,
   },
   fab: {

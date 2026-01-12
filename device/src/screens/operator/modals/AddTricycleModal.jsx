@@ -67,6 +67,24 @@ const MOTORCYCLE_MODELS = [
   },
 ];
 
+// Days of the week for coding day selection
+const CODING_DAYS = [
+  { value: null, label: 'No Coding Day' },
+  { value: 0, label: 'Sunday' },
+  { value: 1, label: 'Monday' },
+  { value: 2, label: 'Tuesday' },
+  { value: 3, label: 'Wednesday' },
+  { value: 4, label: 'Thursday' },
+  { value: 5, label: 'Friday' },
+  { value: 6, label: 'Saturday' },
+];
+
+// Helper function to get day name from number
+const getDayName = (dayNumber) => {
+  const day = CODING_DAYS.find(d => d.value === dayNumber);
+  return day ? day.label : 'No Coding Day';
+};
+
 // Helper function to create form data for image upload
 const createImageFormData = (uri, fieldName = 'image') => {
   const formData = new FormData();
@@ -96,6 +114,7 @@ export default function AddTricycleModal({
   const [showModelPicker, setShowModelPicker] = useState(false);
   const [showOtherInput, setShowOtherInput] = useState(false);
   const [customModel, setCustomModel] = useState('');
+  const [showCodingDayPicker, setShowCodingDayPicker] = useState(false);
   
   // Document scanning states
   const [activeTab, setActiveTab] = useState('basic'); // 'basic' | 'documents'
@@ -659,6 +678,90 @@ export default function AddTricycleModal({
                     keyboardType="numeric"
                     editable={!creating}
                   />
+
+                  {/* Coding Day Dropdown */}
+                  <TouchableOpacity
+                    style={[styles.textInput, { justifyContent: 'center' }]}
+                    onPress={() => !creating && setShowCodingDayPicker(true)}
+                    disabled={creating}
+                  >
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                      <Text style={{ color: newTricycle.codingDay !== undefined && newTricycle.codingDay !== null ? '#000' : '#999' }}>
+                        {newTricycle.codingDay !== undefined && newTricycle.codingDay !== null 
+                          ? `Coding Day: ${getDayName(newTricycle.codingDay)}` 
+                          : 'Select Coding Day (Optional)'}
+                      </Text>
+                      <Ionicons name="calendar-outline" size={20} color="#666" />
+                    </View>
+                  </TouchableOpacity>
+
+                  {/* Coding Day Info */}
+                  <View style={{ 
+                    backgroundColor: '#fff3cd', 
+                    padding: 10, 
+                    borderRadius: 8, 
+                    marginTop: 5,
+                    flexDirection: 'row',
+                    alignItems: 'flex-start'
+                  }}>
+                    <Ionicons name="information-circle" size={18} color="#856404" style={{ marginRight: 8, marginTop: 2 }} />
+                    <Text style={{ color: '#856404', fontSize: 12, flex: 1 }}>
+                      Coding Day: The driver will not be able to drive this tricycle on the selected day each week. This helps manage traffic and ensure fair rotation.
+                    </Text>
+                  </View>
+
+                  {/* Coding Day Picker Modal */}
+                  <Modal visible={showCodingDayPicker} animationType="slide" transparent>
+                    <TouchableWithoutFeedback onPress={() => setShowCodingDayPicker(false)}>
+                      <View style={styles.modalContainer}>
+                        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+                          <View style={[styles.modalContent, { maxHeight: '60%' }]}>
+                            <Text style={styles.modalTitle}>Select Coding Day</Text>
+                            <Text style={{ fontSize: 12, color: '#666', marginBottom: 15, textAlign: 'center' }}>
+                              Choose the day when this tricycle cannot operate
+                            </Text>
+                            <ScrollView style={{ width: '100%' }}>
+                              {CODING_DAYS.map((day) => (
+                                <TouchableOpacity
+                                  key={day.value === null ? 'none' : day.value}
+                                  style={{
+                                    padding: 15,
+                                    backgroundColor: newTricycle.codingDay === day.value ? colors.primary : '#f5f5f5',
+                                    borderRadius: 8,
+                                    marginBottom: 8,
+                                    flexDirection: 'row',
+                                    alignItems: 'center',
+                                    justifyContent: 'space-between',
+                                  }}
+                                  onPress={() => {
+                                    setNewTricycle({ ...newTricycle, codingDay: day.value });
+                                    setShowCodingDayPicker(false);
+                                  }}
+                                >
+                                  <Text style={{ 
+                                    fontSize: 16, 
+                                    color: newTricycle.codingDay === day.value ? '#fff' : '#333',
+                                    fontWeight: newTricycle.codingDay === day.value ? 'bold' : 'normal'
+                                  }}>
+                                    {day.label}
+                                  </Text>
+                                  {newTricycle.codingDay === day.value && (
+                                    <Ionicons name="checkmark-circle" size={20} color="#fff" />
+                                  )}
+                                </TouchableOpacity>
+                              ))}
+                            </ScrollView>
+                            <TouchableOpacity
+                              style={[styles.modalBtn, { backgroundColor: '#6c757d', marginTop: 10, width: '100%' }]}
+                              onPress={() => setShowCodingDayPicker(false)}
+                            >
+                              <Text style={styles.modalBtnText}>Cancel</Text>
+                            </TouchableOpacity>
+                          </View>
+                        </TouchableWithoutFeedback>
+                      </View>
+                    </TouchableWithoutFeedback>
+                  </Modal>
                 </>
               ) : (
                 <>
