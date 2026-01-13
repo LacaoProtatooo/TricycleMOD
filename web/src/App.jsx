@@ -20,6 +20,7 @@ import LostFound from "./pages/LostFound";
 import Leaderboard from "./pages/Leaderboard";
 import RulesRegulations from "./pages/RulesRegulations";
 import Complaints from "./pages/Complaints";
+import Coding from "./pages/Coding";
 import Videos from "./pages/UiElements/Videos";
 import Images from "./pages/UiElements/Images";
 import Alerts from "./pages/UiElements/Alerts";
@@ -69,6 +70,7 @@ export default function App() {
               <Route path="/complaints" element={<Complaints />} />
               <Route path="/leaderboard" element={<Leaderboard />} />
               <Route path="/rules-regulations" element={<RulesRegulations />} />
+              <Route path="/coding" element={<Coding />} />
               <Route path="/calendar" element={<Calendar />} />
               <Route path="/announcements" element={<Announcements />} />
               <Route path="/live-tracking" element={<LiveDriversMap />} />

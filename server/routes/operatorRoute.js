@@ -16,6 +16,7 @@ import {
   adminGetAllOperators,
   adminGetOperatorDetails,
   adminGetOperatorStats,
+  adminGetOperatorsList,
 } from '../controllers/operatorController.js';
 import {
   getAdminNotifications,
@@ -33,6 +34,7 @@ const router = express.Router();
 // Admin: Get all operators with tricycles and drivers
 router.get('/admin/all', protect, authorize('admin'), adminGetAllOperators);
 router.get('/admin/stats', protect, authorize('admin'), adminGetOperatorStats);
+router.get('/admin/list', protect, authorize('admin'), adminGetOperatorsList);
 router.get('/admin/:id', protect, authorize('admin'), adminGetOperatorDetails);
 
 // Admin notifications

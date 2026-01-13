@@ -901,3 +901,169 @@ export const updateTricycleDocuments = async (req, res) => {
     res.status(500).json({ success: false, message: "Server Error" });
   }
 };
+
+// ==================== ADMIN: GET ALL TRICYCLES WITH CODING INFO ====================
+export const adminGetCodingData = async (req, res) => {
+  try {
+    const { page = 1, limit = 50, search = '', operatorId = '', codingDay = '' } = req.query;
+
+    const query = {};
+
+    // Filter by search (plate number or body number)
+    if (search) {
+      query.$or = [
+        { plateNumber: { $regex: search, $options: 'i' } },
+        { bodyNumber: { $regex: search, $options: 'i' } },
+      ];
+    }
+
+    // Filter by operator
+    if (operatorId) {
+      query.operator = operatorId;
+    }
+
+    // Filter by coding day
+    if (codingDay !== '' && codingDay !== undefined && codingDay !== 'all') {
+      if (codingDay === 'none') {
+        query.codingDay = null;
+      } else {
+        query.codingDay = parseInt(codingDay, 10);
+      }
+    }
+
+    const skip = (parseInt(page) - 1) * parseInt(limit);
+
+    const tricycles = await Tricycle.find(query)
+      .populate('operator', 'firstname lastname username email phone image')
+      .populate('driver', 'firstname lastname username email phone image')
+      .sort({ 'operator.lastname': 1, plateNumber: 1 })
+      .skip(skip)
+      .limit(parseInt(limit));
+
+    const total = await Tricycle.countDocuments(query);
+
+    res.status(200).json({
+      success: true,
+      tricycles,
+      total,
+      page: parseInt(page),
+      pages: Math.ceil(total / parseInt(limit)),
+    });
+  } catch (error) {
+    console.error('Error fetching coding data:', error.message);
+    res.status(500).json({ success: false, message: 'Server Error' });
+  }
+};
+
+// ==================== ADMIN: UPDATE TRICYCLE CODING DAY ====================
+export const adminUpdateCodingDay = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { codingDay } = req.body;
+
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(404).json({ success: false, message: 'Invalid tricycle ID' });
+    }
+
+    const tricycle = await Tricycle.findById(id);
+    if (!tricycle) {
+      return res.status(404).json({ success: false, message: 'Tricycle not found' });
+    }
+
+    // Validate coding day - allow null to remove restriction
+    let codingDayValue = null;
+    if (codingDay !== null && codingDay !== undefined && codingDay !== '' && codingDay !== 'null') {
+      const codingDayNum = parseInt(codingDay, 10);
+      if (isNaN(codingDayNum) || codingDayNum < 0 || codingDayNum > 6) {
+        return res.status(400).json({
+          success: false,
+          message: 'Coding day must be a number between 0 (Sunday) and 6 (Saturday).',
+        });
+      }
+      codingDayValue = codingDayNum;
+    }
+
+    tricycle.codingDay = codingDayValue;
+    await tricycle.save();
+
+    const updatedTricycle = await Tricycle.findById(id)
+      .populate('operator', 'firstname lastname username email phone image')
+      .populate('driver', 'firstname lastname username email phone image');
+
+    res.status(200).json({
+      success: true,
+      message: 'Coding day updated successfully',
+      tricycle: updatedTricycle,
+    });
+  } catch (error) {
+    console.error('Error updating coding day:', error.message);
+    res.status(500).json({ success: false, message: 'Server Error' });
+  }
+};
+
+// ==================== ADMIN: GET CODING STATISTICS ====================
+export const adminGetCodingStats = async (req, res) => {
+  try {
+    const today = new Date().getDay();
+
+    // Aggregate statistics
+    const [totalTricycles, codingDayStats, operatorStats] = await Promise.all([
+      Tricycle.countDocuments({}),
+      Tricycle.aggregate([
+        {
+          $group: {
+            _id: '$codingDay',
+            count: { $sum: 1 },
+          },
+        },
+        { $sort: { _id: 1 } },
+      ]),
+      Tricycle.aggregate([
+        {
+          $group: {
+            _id: '$operator',
+            tricycleCount: { $sum: 1 },
+            withCoding: {
+              $sum: { $cond: [{ $ne: ['$codingDay', null] }, 1, 0] },
+            },
+            withoutCoding: {
+              $sum: { $cond: [{ $eq: ['$codingDay', null] }, 1, 0] },
+            },
+          },
+        },
+      ]),
+    ]);
+
+    // Calculate how many tricycles have coding today
+    const codingToday = codingDayStats.find(s => s._id === today)?.count || 0;
+
+    // Calculate tricycles with/without coding
+    const withCoding = codingDayStats
+      .filter(s => s._id !== null)
+      .reduce((acc, s) => acc + s.count, 0);
+    const withoutCoding = codingDayStats.find(s => s._id === null)?.count || 0;
+
+    // Distribution by day
+    const dayDistribution = {};
+    for (let i = 0; i <= 6; i++) {
+      const stat = codingDayStats.find(s => s._id === i);
+      dayDistribution[i] = stat?.count || 0;
+    }
+
+    res.status(200).json({
+      success: true,
+      stats: {
+        totalTricycles,
+        withCoding,
+        withoutCoding,
+        codingToday,
+        todayDay: today,
+        dayDistribution,
+        operatorCount: operatorStats.length,
+      },
+    });
+  } catch (error) {
+    console.error('Error fetching coding stats:', error.message);
+    res.status(500).json({ success: false, message: 'Server Error' });
+  }
+};

@@ -14,16 +14,25 @@ import {
     scanCRDocument,
     scanORDocument,
     validateCRORDocuments,
-    updateTricycleDocuments
+    updateTricycleDocuments,
+    adminGetCodingData,
+    adminUpdateCodingDay,
+    adminGetCodingStats
 } from "../controllers/tricycleController.js";
-import { authUser, adminOnly } from "../middleware/authMiddleware.js";
+import { authUser, adminOnly, protect, authorize } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
+
+// ==================== ADMIN ROUTES (must be before /:id routes) ====================
+router.get("/admin/coding", protect, authorize('admin'), adminGetCodingData);
+router.get("/admin/coding/stats", protect, authorize('admin'), adminGetCodingStats);
+router.put("/admin/coding/:id", protect, authorize('admin'), adminUpdateCodingDay);
 
 // OCR Document scanning routes - MUST be before /:id routes to avoid matching "scan" as an ID
 router.post("/scan/cr", authUser, upload.single("image"), scanCRDocument);
 router.post("/scan/or", authUser, upload.single("image"), scanORDocument);
 router.post("/validate-documents", authUser, validateCRORDocuments);
+
 
 router.get("/", authUser, getTricycles);
 router.get("/:id", authUser, getTricycle);

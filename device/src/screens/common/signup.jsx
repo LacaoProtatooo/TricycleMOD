@@ -18,7 +18,6 @@ import { useNavigation } from '@react-navigation/native';
 import Constants from 'expo-constants';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
-import { Picker } from '@react-native-picker/picker';
 
 // Import the signupUser thunk from Redux actions
 import { signupUser } from '../../redux/actions/authAction';
@@ -58,7 +57,7 @@ const Signup = () => {
   const [city, setCity] = useState('');
   const [postalCode, setPostalCode] = useState('');
   const [country, setCountry] = useState('Philippines');
-  const [role, setRole] = useState('driver'); // driver or operator
+  // Role is set to 'guest' by default (server default)
 
   // Photo upload state
   const [capturedPhoto, setCapturedPhoto] = useState(null);
@@ -129,7 +128,7 @@ const Signup = () => {
       country 
     };
 
-    // Dispatch signup action
+    // Dispatch signup action - role defaults to 'guest' on server
     dispatch(signupUser({ 
       username, 
       firstname, 
@@ -138,7 +137,6 @@ const Signup = () => {
       password, 
       address, 
       phone: phone || undefined,
-      role,
       image: capturedPhoto ? { url: capturedPhoto } : undefined
     }))
       .unwrap()
@@ -328,20 +326,6 @@ const Signup = () => {
               </TouchableOpacity>
             </View>
             {errors.confirmPassword && <Text style={styles.errorText}>{errors.confirmPassword}</Text>}
-          </View>
-
-          <View style={styles.inputContainer}>
-            <Text style={styles.label}>Role*</Text>
-            <View style={styles.pickerContainer}>
-              <Picker
-                selectedValue={role}
-                onValueChange={(itemValue) => setRole(itemValue)}
-                style={styles.picker}
-              >
-                <Picker.Item label="Driver" value="driver" />
-                <Picker.Item label="Operator" value="operator" />
-              </Picker>
-            </View>
           </View>
         </View>
 

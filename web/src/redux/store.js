@@ -13,6 +13,7 @@ import lostFoundReducer from './reducers/lostFoundReducer';
 import leaderboardReducer from './reducers/leaderboardReducer';
 import liveTrackingReducer from './reducers/liveTrackingReducer';
 import complaintReducer from './reducers/complaintReducer';
+import codingReducer from './reducers/codingReducer';
 
 const store = configureStore({
   reducer: {
@@ -30,6 +31,7 @@ const store = configureStore({
     leaderboard: leaderboardReducer,
     liveTracking: liveTrackingReducer,
     complaint: complaintReducer,
+    coding: codingReducer,
   },
   middleware: (getDefaultMiddleware) =>
     getDefaultMiddleware({

@@ -1120,3 +1120,23 @@ export const adminGetOperatorStats = async (req, res) => {
   }
 };
 
+/**
+ * Admin: Get simple operators list for filter dropdowns
+ */
+export const adminGetOperatorsList = async (req, res) => {
+  try {
+    const operators = await User.find({ role: 'operator' })
+      .select('firstname lastname email')
+      .sort({ lastname: 1, firstname: 1 });
+
+    res.status(200).json({
+      success: true,
+      operators,
+    });
+  } catch (error) {
+    console.error('Error fetching operators list:', error.message);
+    res.status(500).json({ success: false, message: 'Failed to fetch operators list', error: error.message });
+  }
+};
+
+
