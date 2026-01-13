@@ -266,7 +266,7 @@ export const getOperatorOverview = async (req, res) => {
     const tricycles = await Tricycle.find({ operator: operatorId })
       .populate('driver', 'firstname lastname username email phone image')
       .populate('operator', 'firstname lastname username email')
-      .populate('schedules.driver', 'firstname lastname username email')
+      .populate('schedules.driver', 'firstname lastname username email phone image')
       .sort({ createdAt: -1 });
 
     // Get all available drivers (drivers not assigned to any tricycle)

@@ -23,6 +23,7 @@ LogBox.ignoreLogs([
   'Unsupported top level event type "topUserLocationChange" dispatched',
   'Each child in a list should have a unique "key" prop',
 ]);
+LogBox.ignoreLogs(['Unsupported top level event type "topUserLocationChange"']);
 
 GoogleSignin.configure({
   webClientId: '75787064888-l1hip5a66fhr6h7bgoo36okvj8qncm35.apps.googleusercontent.com',

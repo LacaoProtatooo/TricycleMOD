@@ -18,6 +18,43 @@ export default function MessageSelectionModal({
   selectedTricycle,
   navigation
 }) {
+  // Helper to get driver info safely (handles both populated and unpopulated driver)
+  const getDriverInfo = (sch) => {
+    if (!sch.driver) return null;
+    
+    // If driver is populated (object with firstname/lastname)
+    if (typeof sch.driver === 'object' && sch.driver.firstname) {
+      return {
+        id: sch.driver._id || sch.driver.id,
+        name: `${sch.driver.firstname} ${sch.driver.lastname}`,
+        image: sch.driver.image?.url
+      };
+    }
+    
+    // If driver is just an ObjectId string (not populated)
+    return {
+      id: sch.driver,
+      name: 'Driver',
+      image: null
+    };
+  };
+
+  const handleSelectDriver = (sch) => {
+    const driverInfo = getDriverInfo(sch);
+    
+    if (!driverInfo || !driverInfo.id) {
+      Alert.alert('Error', 'Unable to get driver information. Please try again.');
+      return;
+    }
+    
+    onClose();
+    navigation.navigate('Chat', {
+      userId: driverInfo.id,
+      userName: driverInfo.name,
+      userImage: driverInfo.image
+    });
+  };
+
   return (
     <Modal visible={visible} animationType="slide" transparent>
       <View style={styles.modalContainer}>
@@ -28,35 +65,33 @@ export default function MessageSelectionModal({
           </Text>
 
           <ScrollView style={{ maxHeight: 300, marginVertical: 16 }}>
-            {selectedTricycle?.schedules && selectedTricycle.schedules.map((sch, idx) => (
-              <TouchableOpacity 
-                key={idx} 
-                style={messageStyles.scheduleCard}
-                onPress={() => {
-                  onClose();
-                  navigation.navigate('Chat', {
-                    userId: sch.driver._id || sch.driver.id,
-                    userName: `${sch.driver.firstname} ${sch.driver.lastname}`,
-                    userImage: sch.driver.image?.url
-                  });
-                }}
-              >
-                {sch.driver?.image?.url ? (
-                  <Image source={{ uri: sch.driver.image.url }} style={messageStyles.avatar} />
-                ) : (
-                  <Ionicons name="person-circle-outline" size={40} color={colors.orangeShade5} style={{ marginRight: 12 }} />
-                )}
-                <View style={{ flex: 1 }}>
-                  <Text style={messageStyles.driverName}>
-                    {sch.driver?.firstname} {sch.driver?.lastname}
-                  </Text>
-                  <Text style={messageStyles.scheduleInfo}>
-                    {sch.days.join(', ')} • {sch.startTime}-{sch.endTime}
-                  </Text>
-                </View>
-                <Ionicons name="chatbubble-outline" size={20} color={colors.primary} />
-              </TouchableOpacity>
-            ))}
+            {selectedTricycle?.schedules && selectedTricycle.schedules.map((sch, idx) => {
+              const driverInfo = getDriverInfo(sch);
+              if (!driverInfo) return null;
+              
+              return (
+                <TouchableOpacity 
+                  key={idx} 
+                  style={messageStyles.scheduleCard}
+                  onPress={() => handleSelectDriver(sch)}
+                >
+                  {driverInfo.image ? (
+                    <Image source={{ uri: driverInfo.image }} style={messageStyles.avatar} />
+                  ) : (
+                    <Ionicons name="person-circle-outline" size={40} color={colors.orangeShade5} style={{ marginRight: 12 }} />
+                  )}
+                  <View style={{ flex: 1 }}>
+                    <Text style={messageStyles.driverName}>
+                      {driverInfo.name}
+                    </Text>
+                    <Text style={messageStyles.scheduleInfo}>
+                      {sch.days?.join(', ') || 'No days'} • {sch.startTime || '?'}-{sch.endTime || '?'}
+                    </Text>
+                  </View>
+                  <Ionicons name="chatbubble-outline" size={20} color={colors.primary} />
+                </TouchableOpacity>
+              );
+            })}
           </ScrollView>
 
           <View style={styles.modalActions}>

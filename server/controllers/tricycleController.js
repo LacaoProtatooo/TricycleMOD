@@ -200,7 +200,8 @@ export const getTricycles = async (req, res) => {
 
     const tricycles = await Tricycle.find(query)
       .populate("operator", "firstname lastname username email")
-      .populate("driver", "firstname lastname username email phone image");
+      .populate("driver", "firstname lastname username email phone image")
+      .populate("schedules.driver", "firstname lastname username email phone image");
 
     res.status(200).json({
       success: true,
@@ -220,7 +221,8 @@ export const getTricycle = async (req, res) => {
   try {
     const tricycle = await Tricycle.findById(id)
       .populate("operator", "firstname lastname username email")
-      .populate("driver", "firstname lastname username email phone image");
+      .populate("driver", "firstname lastname username email phone image")
+      .populate("schedules.driver", "firstname lastname username email phone image");
 
     if (!tricycle)
       return res.status(404).json({ success: false, message: "Tricycle not found" });

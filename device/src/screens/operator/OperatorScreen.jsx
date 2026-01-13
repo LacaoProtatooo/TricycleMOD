@@ -244,18 +244,22 @@ export default function OperatorScreen({ navigation }) {
   };
 
   const openMessage = (tricycle) => {
+    // Check if tricycle has shared schedules (multiple scheduled drivers)
+    // If schedules exist, show selection modal even if there's a driver set
+    if (tricycle.schedules && tricycle.schedules.length > 0) {
+      // For shared schedules, always show selection modal
+      setSelectedTricycle(tricycle);
+      setMessageSelectionModalVisible(true);
+      return;
+    }
+
+    // For exclusive/primary driver assignment (no schedules)
     if (tricycle.driver) {
       navigation.navigate('Chat', {
         userId: tricycle.driver._id || tricycle.driver.id,
         userName: `${tricycle.driver.firstname} ${tricycle.driver.lastname}`,
         userImage: tricycle.driver.image?.url
       });
-      return;
-    }
-
-    if (tricycle.schedules && tricycle.schedules.length > 0) {
-      setSelectedTricycle(tricycle);
-      setMessageSelectionModalVisible(true);
       return;
     }
 
