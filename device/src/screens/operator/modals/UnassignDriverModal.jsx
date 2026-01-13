@@ -18,17 +18,71 @@ export default function UnassignDriverModal({
   tricycleToUnassign,
   onConfirmUnassign
 }) {
+  // Check if tricycle has shared schedules or just a primary driver
+  const hasSchedules = tricycleToUnassign?.schedules && tricycleToUnassign.schedules.length > 0;
+  const hasPrimaryDriver = tricycleToUnassign?.driver;
+  
   return (
     <Modal visible={visible} animationType="slide" transparent>
       <View style={styles.modalContainer}>
         <View style={styles.modalContent}>
           <Text style={styles.modalTitle}>Unassign Driver</Text>
           <Text style={styles.modalSub}>
-            Select a driver to remove from {tricycleToUnassign?.plate || tricycleToUnassign?.plateNumber}
+            {hasSchedules 
+              ? `Select which driver to remove from ${tricycleToUnassign?.plate || tricycleToUnassign?.plateNumber}`
+              : `Remove driver from ${tricycleToUnassign?.plate || tricycleToUnassign?.plateNumber}`
+            }
           </Text>
 
-          <ScrollView style={{ maxHeight: 300, marginVertical: 16 }}>
-            {tricycleToUnassign?.schedules && tricycleToUnassign.schedules.map((sch, idx) => (
+          <ScrollView style={{ maxHeight: 350, marginVertical: 16 }}>
+            {/* Show Primary Driver if exists and no schedules */}
+            {hasPrimaryDriver && !hasSchedules && (
+              <TouchableOpacity 
+                style={unassignStyles.scheduleCard}
+                onPress={() => {
+                  Alert.alert(
+                    'Confirm Unassign',
+                    `Remove ${tricycleToUnassign.driver?.firstname || 'this driver'} from the tricycle?`,
+                    [
+                      { text: 'Cancel', style: 'cancel' },
+                      { 
+                        text: 'Remove', 
+                        style: 'destructive', 
+                        onPress: () => onConfirmUnassign(
+                          tricycleToUnassign._id || tricycleToUnassign.id
+                        ) 
+                      }
+                    ]
+                  );
+                }}
+              >
+                {tricycleToUnassign.driver?.image?.url ? (
+                  <Image source={{ uri: tricycleToUnassign.driver.image.url }} style={unassignStyles.avatar} />
+                ) : (
+                  <Ionicons 
+                    name="person-circle-outline" 
+                    size={40} 
+                    color={colors.orangeShade5} 
+                    style={{ marginRight: 12 }} 
+                  />
+                )}
+                <View style={{ flex: 1 }}>
+                  <Text style={unassignStyles.driverName}>
+                    {tricycleToUnassign.driver?.firstname} {tricycleToUnassign.driver?.lastname}
+                  </Text>
+                  <Text style={unassignStyles.scheduleInfo}>Exclusive Assignment</Text>
+                </View>
+                <Ionicons name="trash-outline" size={20} color="#dc3545" />
+              </TouchableOpacity>
+            )}
+
+            {/* Show Scheduled Drivers Header */}
+            {hasSchedules && (
+              <Text style={unassignStyles.sectionHeader}>Scheduled Drivers ({tricycleToUnassign.schedules.length})</Text>
+            )}
+
+            {/* Show each scheduled driver */}
+            {hasSchedules && tricycleToUnassign.schedules.map((sch, idx) => (
               <TouchableOpacity 
                 key={idx} 
                 style={unassignStyles.scheduleCard}
@@ -134,12 +188,21 @@ const unassignStyles = {
     fontSize: 12,
     color: '#666'
   },
+  sectionHeader: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#495057',
+    marginBottom: 12,
+    paddingBottom: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: '#dee2e6'
+  },
   clearAllButton: {
     padding: 12,
     backgroundColor: '#fee',
     borderRadius: 8,
     alignItems: 'center',
-    marginTop: 8,
+    marginTop: 16,
     borderWidth: 1,
     borderColor: '#fcc'
   },
