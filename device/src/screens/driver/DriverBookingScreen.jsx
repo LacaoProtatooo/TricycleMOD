@@ -629,6 +629,16 @@ const DriverBookingScreen = ({ navigation }) => {
   };
 
   const handleAcceptBooking = async (booking) => {
+    // Check if driver has an assigned tricycle
+    if (!assignedTricycle) {
+      Alert.alert(
+        'No Tricycle Assigned',
+        'You cannot accept bookings without a tricycle assigned to you. Please contact your operator to assign a tricycle.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
     // Check coding day restriction before accepting
     if (codingDayStatus?.isCodingDay) {
       Alert.alert(
@@ -665,6 +675,16 @@ const DriverBookingScreen = ({ navigation }) => {
 
   const handleSendCounterOffer = async () => {
     if (!authToken || !selectedBooking) return;
+
+    // Check if driver has an assigned tricycle
+    if (!assignedTricycle) {
+      Alert.alert(
+        'No Tricycle Assigned',
+        'You cannot send offers without a tricycle assigned to you. Please contact your operator to assign a tricycle.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
 
     const offerAmount = parseFloat(counterOffer);
     if (isNaN(offerAmount) || offerAmount <= 0) {
@@ -808,6 +828,16 @@ const DriverBookingScreen = ({ navigation }) => {
   // ==================== UI HANDLERS ====================
 
   const toggleOnlineStatus = () => {
+    // Check if driver has an assigned tricycle
+    if (!assignedTricycle && !isOnline) {
+      Alert.alert(
+        'No Tricycle Assigned',
+        'You cannot go online without a tricycle assigned to you. Please contact your operator to assign a tricycle.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+
     // Check coding day restriction before going online
     if (codingDayStatus?.isCodingDay && !isOnline) {
       Alert.alert(
@@ -1359,8 +1389,21 @@ const DriverBookingScreen = ({ navigation }) => {
 
   return (
     <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+      {/* No Tricycle Assigned Banner */}
+      {!assignedTricycle && (
+        <View style={styles.noTricycleBanner}>
+          <Ionicons name="warning" size={20} color="#fff" />
+          <View style={{ marginLeft: 10, flex: 1 }}>
+            <Text style={styles.noTricycleBannerTitle}>No Tricycle Assigned</Text>
+            <Text style={styles.noTricycleBannerText}>
+              Contact your operator to assign a tricycle before accepting trips.
+            </Text>
+          </View>
+        </View>
+      )}
+
       {/* Coding Day Banner */}
-      {codingDayStatus?.isCodingDay && (
+      {assignedTricycle && codingDayStatus?.isCodingDay && (
         <View style={styles.codingDayBanner}>
           <Ionicons name="ban" size={20} color="#fff" />
           <View style={{ marginLeft: 10, flex: 1 }}>
@@ -1379,13 +1422,15 @@ const DriverBookingScreen = ({ navigation }) => {
           <View style={styles.headerTitleSection}>
             <Text style={styles.headerTitle}>Driver Bookings</Text>
             <Text style={styles.headerSubtitle}>
-              {codingDayStatus?.isCodingDay
-                ? 'Coding day - trips disabled'
-                : isOnline
-                  ? nearbyBookings.length > 0
-                    ? `${nearbyBookings.length} request${nearbyBookings.length > 1 ? 's' : ''} nearby`
-                    : 'Searching for passengers...'
-                  : 'You are offline'}
+              {!assignedTricycle
+                ? 'No tricycle assigned'
+                : codingDayStatus?.isCodingDay
+                  ? 'Coding day - trips disabled'
+                  : isOnline
+                    ? nearbyBookings.length > 0
+                      ? `${nearbyBookings.length} request${nearbyBookings.length > 1 ? 's' : ''} nearby`
+                      : 'Searching for passengers...'
+                    : 'You are offline'}
             </Text>
           </View>
         </View>
@@ -1395,10 +1440,10 @@ const DriverBookingScreen = ({ navigation }) => {
           style={[
             styles.onlineToggle, 
             isOnline && styles.onlineToggleActive,
-            codingDayStatus?.isCodingDay && styles.onlineToggleDisabled
+            (!assignedTricycle || codingDayStatus?.isCodingDay) && styles.onlineToggleDisabled
           ]}
           onPress={toggleOnlineStatus}
-          disabled={codingDayStatus?.isCodingDay}
+          disabled={!assignedTricycle || codingDayStatus?.isCodingDay}
         >
           <View style={[styles.toggleIndicator, isOnline && styles.toggleIndicatorActive]} />
           <Text style={[styles.toggleLabel, isOnline && styles.toggleLabelActive]}>
@@ -2102,6 +2147,25 @@ const styles = StyleSheet.create({
     marginTop: 12,
     fontSize: 14,
     color: colors.orangeShade5 || '#666',
+  },
+
+  // No Tricycle Assigned Banner
+  noTricycleBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f59e0b',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+  },
+  noTricycleBannerTitle: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 14,
+  },
+  noTricycleBannerText: {
+    color: '#fff',
+    fontSize: 12,
+    marginTop: 2,
   },
 
   // Coding Day Banner
