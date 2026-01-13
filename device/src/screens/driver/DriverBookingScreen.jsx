@@ -38,12 +38,21 @@ import { colors, spacing } from '../../components/common/theme';
 import { getToken } from '../../utils/jwtStorage';
 import { useAsyncSQLiteContext } from '../../utils/asyncSQliteProvider';
 import { getCodingDayStatus, getCodingDayName } from '../../utils/codingDayUtils';
+import {
+  getRouteWithFare,
+  getRoute,
+  formatDistance,
+  formatDuration,
+  FARE_CONFIG,
+} from '../../utils/routeService';
 
 const BACKEND_URL = Constants.expoConfig?.extra?.BACKEND_URL || 'http://192.168.254.105:5000';
 const API_URL = `${BACKEND_URL}/api/booking`;
 
 // Trip completion radius (300 meters)
 const COMPLETION_RADIUS_METERS = 300;
+// Pickup confirmation radius (2 meters) - driver must be within this distance to confirm pickup
+const PICKUP_RADIUS_METERS = 2;
 // Default search radius for nearby bookings (km)
 const SEARCH_RADIUS_KM = 5;
 // Polling interval for fetching bookings (ms)
@@ -87,6 +96,13 @@ const DriverBookingScreen = ({ navigation }) => {
   const [distanceToDestination, setDistanceToDestination] = useState(null);
   const [distanceToPickup, setDistanceToPickup] = useState(null);
   const [isPickedUp, setIsPickedUp] = useState(false);
+
+  // Route calculation state
+  const [activeRouteCoordinates, setActiveRouteCoordinates] = useState([]);
+  const [activeRouteInfo, setActiveRouteInfo] = useState(null);
+  const [previewRouteCoordinates, setPreviewRouteCoordinates] = useState([]);
+  const [previewPickupRoute, setPreviewPickupRoute] = useState([]);
+  const [isCalculatingRoute, setIsCalculatingRoute] = useState(false);
 
   // UI state
   const [viewMode, setViewMode] = useState(VIEW_MODE.LIST);
@@ -142,6 +158,84 @@ const DriverBookingScreen = ({ navigation }) => {
     }
     return () => stopPolling();
   }, [isOnline, activeBooking, authToken, userLocation]);
+
+  // Calculate route when there's an active booking
+  useEffect(() => {
+    const calculateActiveRoute = async () => {
+      if (activeBooking?.pickup && activeBooking?.destination) {
+        try {
+          const result = await getRoute(activeBooking.pickup, activeBooking.destination);
+          if (result.success && result.route) {
+            setActiveRouteCoordinates(result.route.coordinates);
+            setActiveRouteInfo(result.route);
+          } else {
+            // Fallback to straight line
+            setActiveRouteCoordinates([activeBooking.pickup, activeBooking.destination]);
+          }
+        } catch (error) {
+          console.error('Error calculating active route:', error);
+          setActiveRouteCoordinates([activeBooking.pickup, activeBooking.destination]);
+        }
+      } else {
+        setActiveRouteCoordinates([]);
+        setActiveRouteInfo(null);
+      }
+    };
+    
+    calculateActiveRoute();
+  }, [activeBooking?.pickup, activeBooking?.destination]);
+
+  // Poll for trip cancellation by passenger when there's an active booking
+  useEffect(() => {
+    let tripStatusPollInterval = null;
+    
+    // Poll when we have an active booking that's accepted or in_progress
+    if (activeBooking && ['accepted', 'in_progress'].includes(activeBooking.status) && authToken) {
+      tripStatusPollInterval = setInterval(async () => {
+        try {
+          // Check if the booking still exists and its current status
+          const response = await axios.get(
+            `${API_URL}/${activeBooking._id}`,
+            { headers: { Authorization: `Bearer ${authToken}` } }
+          );
+          
+          if (response.data.success && response.data.booking) {
+            const booking = response.data.booking;
+            
+            // Check if passenger cancelled the trip
+            if (booking.status === 'cancelled') {
+              Alert.alert(
+                'Trip Cancelled',
+                booking.cancelledBy === 'user' 
+                  ? 'The passenger has cancelled the trip.'
+                  : 'The trip has been cancelled.',
+                [{ text: 'OK' }]
+              );
+              resetTripState();
+            }
+          }
+        } catch (error) {
+          // If we get a 404, the booking might have been deleted or cancelled
+          if (error.response?.status === 404) {
+            Alert.alert(
+              'Trip Unavailable',
+              'This trip is no longer available.',
+              [{ text: 'OK' }]
+            );
+            resetTripState();
+          } else {
+            console.error('Error polling trip status:', error);
+          }
+        }
+      }, 5000); // Poll every 5 seconds
+    }
+    
+    return () => {
+      if (tripStatusPollInterval) {
+        clearInterval(tripStatusPollInterval);
+      }
+    };
+  }, [activeBooking?._id, activeBooking?.status, authToken]);
 
   // Poll for status changes when awaiting confirmation
   useEffect(() => {
@@ -751,14 +845,60 @@ const DriverBookingScreen = ({ navigation }) => {
     setShowOfferModal(true);
   };
 
-  const openRoutePreview = (booking) => {
+  const openRoutePreview = async (booking) => {
+    if (!booking?.pickup || !booking?.destination) {
+      Alert.alert('Error', 'Invalid booking data');
+      return;
+    }
+    
     setPreviewBooking(booking);
+    setPreviewRouteCoordinates([]);
+    setPreviewPickupRoute([]);
     setShowRoutePreviewModal(true);
+    
+    // Calculate routes for preview
+    setIsCalculatingRoute(true);
+    try {
+      // Calculate route from pickup to destination
+      const tripRouteResult = await getRoute(booking.pickup, booking.destination);
+      if (tripRouteResult?.success && tripRouteResult?.route?.coordinates?.length > 1) {
+        setPreviewRouteCoordinates(tripRouteResult.route.coordinates);
+      } else if (tripRouteResult?.fallback?.coordinates?.length > 0) {
+        setPreviewRouteCoordinates(tripRouteResult.fallback.coordinates);
+      } else {
+        setPreviewRouteCoordinates([booking.pickup, booking.destination]);
+      }
+      
+      // Calculate route from driver location to pickup
+      if (userLocation?.latitude && userLocation?.longitude) {
+        const pickupRouteResult = await getRoute(userLocation, booking.pickup);
+        if (pickupRouteResult?.success && pickupRouteResult?.route?.coordinates?.length > 1) {
+          setPreviewPickupRoute(pickupRouteResult.route.coordinates);
+        } else if (pickupRouteResult?.fallback?.coordinates?.length > 0) {
+          setPreviewPickupRoute(pickupRouteResult.fallback.coordinates);
+        } else {
+          setPreviewPickupRoute([userLocation, booking.pickup]);
+        }
+      }
+    } catch (error) {
+      console.error('Error calculating preview routes:', error);
+      // Set fallback straight lines
+      if (booking?.pickup && booking?.destination) {
+        setPreviewRouteCoordinates([booking.pickup, booking.destination]);
+      }
+      if (userLocation?.latitude && booking?.pickup) {
+        setPreviewPickupRoute([userLocation, booking.pickup]);
+      }
+    } finally {
+      setIsCalculatingRoute(false);
+    }
   };
 
   const closeRoutePreview = () => {
     setShowRoutePreviewModal(false);
     setPreviewBooking(null);
+    setPreviewRouteCoordinates([]);
+    setPreviewPickupRoute([]);
   };
 
   const openHistoryModal = async () => {
@@ -1085,16 +1225,29 @@ const DriverBookingScreen = ({ navigation }) => {
             </View>
           </Marker>
 
-          {/* Route line */}
-          <Polyline
-            coordinates={[
-              isPickedUp ? userLocation : activeBooking.pickup,
-              activeBooking.destination,
-            ].filter(Boolean)}
-            strokeColor={colors.primary}
-            strokeWidth={4}
-            lineDashPattern={[10, 5]}
-          />
+          {/* Route line - Uses actual road route */}
+          {activeRouteCoordinates.length > 0 ? (
+            <Polyline
+              coordinates={isPickedUp && userLocation 
+                ? [userLocation, ...activeRouteCoordinates.slice(1)] 
+                : activeRouteCoordinates
+              }
+              strokeColor="#2196F3"
+              strokeWidth={4}
+              lineCap="round"
+              lineJoin="round"
+            />
+          ) : (
+            <Polyline
+              coordinates={[
+                isPickedUp ? userLocation : activeBooking.pickup,
+                activeBooking.destination,
+              ].filter(Boolean)}
+              strokeColor={colors.primary}
+              strokeWidth={4}
+              lineDashPattern={[10, 5]}
+            />
+          )}
 
           {/* Completion zone */}
           <Circle
@@ -1159,10 +1312,25 @@ const DriverBookingScreen = ({ navigation }) => {
               <ActivityIndicator size="small" color={colors.primary} style={{ marginTop: 12 }} />
             </View>
           ) : !isPickedUp ? (
-            <TouchableOpacity style={styles.pickupBtn} onPress={handleConfirmPickup}>
-              <Ionicons name="enter-outline" size={20} color="#fff" />
-              <Text style={styles.pickupBtnText}>Confirm Passenger Pickup</Text>
-            </TouchableOpacity>
+            <>
+              <TouchableOpacity 
+                style={[
+                  styles.pickupBtn,
+                  (distanceToPickup === null || distanceToPickup > PICKUP_RADIUS_METERS) && styles.btnDisabled,
+                ]} 
+                onPress={handleConfirmPickup}
+                disabled={distanceToPickup === null || distanceToPickup > PICKUP_RADIUS_METERS}
+              >
+                <Ionicons name="enter-outline" size={20} color="#fff" />
+                <Text style={styles.pickupBtnText}>Confirm Passenger Pickup</Text>
+              </TouchableOpacity>
+              {(distanceToPickup === null || distanceToPickup > PICKUP_RADIUS_METERS) && (
+                <Text style={styles.pickupHint}>
+                  Get within {PICKUP_RADIUS_METERS}m of passenger to confirm pickup
+                  {distanceToPickup !== null && ` (currently ${formatDistance(distanceToPickup)} away)`}
+                </Text>
+              )}
+            </>
           ) : (
             <TouchableOpacity
               style={[
@@ -1519,83 +1687,100 @@ const DriverBookingScreen = ({ navigation }) => {
                 <View style={{ width: 40 }} />
               </View>
 
-              {/* Map showing route */}
-              <View style={styles.routeMapContainer}>
-                <MapView
-                  provider={PROVIDER_GOOGLE}
-                  style={styles.routePreviewMap}
-                  initialRegion={{
-                    latitude: (previewBooking.pickup.latitude + previewBooking.destination.latitude) / 2,
-                    longitude: (previewBooking.pickup.longitude + previewBooking.destination.longitude) / 2,
-                    latitudeDelta: Math.abs(previewBooking.pickup.latitude - previewBooking.destination.latitude) * 1.5 + 0.01,
-                    longitudeDelta: Math.abs(previewBooking.pickup.longitude - previewBooking.destination.longitude) * 1.5 + 0.01,
-                  }}
-                  showsUserLocation={true}
-                >
-                  {/* Driver's current location marker */}
-                  {userLocation && (
+              {/* Loading State */}
+              {isCalculatingRoute && (
+                <View style={styles.routeLoadingContainer}>
+                  <ActivityIndicator size="large" color={colors.primary} />
+                  <Text style={styles.routeLoadingText}>Calculating best route...</Text>
+                </View>
+              )}
+
+              {/* Map showing route - Only render when not calculating */}
+              {!isCalculatingRoute && (
+                <View style={styles.routeMapContainer}>
+                  <MapView
+                    provider={PROVIDER_GOOGLE}
+                    style={styles.routePreviewMap}
+                    initialRegion={{
+                      latitude: (previewBooking.pickup.latitude + previewBooking.destination.latitude) / 2,
+                      longitude: (previewBooking.pickup.longitude + previewBooking.destination.longitude) / 2,
+                      latitudeDelta: Math.abs(previewBooking.pickup.latitude - previewBooking.destination.latitude) * 1.5 + 0.01,
+                      longitudeDelta: Math.abs(previewBooking.pickup.longitude - previewBooking.destination.longitude) * 1.5 + 0.01,
+                    }}
+                    showsUserLocation={true}
+                  >
+                    {/* Driver's current location marker */}
+                    {userLocation && (
+                      <Marker
+                        coordinate={userLocation}
+                        title="Your Location"
+                      >
+                        <View style={styles.driverMarker}>
+                          <Ionicons name="bicycle" size={16} color="#fff" />
+                        </View>
+                      </Marker>
+                    )}
+
+                    {/* Pickup marker */}
                     <Marker
-                      coordinate={userLocation}
-                      title="Your Location"
+                      coordinate={previewBooking.pickup}
+                      title="Pickup Location"
+                      description={previewBooking.pickup.address || 'Passenger pickup point'}
                     >
-                      <View style={styles.driverMarker}>
-                        <Ionicons name="bicycle" size={16} color="#fff" />
+                      <View style={styles.pickupMarkerLarge}>
+                        <Ionicons name="person" size={18} color="#fff" />
                       </View>
                     </Marker>
-                  )}
 
-                  {/* Pickup marker */}
-                  <Marker
-                    coordinate={previewBooking.pickup}
-                    title="Pickup Location"
-                    description={previewBooking.pickup.address || 'Passenger pickup point'}
-                  >
-                    <View style={styles.pickupMarkerLarge}>
-                      <Ionicons name="person" size={18} color="#fff" />
+                    {/* Destination marker */}
+                    <Marker
+                      coordinate={previewBooking.destination}
+                      title="Destination"
+                      description={previewBooking.destination.address || 'Drop-off point'}
+                    >
+                      <View style={styles.destinationMarkerLarge}>
+                        <Ionicons name="flag" size={18} color="#fff" />
+                      </View>
+                    </Marker>
+
+                    {/* Route line from driver to pickup */}
+                    {previewPickupRoute.length > 1 && (
+                      <Polyline
+                        key="pickup-route"
+                        coordinates={previewPickupRoute}
+                        strokeColor="#6c757d"
+                        strokeWidth={3}
+                        lineCap="round"
+                        lineJoin="round"
+                      />
+                    )}
+
+                    {/* Route line from pickup to destination */}
+                    {previewRouteCoordinates.length > 1 && (
+                      <Polyline
+                        key="trip-route"
+                        coordinates={previewRouteCoordinates}
+                        strokeColor="#2196F3"
+                        strokeWidth={4}
+                        lineCap="round"
+                        lineJoin="round"
+                      />
+                    )}
+                  </MapView>
+
+                  {/* Map Legend */}
+                  <View style={styles.mapLegend}>
+                    <View style={styles.legendItem}>
+                      <View style={[styles.legendDot, { backgroundColor: '#6c757d' }]} />
+                      <Text style={styles.legendText}>To Pickup</Text>
                     </View>
-                  </Marker>
-
-                  {/* Destination marker */}
-                  <Marker
-                    coordinate={previewBooking.destination}
-                    title="Destination"
-                    description={previewBooking.destination.address || 'Drop-off point'}
-                  >
-                    <View style={styles.destinationMarkerLarge}>
-                      <Ionicons name="flag" size={18} color="#fff" />
+                    <View style={styles.legendItem}>
+                      <View style={[styles.legendDot, { backgroundColor: '#2196F3' }]} />
+                      <Text style={styles.legendText}>Trip Route</Text>
                     </View>
-                  </Marker>
-
-                  {/* Route line from driver to pickup */}
-                  {userLocation && (
-                    <Polyline
-                      coordinates={[userLocation, previewBooking.pickup]}
-                      strokeColor="#6c757d"
-                      strokeWidth={3}
-                      lineDashPattern={[8, 4]}
-                    />
-                  )}
-
-                  {/* Route line from pickup to destination */}
-                  <Polyline
-                    coordinates={[previewBooking.pickup, previewBooking.destination]}
-                    strokeColor={colors.primary}
-                    strokeWidth={4}
-                  />
-                </MapView>
-
-                {/* Map Legend */}
-                <View style={styles.mapLegend}>
-                  <View style={styles.legendItem}>
-                    <View style={[styles.legendDot, { backgroundColor: '#6c757d' }]} />
-                    <Text style={styles.legendText}>To Pickup</Text>
-                  </View>
-                  <View style={styles.legendItem}>
-                    <View style={[styles.legendDot, { backgroundColor: colors.primary }]} />
-                    <Text style={styles.legendText}>Trip Route</Text>
                   </View>
                 </View>
-              </View>
+              )}
 
               {/* Trip Details Panel */}
               <View style={styles.routeDetailsPanel}>
@@ -2438,6 +2623,13 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 10,
   },
+  pickupHint: {
+    fontSize: 12,
+    color: '#dc3545',
+    textAlign: 'center',
+    marginTop: 10,
+    fontWeight: '500',
+  },
 
   // Modal
   modalOverlay: {
@@ -3244,6 +3436,32 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#999',
     marginTop: 4,
+  },
+  
+  // Route Loading Overlay
+  routeLoadingOverlay: {
+    position: 'absolute',
+    top: 10,
+    left: 10,
+    backgroundColor: 'rgba(255,255,255,0.9)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  
+  // Route Loading Container
+  routeLoadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#f5f5f5',
+  },
+  routeLoadingText: {
+    marginTop: 12,
+    fontSize: 16,
+    color: '#666',
   },
 });
 

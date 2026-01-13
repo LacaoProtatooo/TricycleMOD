@@ -44,6 +44,12 @@ import {
   getDistanceToRoute,
 } from '../../utils/gpxParser';
 import {
+  getRouteWithFare,
+  formatDistance,
+  formatDuration,
+  FARE_CONFIG,
+} from '../../utils/routeService';
+import {
   createBooking,
   getActiveBooking,
   respondToOffer,
@@ -148,6 +154,13 @@ const BookingScreen = ({ navigation }) => {
   const [distanceToDestination, setDistanceToDestination] = useState(null);
   const watchRef = useRef(null);
   const pollingRef = useRef(null);
+  
+  // Route calculation state
+  const [routeCoordinates, setRouteCoordinates] = useState([]);
+  const [routeInfo, setRouteInfo] = useState(null);
+  const [suggestedFare, setSuggestedFare] = useState(null);
+  const [isCalculatingRoute, setIsCalculatingRoute] = useState(false);
+  const [routeError, setRouteError] = useState(null);
 
   // Initialize region with WEBTODA service area
   const [region, setRegion] = useState(getServiceAreaRegion());
@@ -447,6 +460,54 @@ const BookingScreen = ({ navigation }) => {
     }
   };
 
+  // Calculate route when both locations are set
+  const calculateRoute = async () => {
+    if (!pickupLocation || !destinationLocation) return;
+    
+    setIsCalculatingRoute(true);
+    setRouteError(null);
+    
+    try {
+      const result = await getRouteWithFare(
+        pickupLocation,
+        destinationLocation
+      );
+      
+      if (result.success) {
+        setRouteCoordinates(result.route.coordinates);
+        setRouteInfo(result.route);
+        setSuggestedFare(result.fare);
+        // Pre-fill the suggested fare
+        setPreferredFare(result.fare.suggestedFare.toString());
+        
+        if (result.route.isStraightLine) {
+          setRouteError('Using estimated distance (routing service unavailable)');
+        }
+      } else {
+        setRouteError(result.error || 'Failed to calculate route');
+        // Fallback to straight line
+        setRouteCoordinates([pickupLocation, destinationLocation]);
+      }
+    } catch (error) {
+      console.error('Error calculating route:', error);
+      setRouteError('Failed to calculate route');
+      setRouteCoordinates([pickupLocation, destinationLocation]);
+    } finally {
+      setIsCalculatingRoute(false);
+    }
+  };
+
+  // Calculate route when locations change
+  useEffect(() => {
+    if (pickupLocation && destinationLocation) {
+      calculateRoute();
+    } else {
+      setRouteCoordinates([]);
+      setRouteInfo(null);
+      setSuggestedFare(null);
+    }
+  }, [pickupLocation, destinationLocation]);
+
   const handleConfirmLocations = () => {
     if (!pickupLocation || !destinationLocation) {
       Alert.alert('Missing Location', 'Please set both pickup and destination locations.');
@@ -606,6 +667,11 @@ const BookingScreen = ({ navigation }) => {
     setDestinationWarning(null);
     setShowAreaWarningModal(false);
     setPendingDestination(null);
+    // Reset route calculation states
+    setRouteCoordinates([]);
+    setRouteInfo(null);
+    setSuggestedFare(null);
+    setRouteError(null);
     dispatch(resetBookingState());
     
     if (watchRef.current) {
@@ -971,12 +1037,23 @@ const BookingScreen = ({ navigation }) => {
           </Marker>
         )}
 
-        {/* Route line from pickup to destination */}
-        {pickupLocation && destinationLocation && (
+        {/* Route line from pickup to destination - Uses actual road route */}
+        {pickupLocation && destinationLocation && routeCoordinates.length > 0 && (
+          <Polyline
+            coordinates={routeCoordinates}
+            strokeColor={destinationWarning ? '#dc3545' : '#2196F3'}
+            strokeWidth={4}
+            lineCap="round"
+            lineJoin="round"
+          />
+        )}
+        
+        {/* Loading route indicator - shows straight dashed line while calculating */}
+        {pickupLocation && destinationLocation && isCalculatingRoute && (
           <Polyline
             coordinates={[pickupLocation, destinationLocation]}
-            strokeColor={destinationWarning ? '#dc3545' : colors.primary}
-            strokeWidth={3}
+            strokeColor={colors.orangeShade4}
+            strokeWidth={2}
             lineDashPattern={[10, 5]}
           />
         )}
@@ -1160,8 +1237,57 @@ const BookingScreen = ({ navigation }) => {
         {bookingStatus === BOOKING_STATUS.SETTING_FARE && (
           <View style={styles.panelContent}>
             <Text style={styles.panelTitle}>Set Your Fare</Text>
+            
+            {/* Route Info Display */}
+            {routeInfo && suggestedFare && (
+              <View style={styles.routeInfoContainer}>
+                <View style={styles.routeInfoRow}>
+                  <View style={styles.routeInfoItem}>
+                    <Ionicons name="navigate-outline" size={18} color={colors.primary} />
+                    <Text style={styles.routeInfoLabel}>Distance</Text>
+                    <Text style={styles.routeInfoValue}>{formatDistance(routeInfo.distanceMeters)}</Text>
+                  </View>
+                  <View style={styles.routeInfoDivider} />
+                  <View style={styles.routeInfoItem}>
+                    <Ionicons name="time-outline" size={18} color={colors.primary} />
+                    <Text style={styles.routeInfoLabel}>Est. Time</Text>
+                    <Text style={styles.routeInfoValue}>{formatDuration(routeInfo.durationMinutes)}</Text>
+                  </View>
+                </View>
+                
+                {/* Fare Breakdown */}
+                <View style={styles.fareBreakdownContainer}>
+                  <Text style={styles.fareBreakdownTitle}>Suggested Fare Breakdown</Text>
+                  {suggestedFare.breakdown.map((item, index) => (
+                    <View key={index} style={styles.fareBreakdownRow}>
+                      <Text style={styles.fareBreakdownLabel}>{item.label}</Text>
+                      <Text style={styles.fareBreakdownAmount}>₱{item.amount}</Text>
+                    </View>
+                  ))}
+                  <View style={styles.fareBreakdownTotal}>
+                    <Text style={styles.fareBreakdownTotalLabel}>Suggested Fare</Text>
+                    <Text style={styles.fareBreakdownTotalAmount}>₱{suggestedFare.suggestedFare}</Text>
+                  </View>
+                </View>
+                
+                {routeError && (
+                  <View style={styles.routeWarningBanner}>
+                    <Ionicons name="information-circle-outline" size={16} color="#856404" />
+                    <Text style={styles.routeWarningText}>{routeError}</Text>
+                  </View>
+                )}
+              </View>
+            )}
+            
+            {isCalculatingRoute && (
+              <View style={styles.calculatingContainer}>
+                <ActivityIndicator size="small" color={colors.primary} />
+                <Text style={styles.calculatingText}>Calculating best route...</Text>
+              </View>
+            )}
+            
             <Text style={styles.panelDescription}>
-              Enter your preferred fare amount. Nearby drivers will be notified.
+              You can adjust the fare below. Nearby drivers will be notified.
             </Text>
             
             <View style={styles.fareInputContainer}>
@@ -1175,6 +1301,26 @@ const BookingScreen = ({ navigation }) => {
                 onChangeText={setPreferredFare}
               />
             </View>
+            
+            {suggestedFare && preferredFare && (
+              <View style={styles.fareComparisonBanner}>
+                {parseFloat(preferredFare) < suggestedFare.fareRange.min ? (
+                  <View style={styles.fareLowWarning}>
+                    <Ionicons name="warning-outline" size={16} color="#dc3545" />
+                    <Text style={styles.fareLowText}>
+                      Fare is below suggested minimum (₱{suggestedFare.fareRange.min})
+                    </Text>
+                  </View>
+                ) : parseFloat(preferredFare) >= suggestedFare.fareRange.min && parseFloat(preferredFare) <= suggestedFare.fareRange.max ? (
+                  <View style={styles.fareGoodBanner}>
+                    <Ionicons name="checkmark-circle-outline" size={16} color="#28a745" />
+                    <Text style={styles.fareGoodText}>
+                      Fare is within suggested range
+                    </Text>
+                  </View>
+                ) : null}
+              </View>
+            )}
 
             <View style={styles.buttonRow}>
               <TouchableOpacity
@@ -2904,6 +3050,157 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     fontWeight: '700',
+  },
+
+  // Route Info Styles
+  routeInfoContainer: {
+    backgroundColor: colors.ivory4,
+    borderRadius: 12,
+    padding: spacing.medium,
+    marginBottom: spacing.medium,
+  },
+  routeInfoRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-around',
+    marginBottom: spacing.medium,
+  },
+  routeInfoItem: {
+    alignItems: 'center',
+    flex: 1,
+  },
+  routeInfoLabel: {
+    fontSize: 12,
+    color: colors.orangeShade5,
+    marginTop: 4,
+  },
+  routeInfoValue: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.orangeShade7,
+    marginTop: 2,
+  },
+  routeInfoDivider: {
+    width: 1,
+    height: 40,
+    backgroundColor: colors.ivory3,
+  },
+  
+  // Fare Breakdown Styles
+  fareBreakdownContainer: {
+    backgroundColor: colors.ivory2,
+    borderRadius: 10,
+    padding: spacing.medium,
+    borderWidth: 1,
+    borderColor: colors.ivory3,
+  },
+  fareBreakdownTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.orangeShade7,
+    marginBottom: spacing.small,
+  },
+  fareBreakdownRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingVertical: 4,
+  },
+  fareBreakdownLabel: {
+    fontSize: 13,
+    color: colors.orangeShade5,
+    flex: 1,
+  },
+  fareBreakdownAmount: {
+    fontSize: 13,
+    color: colors.orangeShade6,
+    fontWeight: '500',
+  },
+  fareBreakdownTotal: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    borderTopWidth: 1,
+    borderTopColor: colors.ivory3,
+    marginTop: spacing.small,
+    paddingTop: spacing.small,
+  },
+  fareBreakdownTotalLabel: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.orangeShade7,
+  },
+  fareBreakdownTotalAmount: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.primary,
+  },
+  
+  // Route Warning Styles
+  routeWarningBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff3cd',
+    padding: spacing.small,
+    borderRadius: 8,
+    marginTop: spacing.small,
+  },
+  routeWarningText: {
+    flex: 1,
+    fontSize: 12,
+    color: '#856404',
+    marginLeft: spacing.small,
+  },
+  
+  // Calculating Route Styles
+  calculatingContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: spacing.medium,
+    marginBottom: spacing.small,
+  },
+  calculatingText: {
+    fontSize: 14,
+    color: colors.orangeShade5,
+    marginLeft: spacing.small,
+  },
+  
+  // Fare Comparison Styles
+  fareComparisonBanner: {
+    marginBottom: spacing.small,
+  },
+  fareLowWarning: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff5f5',
+    padding: spacing.small,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#dc3545',
+  },
+  fareLowText: {
+    flex: 1,
+    fontSize: 12,
+    color: '#dc3545',
+    marginLeft: spacing.small,
+    fontWeight: '500',
+  },
+  fareGoodBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#f0fff4',
+    padding: spacing.small,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#28a745',
+  },
+  fareGoodText: {
+    flex: 1,
+    fontSize: 12,
+    color: '#28a745',
+    marginLeft: spacing.small,
+    fontWeight: '500',
   },
 });
 

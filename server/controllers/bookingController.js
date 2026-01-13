@@ -306,47 +306,68 @@ export const driverRespondToBooking = async (req, res) => {
     const driverTricycle = await Tricycle.findOne({ driver: driverId });
 
     if (accept && !counterOffer) {
-      // Driver accepts at user's preferred fare - add as an offer
-      const newOffer = {
+      // Driver accepts at user's preferred fare - AUTO ACCEPT (no need for passenger to confirm)
+      // Since the driver agrees to the passenger's price, we directly assign the booking
+      
+      // Decline any other pending offers from other drivers
+      if (booking.driverOffers && booking.driverOffers.length > 0) {
+        booking.driverOffers.forEach(offer => {
+          if (offer.status === 'pending') {
+            offer.status = 'declined';
+          }
+        });
+      }
+
+      // Add this driver's accepted offer
+      const acceptedOffer = {
         driver: driverId,
         tricycle: driverTricycle?._id || null,
         amount: booking.preferredFare,
         message: message || 'I accept your fare offer.',
         offeredAt: new Date(),
-        status: 'pending',
+        status: 'accepted',
       };
 
       booking.driverOffers = booking.driverOffers || [];
-      booking.driverOffers.push(newOffer);
+      booking.driverOffers.push(acceptedOffer);
+      
+      // Assign driver to booking and set status to accepted
+      booking.driver = driverId;
+      booking.tricycle = driverTricycle?._id || null;
+      booking.agreedFare = booking.preferredFare;
+      booking.status = 'accepted';
+      booking.acceptedAt = new Date();
       
       await booking.save();
       
       // Populate driver info for response
+      await booking.populate('driver', 'firstname lastname rating image phone');
+      await booking.populate('tricycle', 'plateNumber bodyNumber');
       await booking.populate('driverOffers.driver', 'firstname lastname rating image phone');
       await booking.populate('driverOffers.tricycle', 'plateNumber bodyNumber');
       
-      // Notify the user about new offer
+      // Notify the passenger that a driver has been assigned
       const user = await User.findById(booking.user);
       const driver = await User.findById(driverId);
       if (user && user.FCMToken) {
         await sendNotification(
           user.FCMToken,
-          '🚗 New Driver Offer!',
-          `Driver ${driver.firstname} offers ₱${booking.preferredFare} for your trip`,
+          '✅ Driver Assigned!',
+          `${driver.firstname} accepted your ride at ₱${booking.preferredFare}. They are on their way!`,
           {
-            type: 'new_driver_offer',
+            type: 'booking_accepted',
             bookingId: booking._id.toString(),
-            offerAmount: booking.preferredFare.toString(),
             driverName: driver.firstname,
+            fare: booking.preferredFare.toString(),
           }
         );
       }
 
       return res.status(200).json({
         success: true,
-        message: 'Offer submitted. Waiting for guest to accept.',
+        message: 'Booking accepted! Navigate to pickup location.',
         booking,
-        offer: newOffer,
+        autoAccepted: true,
       });
 
     } else if (counterOffer) {
