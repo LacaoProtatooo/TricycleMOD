@@ -207,6 +207,30 @@ export const createAnnouncement = async (req, res) => {
       notificationResult = await sendAnnouncementNotifications(announcement, announcement.targetAudience);
     }
 
+    // Log admin activity for announcement creation
+    if (req.user.role === 'admin') {
+      const AdminActivityLog = (await import('../models/adminActivityLogModel.js')).default;
+      await AdminActivityLog.logActivity({
+        adminId: req.user._id,
+        adminEmail: req.user.email,
+        adminName: `${req.user.firstname || ''} ${req.user.lastname || ''}`.trim() || 'Admin',
+        action: 'ANNOUNCEMENT_CREATE',
+        description: `Created announcement: "${announcement.title}" (${announcement.type}) targeting ${announcement.targetAudience}`,
+        newValue: {
+          title: announcement.title,
+          type: announcement.type,
+          targetAudience: announcement.targetAudience,
+          scheduledDate: announcement.scheduledDate,
+          expiryDate: announcement.expiryDate,
+        },
+        metadata: {
+          announcementId: announcement._id,
+          hasImage: !!imageData,
+        },
+        ipAddress: req.ip || req.connection?.remoteAddress,
+      });
+    }
+
     res.status(201).json({
       success: true,
       announcement,
@@ -445,6 +469,34 @@ export const updateAnnouncement = async (req, res) => {
       { new: true, runValidators: true }
     );
 
+    // Log admin activity for announcement update
+    if (req.user.role === 'admin') {
+      const AdminActivityLog = (await import('../models/adminActivityLogModel.js')).default;
+      await AdminActivityLog.logActivity({
+        adminId: req.user._id,
+        adminEmail: req.user.email,
+        adminName: `${req.user.firstname || ''} ${req.user.lastname || ''}`.trim() || 'Admin',
+        action: 'ANNOUNCEMENT_UPDATE',
+        description: `Updated announcement: "${announcement.title}"`,
+        previousValue: {
+          title: existingAnnouncement.title,
+          type: existingAnnouncement.type,
+          targetAudience: existingAnnouncement.targetAudience,
+          isActive: existingAnnouncement.isActive,
+        },
+        newValue: {
+          title: announcement.title,
+          type: announcement.type,
+          targetAudience: announcement.targetAudience,
+          isActive: announcement.isActive,
+        },
+        metadata: {
+          announcementId: announcement._id,
+        },
+        ipAddress: req.ip || req.connection?.remoteAddress,
+      });
+    }
+
     res.status(200).json({
       success: true,
       announcement,
@@ -476,6 +528,29 @@ export const deleteAnnouncement = async (req, res) => {
       } catch (err) {
         console.error('Failed to delete image from Cloudinary:', err);
       }
+    }
+
+    // Log admin activity for announcement deletion before deleting
+    if (req.user.role === 'admin') {
+      const AdminActivityLog = (await import('../models/adminActivityLogModel.js')).default;
+      await AdminActivityLog.logActivity({
+        adminId: req.user._id,
+        adminEmail: req.user.email,
+        adminName: `${req.user.firstname || ''} ${req.user.lastname || ''}`.trim() || 'Admin',
+        action: 'ANNOUNCEMENT_DELETE',
+        description: `Deleted announcement: "${announcement.title}" (${announcement.type})`,
+        previousValue: {
+          title: announcement.title,
+          type: announcement.type,
+          targetAudience: announcement.targetAudience,
+          scheduledDate: announcement.scheduledDate,
+          expiryDate: announcement.expiryDate,
+        },
+        metadata: {
+          announcementId: announcement._id,
+        },
+        ipAddress: req.ip || req.connection?.remoteAddress,
+      });
     }
 
     await Announcement.findByIdAndDelete(req.params.id);

@@ -40,7 +40,7 @@ const Login = () => {
     console.warn('Database is not initialized yet.');
   }
 
-  const [email, setEmail] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
@@ -59,13 +59,13 @@ const Login = () => {
   };
 
   const handleLogin = () => {
-    if (!email || !password) {
-      Toasthelper.showError('Missing Fields', 'Please enter both email and password');
+    if (!identifier || !password) {
+      Toasthelper.showError('Missing Fields', 'Please enter username/email and password');
       return;
     }
     
     setIsSubmitting(true);
-    dispatch(loginUser({ email, password, db }))
+    dispatch(loginUser({ email: identifier, password, db }))
       .unwrap()
       .then((user) => {
         Toasthelper.showSuccess('Login Successful');
@@ -164,15 +164,15 @@ const Login = () => {
 
         <View style={styles.formContainer}>
           <View style={styles.inputContainer}>
-            <Ionicons name="mail-outline" size={20} color={colors.bronzeShade6} style={styles.inputIcon} />
+            <Ionicons name="person-outline" size={20} color={colors.bronzeShade6} style={styles.inputIcon} />
             <TextInput
               style={styles.input}
-              placeholder="Email"
+              placeholder="Username or Email"
               placeholderTextColor={colors.placeholder}
-              value={email}
-              onChangeText={setEmail}
+              value={identifier}
+              onChangeText={setIdentifier}
               autoCapitalize="none"
-              keyboardType="email-address"
+              keyboardType="default"
             />
           </View>
 

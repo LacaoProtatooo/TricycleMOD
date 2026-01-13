@@ -34,6 +34,7 @@ import Constants from 'expo-constants';
 import { colors, spacing } from '../../components/common/theme';
 import { useAsyncSQLiteContext } from '../../utils/asyncSQliteProvider';
 import { getToken } from '../../utils/jwtStorage';
+import { getUserCredentials } from '../../utils/userStorage';
 import {
   WEBTODA_SERVICE_AREA,
   WEBTODA_ROUTE_COORDINATES,
@@ -94,6 +95,10 @@ const BookingScreen = ({ navigation }) => {
   const dispatch = useDispatch();
   const mapRef = useRef(null);
   const db = useAsyncSQLiteContext();
+  
+  // Authentication state
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [checkingAuth, setCheckingAuth] = useState(true);
   
   // Redux state
   const { user } = useSelector((state) => state.auth);
@@ -165,11 +170,34 @@ const BookingScreen = ({ navigation }) => {
   // Initialize region with WEBTODA service area
   const [region, setRegion] = useState(getServiceAreaRegion());
 
+  // Check authentication on mount
   useEffect(() => {
-    requestPermissions();
-    // Fetch active booking on mount
-    if (db && user) {
-      dispatch(getActiveBooking(db));
+    checkAuthentication();
+  }, []);
+
+  const checkAuthentication = async () => {
+    try {
+      const credentials = await getUserCredentials();
+      if (credentials && (credentials._id || credentials.id)) {
+        setIsAuthenticated(true);
+      } else {
+        setIsAuthenticated(false);
+      }
+    } catch (error) {
+      console.error('Error checking authentication:', error);
+      setIsAuthenticated(false);
+    } finally {
+      setCheckingAuth(false);
+    }
+  };
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      requestPermissions();
+      // Fetch active booking on mount
+      if (db && user) {
+        dispatch(getActiveBooking(db));
+      }
     }
     return () => {
       if (watchRef.current) {
@@ -179,7 +207,7 @@ const BookingScreen = ({ navigation }) => {
         clearInterval(pollingRef.current);
       }
     };
-  }, [db, user]);
+  }, [db, user, isAuthenticated]);
 
   // Polling for booking status updates when waiting or in active trip
   useEffect(() => {
@@ -882,6 +910,39 @@ const BookingScreen = ({ navigation }) => {
       }, { duration: 500 });
     }
   };
+
+  // Show loading while checking authentication
+  if (checkingAuth) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+        <View style={styles.authContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={styles.authText}>Loading...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // Show login prompt if not authenticated
+  if (!isAuthenticated) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+        <View style={styles.authContainer}>
+          <Ionicons name="lock-closed-outline" size={80} color={colors.primary} />
+          <Text style={styles.authTitle}>Login Required</Text>
+          <Text style={styles.authText}>
+            Please log in to access the Booking feature
+          </Text>
+          <TouchableOpacity 
+            style={styles.loginButton}
+            onPress={() => navigation.navigate('Login')}
+          >
+            <Text style={styles.loginButtonText}>Go to Login</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
 
   // Render offline notice
   if (!isOnline || !hasPermission) {
@@ -1967,6 +2028,36 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: spacing.small,
     marginHorizontal: spacing.large,
+  },
+  authContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: spacing.large,
+  },
+  authTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: colors.primary,
+    marginTop: spacing.large,
+    marginBottom: spacing.small,
+  },
+  authText: {
+    fontSize: 16,
+    color: colors.orangeShade5,
+    textAlign: 'center',
+    marginBottom: spacing.large,
+  },
+  loginButton: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: spacing.large * 2,
+    paddingVertical: spacing.medium,
+    borderRadius: 12,
+  },
+  loginButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
   },
   retryButton: {
     marginTop: spacing.large,

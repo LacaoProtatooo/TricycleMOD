@@ -52,12 +52,12 @@ const Complaints = () => {
   };
 
   const statusColors = {
-    pending: "bg-yellow-100 text-yellow-800",
-    under_review: "bg-blue-100 text-blue-800",
-    investigating: "bg-purple-100 text-purple-800",
-    resolved: "bg-green-100 text-green-800",
-    dismissed: "bg-gray-100 text-gray-800",
-    withdrawn: "bg-gray-100 text-gray-600",
+    pending: "bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-300",
+    under_review: "bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300",
+    investigating: "bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-300",
+    resolved: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300",
+    dismissed: "bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300",
+    withdrawn: "bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-400",
   };
 
   const statusLabels = {
@@ -70,11 +70,11 @@ const Complaints = () => {
   };
 
   const urgencyColors = {
-    critical: "bg-red-100 text-red-800 border-red-200",
-    high: "bg-orange-100 text-orange-800 border-orange-200",
-    medium: "bg-yellow-100 text-yellow-800 border-yellow-200",
-    low: "bg-green-100 text-green-800 border-green-200",
-    normal: "bg-gray-100 text-gray-800 border-gray-200",
+    critical: "bg-red-100 text-red-800 border-red-200 dark:bg-red-900/30 dark:text-red-300 dark:border-red-700",
+    high: "bg-orange-100 text-orange-800 border-orange-200 dark:bg-orange-900/30 dark:text-orange-300 dark:border-orange-700",
+    medium: "bg-yellow-100 text-yellow-800 border-yellow-200 dark:bg-yellow-900/30 dark:text-yellow-300 dark:border-yellow-700",
+    low: "bg-green-100 text-green-800 border-green-200 dark:bg-green-900/30 dark:text-green-300 dark:border-green-700",
+    normal: "bg-gray-100 text-gray-800 border-gray-200 dark:bg-gray-700 dark:text-gray-300 dark:border-gray-600",
   };
 
   const urgencyLabels = {
@@ -172,15 +172,15 @@ const Complaints = () => {
   };
 
   const getCredibilityColor = (score) => {
-    if (score >= 70) return "text-green-600";
-    if (score >= 40) return "text-yellow-600";
-    return "text-red-600";
+    if (score >= 70) return "text-green-600 dark:text-green-400";
+    if (score >= 40) return "text-yellow-600 dark:text-yellow-400";
+    return "text-red-600 dark:text-red-400";
   };
 
   const getCredibilityBg = (score) => {
-    if (score >= 70) return "bg-green-100";
-    if (score >= 40) return "bg-yellow-100";
-    return "bg-red-100";
+    if (score >= 70) return "bg-green-100 dark:bg-green-900/30";
+    if (score >= 40) return "bg-yellow-100 dark:bg-yellow-900/30";
+    return "bg-red-100 dark:bg-red-900/30";
   };
 
   return (
@@ -408,7 +408,7 @@ const Complaints = () => {
               </span>
             )}
             {filters.priorityOnly === "true" && (
-              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800">
+              <span className="inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300">
                 🚨 Priority Only
                 <button 
                   onClick={() => handleFilterChange("priorityOnly", "")}
@@ -483,11 +483,11 @@ const Complaints = () => {
                     </td>
                     <td className="px-4 py-4">
                       <div className="flex items-center">
-                        <div className="h-10 w-10 flex-shrink-0 rounded-full bg-orange-100 flex items-center justify-center">
+                        <div className="h-10 w-10 flex-shrink-0 rounded-full bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center">
                           {complaint.complainant?.image?.url ? (
                             <img src={complaint.complainant.image.url} alt="" className="h-10 w-10 rounded-full object-cover" />
                           ) : (
-                            <span className="text-orange-600 font-medium">
+                            <span className="text-orange-600 dark:text-orange-400 font-medium">
                               {complaint.complainant?.firstname?.[0]}{complaint.complainant?.lastname?.[0]}
                             </span>
                           )}
@@ -502,11 +502,11 @@ const Complaints = () => {
                     </td>
                     <td className="px-4 py-4">
                       <div className="flex items-center">
-                        <div className="h-10 w-10 flex-shrink-0 rounded-full bg-gray-100 flex items-center justify-center">
+                        <div className="h-10 w-10 flex-shrink-0 rounded-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center">
                           {complaint.driver?.image?.url ? (
                             <img src={complaint.driver.image.url} alt="" className="h-10 w-10 rounded-full object-cover" />
                           ) : (
-                            <span className="text-gray-600 font-medium">
+                            <span className="text-gray-600 dark:text-gray-300 font-medium">
                               {complaint.driver?.firstname?.[0]}{complaint.driver?.lastname?.[0]}
                             </span>
                           )}
@@ -623,7 +623,7 @@ const Complaints = () => {
                         Credibility Score: {selectedComplaint.credibilityScore}%
                       </div>
                       {selectedComplaint.isFalseComplaint && (
-                        <div className="inline-flex items-center rounded-full px-3 py-1 text-sm font-medium bg-red-100 text-red-700">
+                        <div className="inline-flex items-center rounded-full px-3 py-1 text-sm font-medium bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300">
                           ⚠️ Marked as False Complaint
                         </div>
                       )}
@@ -632,13 +632,13 @@ const Complaints = () => {
                     {/* AI Sentiment Analysis Card */}
                     {selectedComplaint.sentimentAnalysis && (
                       <div className={`rounded-lg p-4 mb-6 border-2 ${
-                        selectedComplaint.sentimentAnalysis.urgency === 'critical' ? 'bg-red-50 border-red-300' :
-                        selectedComplaint.sentimentAnalysis.urgency === 'high' ? 'bg-orange-50 border-orange-300' :
-                        selectedComplaint.sentimentAnalysis.urgency === 'medium' ? 'bg-yellow-50 border-yellow-300' :
-                        'bg-gray-50 border-gray-200'
+                        selectedComplaint.sentimentAnalysis.urgency === 'critical' ? 'bg-red-50 border-red-300 dark:bg-red-900/20 dark:border-red-700' :
+                        selectedComplaint.sentimentAnalysis.urgency === 'high' ? 'bg-orange-50 border-orange-300 dark:bg-orange-900/20 dark:border-orange-700' :
+                        selectedComplaint.sentimentAnalysis.urgency === 'medium' ? 'bg-yellow-50 border-yellow-300 dark:bg-yellow-900/20 dark:border-yellow-700' :
+                        'bg-gray-50 border-gray-200 dark:bg-gray-800 dark:border-gray-700'
                       }`}>
                         <div className="flex items-center justify-between mb-3">
-                          <h4 className="font-medium text-gray-900 flex items-center gap-2">
+                          <h4 className="font-medium text-gray-900 dark:text-white flex items-center gap-2">
                             🧠 AI Sentiment Analysis
                             {selectedComplaint.sentimentAnalysis.flags?.mayRequireImmediateAttention && (
                               <span className="text-xs bg-red-600 text-white px-2 py-0.5 rounded-full animate-pulse">
@@ -654,39 +654,39 @@ const Complaints = () => {
                         </div>
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                           <div>
-                            <p className="text-xs text-gray-500 uppercase">Sentiment</p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 uppercase">Sentiment</p>
                             <p className={`font-semibold ${
-                              selectedComplaint.sentimentAnalysis.sentiment === 'negative' ? 'text-red-600' :
-                              selectedComplaint.sentimentAnalysis.sentiment === 'positive' ? 'text-green-600' : 'text-gray-600'
+                              selectedComplaint.sentimentAnalysis.sentiment === 'negative' ? 'text-red-600 dark:text-red-400' :
+                              selectedComplaint.sentimentAnalysis.sentiment === 'positive' ? 'text-green-600 dark:text-green-400' : 'text-gray-600 dark:text-gray-300'
                             }`}>
                               {selectedComplaint.sentimentAnalysis.sentiment?.charAt(0).toUpperCase() + 
                                selectedComplaint.sentimentAnalysis.sentiment?.slice(1)}
                             </p>
                           </div>
                           <div>
-                            <p className="text-xs text-gray-500 uppercase">Confidence</p>
-                            <p className="font-semibold text-gray-800">
+                            <p className="text-xs text-gray-500 dark:text-gray-400 uppercase">Confidence</p>
+                            <p className="font-semibold text-gray-800 dark:text-gray-200">
                               {Math.round((selectedComplaint.sentimentAnalysis.confidence || 0) * 100)}%
                             </p>
                           </div>
                           <div>
-                            <p className="text-xs text-gray-500 uppercase">Severity Score</p>
-                            <p className="font-semibold text-gray-800">
+                            <p className="text-xs text-gray-500 dark:text-gray-400 uppercase">Severity Score</p>
+                            <p className="font-semibold text-gray-800 dark:text-gray-200">
                               {selectedComplaint.sentimentAnalysis.severityScore?.toFixed(1) || 'N/A'}/5
                             </p>
                           </div>
                           <div>
-                            <p className="text-xs text-gray-500 uppercase">Description Quality</p>
+                            <p className="text-xs text-gray-500 dark:text-gray-400 uppercase">Description Quality</p>
                             <p className={`font-semibold ${
-                              selectedComplaint.sentimentAnalysis.descriptionQuality >= 70 ? 'text-green-600' :
-                              selectedComplaint.sentimentAnalysis.descriptionQuality >= 40 ? 'text-yellow-600' : 'text-red-600'
+                              selectedComplaint.sentimentAnalysis.descriptionQuality >= 70 ? 'text-green-600 dark:text-green-400' :
+                              selectedComplaint.sentimentAnalysis.descriptionQuality >= 40 ? 'text-yellow-600 dark:text-yellow-400' : 'text-red-600 dark:text-red-400'
                             }`}>
                               {selectedComplaint.sentimentAnalysis.descriptionQuality || 'N/A'}%
                             </p>
                           </div>
                         </div>
                         {selectedComplaint.sentimentAnalysis.flags?.emotionallyCharged && (
-                          <p className="mt-3 text-sm text-orange-700 bg-orange-100 px-3 py-1 rounded">
+                          <p className="mt-3 text-sm text-orange-700 bg-orange-100 dark:text-orange-300 dark:bg-orange-900/30 px-3 py-1 rounded">
                             ⚡ Emotionally charged language detected - handle with care
                           </p>
                         )}
@@ -695,9 +695,9 @@ const Complaints = () => {
 
                     {/* Flags Warning */}
                     {selectedComplaint.flags && Object.values(selectedComplaint.flags).some(Boolean) && (
-                      <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6">
-                        <h4 className="font-medium text-yellow-800 mb-2">⚠️ Flags Detected</h4>
-                        <ul className="text-sm text-yellow-700 space-y-1">
+                      <div className="bg-yellow-50 border border-yellow-200 rounded-lg p-4 mb-6 dark:bg-yellow-900/20 dark:border-yellow-700">
+                        <h4 className="font-medium text-yellow-800 dark:text-yellow-300 mb-2">⚠️ Flags Detected</h4>
+                        <ul className="text-sm text-yellow-700 dark:text-yellow-400 space-y-1">
                           {selectedComplaint.flags.isFromNewAccount && <li>• Account is less than 7 days old</li>}
                           {selectedComplaint.flags.hasMultipleComplaintsToday && <li>• Multiple complaints filed today</li>}
                           {selectedComplaint.flags.targetsSameDriver && <li>• Has complained about this driver before</li>}
@@ -712,11 +712,11 @@ const Complaints = () => {
                       <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-4">
                         <h4 className="font-medium text-gray-900 dark:text-white mb-3">Complainant</h4>
                         <div className="flex items-center">
-                          <div className="h-12 w-12 rounded-full bg-orange-100 flex items-center justify-center">
+                          <div className="h-12 w-12 rounded-full bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center">
                             {selectedComplaint.complainant?.image?.url ? (
                               <img src={selectedComplaint.complainant.image.url} alt="" className="h-12 w-12 rounded-full object-cover" />
                             ) : (
-                              <span className="text-orange-600 font-bold">
+                              <span className="text-orange-600 dark:text-orange-400 font-bold">
                                 {selectedComplaint.complainant?.firstname?.[0]}{selectedComplaint.complainant?.lastname?.[0]}
                               </span>
                             )}
@@ -735,11 +735,11 @@ const Complaints = () => {
                       <div className="border border-gray-200 dark:border-gray-700 rounded-lg p-4">
                         <h4 className="font-medium text-gray-900 dark:text-white mb-3">Driver (Accused)</h4>
                         <div className="flex items-center">
-                          <div className="h-12 w-12 rounded-full bg-gray-100 flex items-center justify-center">
+                          <div className="h-12 w-12 rounded-full bg-gray-100 dark:bg-gray-700 flex items-center justify-center">
                             {selectedComplaint.driver?.image?.url ? (
                               <img src={selectedComplaint.driver.image.url} alt="" className="h-12 w-12 rounded-full object-cover" />
                             ) : (
-                              <span className="text-gray-600 font-bold">
+                              <span className="text-gray-600 dark:text-gray-300 font-bold">
                                 {selectedComplaint.driver?.firstname?.[0]}{selectedComplaint.driver?.lastname?.[0]}
                               </span>
                             )}
@@ -856,12 +856,12 @@ const Complaints = () => {
                             placeholder="Add a note..."
                             value={newNote}
                             onChange={(e) => setNewNote(e.target.value)}
-                            className="flex-1 rounded-lg border border-gray-300 px-3 py-2 text-sm focus:border-orange-500 focus:ring-orange-500"
+                            className="flex-1 rounded-lg border border-gray-300 dark:border-gray-600 px-3 py-2 text-sm bg-white dark:bg-gray-700 text-gray-900 dark:text-white focus:border-orange-500 focus:ring-orange-500"
                           />
                           <button
                             onClick={handleAddNote}
                             disabled={!newNote.trim() || updating}
-                            className="px-4 py-2 bg-gray-100 text-gray-700 rounded-lg text-sm font-medium hover:bg-gray-200 disabled:opacity-50"
+                            className="px-4 py-2 bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300 rounded-lg text-sm font-medium hover:bg-gray-200 dark:hover:bg-gray-600 disabled:opacity-50"
                           >
                             Add
                           </button>
@@ -878,7 +878,7 @@ const Complaints = () => {
                             <button
                               onClick={() => handleStatusChange('under_review')}
                               disabled={updating}
-                              className="px-4 py-2 bg-blue-100 text-blue-700 rounded-lg text-sm font-medium hover:bg-blue-200 disabled:opacity-50"
+                              className="px-4 py-2 bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 rounded-lg text-sm font-medium hover:bg-blue-200 dark:hover:bg-blue-900/50 disabled:opacity-50"
                             >
                               Start Review
                             </button>
@@ -887,7 +887,7 @@ const Complaints = () => {
                             <button
                               onClick={() => handleStatusChange('investigating')}
                               disabled={updating}
-                              className="px-4 py-2 bg-purple-100 text-purple-700 rounded-lg text-sm font-medium hover:bg-purple-200 disabled:opacity-50"
+                              className="px-4 py-2 bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300 rounded-lg text-sm font-medium hover:bg-purple-200 dark:hover:bg-purple-900/50 disabled:opacity-50"
                             >
                               Start Investigation
                             </button>
@@ -974,7 +974,7 @@ const Complaints = () => {
               <div className="flex justify-end gap-3 mt-6">
                 <button
                   onClick={() => setShowResolveModal(false)}
-                  className="px-4 py-2 text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200"
+                  className="px-4 py-2 text-gray-700 bg-gray-100 dark:text-gray-300 dark:bg-gray-700 rounded-lg hover:bg-gray-200 dark:hover:bg-gray-600"
                 >
                   Cancel
                 </button>

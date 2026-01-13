@@ -32,12 +32,17 @@ import Constants from 'expo-constants';
 import { colors, spacing } from '../../components/common/theme';
 import { useAsyncSQLiteContext } from '../../utils/asyncSQliteProvider';
 import { getToken } from '../../utils/jwtStorage';
+import { getUserCredentials } from '../../utils/userStorage';
 
 const BACKEND_URL = Constants.expoConfig?.extra?.BACKEND_URL || 'http://192.168.254.105:5000';
 const API_URL = `${BACKEND_URL}/api/complaints`;
 
 const ComplaintScreen = ({ navigation }) => {
   const db = useAsyncSQLiteContext();
+  
+  // Authentication state
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [checkingAuth, setCheckingAuth] = useState(true);
   
   // View state
   const [activeView, setActiveView] = useState('file'); // 'file' or 'history'
@@ -90,10 +95,33 @@ const ComplaintScreen = ({ navigation }) => {
   const [submitting, setSubmitting] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
 
-  // Initialize
+  // Check authentication on mount
   useEffect(() => {
-    loadInitialData();
+    checkAuthentication();
   }, []);
+
+  const checkAuthentication = async () => {
+    try {
+      const credentials = await getUserCredentials();
+      if (credentials && (credentials._id || credentials.id)) {
+        setIsAuthenticated(true);
+      } else {
+        setIsAuthenticated(false);
+      }
+    } catch (error) {
+      console.error('Error checking authentication:', error);
+      setIsAuthenticated(false);
+    } finally {
+      setCheckingAuth(false);
+    }
+  };
+
+  // Initialize only if authenticated
+  useEffect(() => {
+    if (isAuthenticated) {
+      loadInitialData();
+    }
+  }, [isAuthenticated]);
 
   const loadInitialData = async () => {
     setLoading(true);
@@ -1320,6 +1348,39 @@ const ComplaintScreen = ({ navigation }) => {
   );
 
   // Main render
+  // Show loading while checking authentication
+  if (checkingAuth) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.authContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={styles.authText}>Loading...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // Show login prompt if not authenticated
+  if (!isAuthenticated) {
+    return (
+      <SafeAreaView style={styles.container}>
+        <View style={styles.authContainer}>
+          <Ionicons name="lock-closed-outline" size={80} color={colors.primary} />
+          <Text style={styles.authTitle}>Login Required</Text>
+          <Text style={styles.authText}>
+            Please log in to access the Complaints feature
+          </Text>
+          <TouchableOpacity 
+            style={styles.loginButton}
+            onPress={() => navigation.navigate('Login')}
+          >
+            <Text style={styles.loginButtonText}>Go to Login</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   if (loading) {
     return (
       <SafeAreaView style={styles.container}>
@@ -1389,6 +1450,36 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.ivory1,
+  },
+  authContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: spacing.large,
+  },
+  authTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: colors.primary,
+    marginTop: spacing.large,
+    marginBottom: spacing.small,
+  },
+  authText: {
+    fontSize: 16,
+    color: colors.orangeShade5 || '#666',
+    textAlign: 'center',
+    marginBottom: spacing.large,
+  },
+  loginButton: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: spacing.large * 2,
+    paddingVertical: spacing.medium,
+    borderRadius: 12,
+  },
+  loginButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
   },
   header: {
     padding: spacing.medium,

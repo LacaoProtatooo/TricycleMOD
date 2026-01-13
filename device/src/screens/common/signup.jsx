@@ -74,38 +74,93 @@ const Signup = () => {
   const validateForm = () => {
     const newErrors = {};
     
-    // Required fields validation
-    if (!username.trim()) newErrors.username = 'Username is required';
-    if (username.length > 30) newErrors.username = 'Username cannot exceed 30 characters';
+    // Username validation
+    if (!username.trim()) {
+      newErrors.username = 'Username is required';
+    } else if (username.length < 3) {
+      newErrors.username = 'Username must be at least 3 characters';
+    } else if (username.length > 30) {
+      newErrors.username = 'Username cannot exceed 30 characters';
+    } else if (!/^[a-zA-Z0-9_]+$/.test(username)) {
+      newErrors.username = 'Username can only contain letters, numbers, and underscores';
+    }
     
-    if (!firstname.trim()) newErrors.firstname = 'First name is required';
-    if (firstname.length > 30) newErrors.firstname = 'First name cannot exceed 30 characters';
+    // First name validation
+    if (!firstname.trim()) {
+      newErrors.firstname = 'First name is required';
+    } else if (firstname.length < 2) {
+      newErrors.firstname = 'First name must be at least 2 characters';
+    } else if (firstname.length > 30) {
+      newErrors.firstname = 'First name cannot exceed 30 characters';
+    } else if (!/^[a-zA-Z\s-]+$/.test(firstname)) {
+      newErrors.firstname = 'First name can only contain letters, spaces, and hyphens';
+    }
     
-    if (!lastname.trim()) newErrors.lastname = 'Last name is required';
-    if (lastname.length > 30) newErrors.lastname = 'Last name cannot exceed 30 characters';
+    // Last name validation
+    if (!lastname.trim()) {
+      newErrors.lastname = 'Last name is required';
+    } else if (lastname.length < 2) {
+      newErrors.lastname = 'Last name must be at least 2 characters';
+    } else if (lastname.length > 30) {
+      newErrors.lastname = 'Last name cannot exceed 30 characters';
+    } else if (!/^[a-zA-Z\s-]+$/.test(lastname)) {
+      newErrors.lastname = 'Last name can only contain letters, spaces, and hyphens';
+    }
     
     // Email validation
     if (!email.trim()) {
       newErrors.email = 'Email is required';
-    } else if (!/^\w+([.-]?\w+)*@\w+([.-]?\w+)*(\.\w{2,3})+$/.test(email)) {
-      newErrors.email = 'Please enter a valid email';
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      newErrors.email = 'Please enter a valid email address';
     }
     
-    // Password validation
+    // Password validation - min 8 chars, 1 uppercase, 1 lowercase, 1 symbol
     if (!password) {
       newErrors.password = 'Password is required';
-    } else if (password.length < 6) {
-      newErrors.password = 'Password must be at least 6 characters';
+    } else {
+      const passwordErrors = [];
+      if (password.length < 8) {
+        passwordErrors.push('at least 8 characters');
+      }
+      if (!/[A-Z]/.test(password)) {
+        passwordErrors.push('one uppercase letter');
+      }
+      if (!/[a-z]/.test(password)) {
+        passwordErrors.push('one lowercase letter');
+      }
+      if (!/[!@#$%^&*()_+\-=\[\]{};':"\\|,.<>\/?`~]/.test(password)) {
+        passwordErrors.push('one symbol (!@#$%^&*...)');
+      }
+      if (passwordErrors.length > 0) {
+        newErrors.password = `Password must contain ${passwordErrors.join(', ')}`;
+      }
     }
     
-    // Confirm password
-    if (password !== confirmPassword) {
+    // Confirm password validation
+    if (!confirmPassword) {
+      newErrors.confirmPassword = 'Please confirm your password';
+    } else if (password !== confirmPassword) {
       newErrors.confirmPassword = 'Passwords do not match';
     }
     
     // Phone validation - optional but if provided, must be 11 digits
     if (phone && !/^\d{11}$/.test(phone)) {
       newErrors.phone = 'Phone must be 11 digits';
+    }
+    
+    // Postal code validation - optional but if provided, must be exactly 4 digits
+    if (postalCode && !/^\d{4}$/.test(postalCode)) {
+      newErrors.postalCode = 'Postal code must be exactly 4 digits';
+    }
+    
+    // Street validation - optional but if provided, check length
+    if (street && street.length > 100) {
+      newErrors.street = 'Street address cannot exceed 100 characters';
+    }
+    
+    // City validation - optional but if provided, check format
+    if (city && !/^[a-zA-Z\s-]+$/.test(city)) {
+      newErrors.city = 'City can only contain letters, spaces, and hyphens';
     }
     
     setErrors(newErrors);
@@ -278,7 +333,7 @@ const Signup = () => {
               <TextInput
                 ref={passwordRef}
                 style={[styles.passwordInput, errors.password && styles.inputError]}
-                placeholder="Create a password (min 6 characters)"
+                placeholder="Min 8 chars, uppercase, lowercase, symbol"
                 placeholderTextColor={colors.placeholder}
                 value={password}
                 onChangeText={setPassword}
@@ -363,21 +418,23 @@ const Signup = () => {
             <Text style={styles.label}>Street Address</Text>
             <TextInput
               ref={streetRef}
-              style={styles.input}
+              style={[styles.input, errors.street && styles.inputError]}
               placeholder="Street address"
               placeholderTextColor={colors.placeholder}
               value={street}
               onChangeText={setStreet}
+              maxLength={100}
               returnKeyType="next"
               onSubmitEditing={() => cityRef.current?.focus()}
             />
+            {errors.street && <Text style={styles.errorText}>{errors.street}</Text>}
           </View>
 
           <View style={styles.inputContainer}>
             <Text style={styles.label}>City</Text>
             <TextInput
               ref={cityRef}
-              style={styles.input}
+              style={[styles.input, errors.city && styles.inputError]}
               placeholder="City"
               placeholderTextColor={colors.placeholder}
               value={city}
@@ -385,6 +442,7 @@ const Signup = () => {
               returnKeyType="next"
               onSubmitEditing={() => postalCodeRef.current?.focus()}
             />
+            {errors.city && <Text style={styles.errorText}>{errors.city}</Text>}
           </View>
 
           <View style={styles.rowContainer}>
@@ -392,7 +450,7 @@ const Signup = () => {
               <Text style={styles.label}>Postal Code</Text>
               <TextInput
                 ref={postalCodeRef}
-                style={styles.input}
+                style={[styles.input, errors.postalCode && styles.inputError]}
                 placeholder="4-digit code"
                 placeholderTextColor={colors.placeholder}
                 value={postalCode}
@@ -404,6 +462,7 @@ const Signup = () => {
                 keyboardType="number-pad"
                 maxLength={4}
               />
+              {errors.postalCode && <Text style={styles.errorText}>{errors.postalCode}</Text>}
             </View>
             
             <View style={[styles.inputContainer, { flex: 1, marginLeft: 8 }]}>

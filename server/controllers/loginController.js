@@ -101,16 +101,27 @@ export const login = async (req, res) => {
 
   try {
     if (!email || !password) {
-      return res.status(400).json({ success: false, message: 'Email and password required' });
+      return res.status(400).json({ success: false, message: 'Username/Email and password required' });
     }
 
-    // normalize and do case-insensitive lookup
-    const rawEmail = String(email).trim();
+    // normalize input - can be email or username
+    const rawInput = String(email).trim();
     const escapeRegExp = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    const user = await User.findOne({ email: { $regex: `^${escapeRegExp(rawEmail)}$`, $options: 'i' } }).select('+password');
+    
+    // Check if input is email (contains @) or username
+    const isEmail = rawInput.includes('@');
+    
+    let user;
+    if (isEmail) {
+      // Search by email (case-insensitive)
+      user = await User.findOne({ email: { $regex: `^${escapeRegExp(rawInput)}$`, $options: 'i' } }).select('+password');
+    } else {
+      // Search by username (case-insensitive)
+      user = await User.findOne({ username: { $regex: `^${escapeRegExp(rawInput)}$`, $options: 'i' } }).select('+password');
+    }
 
     if (!user) {
-      console.warn(`Login failed — user not found for: ${rawEmail}`);
+      console.warn(`Login failed — user not found for: ${rawInput}`);
       return res.status(400).json({ success: false, message: 'Invalid credentials' });
     }
 

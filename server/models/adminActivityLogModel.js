@@ -18,19 +18,45 @@ const adminActivityLogSchema = new mongoose.Schema({
     type: String,
     required: true,
     enum: [
+      // User management
       'ROLE_CHANGE',
       'USER_VERIFY',
       'USER_DELETE',
       'USER_UPDATE',
+      // Driver management
+      'DRIVER_SUSPENDED',
+      'DRIVER_UNSUSPENDED',
+      'DRIVER_VERIFIED',
+      'DRIVER_WARNING',
+      'DRIVER_TERMINATED',
+      // Complaint management
+      'COMPLAINT_RESOLVED',
+      'COMPLAINT_DISMISSED',
+      'COMPLAINT_ESCALATED',
+      'COMPLAINT_MARKED_FALSE',
+      // Booking management
+      'BOOKING_UPDATE',
+      'BOOKING_CANCEL',
+      'DISPUTE_RESOLVED',
+      // Announcement management
       'ANNOUNCEMENT_CREATE',
       'ANNOUNCEMENT_UPDATE',
       'ANNOUNCEMENT_DELETE',
-      'BOOKING_UPDATE',
-      'BOOKING_CANCEL',
+      // Lost & Found management
+      'LOSTFOUND_VERIFIED',
+      'LOSTFOUND_RETURNED',
+      'LOSTFOUND_DELETED',
+      // Tricycle/Coding management
+      'TRICYCLE_CREATED',
+      'TRICYCLE_UPDATED',
+      'TRICYCLE_DELETED',
+      'CODING_UPDATED',
+      // Notifications
       'NOTIFICATION_SEND',
+      // System
       'SETTINGS_UPDATE',
-      'DRIVER_SUSPENDED',
-      'DRIVER_UNSUSPENDED',
+      'SYSTEM_BACKUP',
+      'DATA_EXPORT',
       'OTHER'
     ],
   },

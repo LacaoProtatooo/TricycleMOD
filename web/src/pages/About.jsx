@@ -24,7 +24,7 @@ export default function About() {
   const advisor = {
     name: "Dr. Rico S. Santos",
     role: "Technical Advisor",
-    title: "Former MTICS Adviser '20-'23",
+    title: "Professor",
     institution: "Technological University of the Philippines",
     image: "/images/user/doc_rico.jpg",
   };

@@ -1113,7 +1113,34 @@ export const adminResolveComplaint = async (req, res) => {
       addedBy: adminId,
     });
     
+    complaint.resolvedAt = new Date();
+    complaint.resolvedBy = adminId;
+    complaint.actionTaken = action;
+    
     await complaint.save();
+    
+    // Log admin activity
+    const AdminActivityLog = (await import('../models/adminActivityLogModel.js')).default;
+    const admin = await User.findById(adminId);
+    const driver = await User.findById(complaint.driver);
+    
+    await AdminActivityLog.logActivity({
+      adminId: adminId,
+      adminEmail: admin?.email || 'unknown',
+      adminName: `${admin?.firstname || ''} ${admin?.lastname || ''}`.trim() || 'Admin',
+      action: isFalseComplaint ? 'COMPLAINT_MARKED_FALSE' : 'COMPLAINT_RESOLVED',
+      description: `${isFalseComplaint ? 'Dismissed' : 'Resolved'} complaint against ${driver?.firstname || 'Driver'} ${driver?.lastname || ''}. Action: ${action}. ${details || ''}`.trim(),
+      targetUserId: complaint.driver,
+      targetUserEmail: driver?.email,
+      targetUserName: `${driver?.firstname || ''} ${driver?.lastname || ''}`.trim(),
+      previousValue: { status: 'investigating' },
+      newValue: { status: complaint.status, action, isFalseComplaint },
+      metadata: {
+        complaintId: complaint._id,
+        category: complaint.category,
+      },
+      ipAddress: req.ip || req.connection?.remoteAddress,
+    });
     
     res.status(200).json({
       success: true,

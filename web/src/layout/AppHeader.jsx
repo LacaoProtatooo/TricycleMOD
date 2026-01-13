@@ -1,13 +1,98 @@
 import { useEffect, useRef, useState } from "react";
 
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import { useSidebar } from "../context/SidebarContext";
 import { ThemeToggleButton } from "../components/common/ThemeToggleButton";
 import NotificationDropdown from "../components/header/NotificationDropdown";
 import UserDropdown from "../components/header/UserDropdown";
 
+// Search items with keywords for each section
+const searchableItems = [
+  {
+    name: "Dashboard",
+    path: "/",
+    keywords: ["home", "overview", "stats", "statistics", "metrics", "revenue", "performance", "analytics", "main"],
+  },
+  {
+    name: "Announcements",
+    path: "/announcements",
+    keywords: ["news", "updates", "notices", "broadcast", "message", "alert", "info", "notification", "publish"],
+  },
+  {
+    name: "Users",
+    path: "/users",
+    keywords: ["accounts", "members", "guests", "passengers", "commuters", "people", "profiles", "all users"],
+  },
+  {
+    name: "Drivers",
+    path: "/drivers",
+    keywords: ["operators", "riders", "kuya", "tricycle drivers", "license", "verification", "suspend", "verified", "pending"],
+  },
+  {
+    name: "Operators",
+    path: "/operators",
+    keywords: ["owners", "franchise", "toda", "business", "tricycle owners", "vehicles", "fleet"],
+  },
+  {
+    name: "Bookings",
+    path: "/bookings",
+    keywords: ["trips", "rides", "reservations", "travel", "fare", "dispute", "completed", "cancelled", "ongoing", "scheduled"],
+  },
+  {
+    name: "Live Tracking",
+    path: "/live-tracking",
+    keywords: ["map", "location", "gps", "real-time", "track", "position", "live", "driver location", "monitoring"],
+  },
+  {
+    name: "Notifications",
+    path: "/notifications",
+    keywords: ["alerts", "messages", "push", "bell", "updates", "reminders"],
+  },
+  {
+    name: "Lost & Found",
+    path: "/lost-found",
+    keywords: ["missing", "items", "belongings", "lost items", "found items", "recover", "claim", "property"],
+  },
+  {
+    name: "Complaints",
+    path: "/complaints",
+    keywords: ["reports", "issues", "problems", "feedback", "violations", "concerns", "dispute", "incident", "rude", "overcharging"],
+  },
+  {
+    name: "Leaderboard",
+    path: "/leaderboard",
+    keywords: ["rankings", "top drivers", "ratings", "best", "performance", "stars", "reviews", "scores"],
+  },
+  {
+    name: "Tricycle Coding",
+    path: "/coding",
+    keywords: ["number coding", "schedule", "rest day", "day off", "coding day", "plate number", "restriction"],
+  },
+  {
+    name: "Rules & Regulations",
+    path: "/rules-regulations",
+    keywords: ["policies", "guidelines", "terms", "conditions", "laws", "ordinance", "webttoda", "rules"],
+  },
+  {
+    name: "Admin Logs",
+    path: "/admin-logs",
+    keywords: ["activity", "history", "audit", "actions", "logs", "trail", "admin activity", "changes"],
+  },
+  {
+    name: "About",
+    path: "/about",
+    keywords: ["info", "information", "help", "contact", "system", "version", "developers"],
+  },
+];
+
 const AppHeader = () => {
   const [isApplicationMenuOpen, setApplicationMenuOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [searchResults, setSearchResults] = useState([]);
+  const [showSearchResults, setShowSearchResults] = useState(false);
+  const [selectedIndex, setSelectedIndex] = useState(-1);
+  const searchContainerRef = useRef(null);
+  const navigate = useNavigate();
 
   const { isMobileOpen, toggleSidebar, toggleMobileSidebar } = useSidebar();
 
@@ -24,6 +109,79 @@ const AppHeader = () => {
   };
 
   const inputRef = useRef(null);
+
+  // Handle search
+  const handleSearch = (query) => {
+    setSearchQuery(query);
+    setSelectedIndex(-1);
+    
+    if (query.trim() === "") {
+      setSearchResults([]);
+      setShowSearchResults(false);
+      return;
+    }
+
+    const lowerQuery = query.toLowerCase();
+    const results = searchableItems.filter((item) => {
+      // Check if name matches
+      if (item.name.toLowerCase().includes(lowerQuery)) return true;
+      // Check if any keyword matches
+      return item.keywords.some((keyword) => keyword.toLowerCase().includes(lowerQuery));
+    });
+
+    setSearchResults(results);
+    setShowSearchResults(true);
+  };
+
+  // Handle navigation to selected result
+  const handleNavigate = (path) => {
+    navigate(path);
+    setSearchQuery("");
+    setSearchResults([]);
+    setShowSearchResults(false);
+    inputRef.current?.blur();
+  };
+
+  // Handle keyboard navigation
+  const handleKeyDown = (e) => {
+    if (!showSearchResults || searchResults.length === 0) return;
+
+    switch (e.key) {
+      case "ArrowDown":
+        e.preventDefault();
+        setSelectedIndex((prev) => (prev < searchResults.length - 1 ? prev + 1 : prev));
+        break;
+      case "ArrowUp":
+        e.preventDefault();
+        setSelectedIndex((prev) => (prev > 0 ? prev - 1 : -1));
+        break;
+      case "Enter":
+        e.preventDefault();
+        if (selectedIndex >= 0 && selectedIndex < searchResults.length) {
+          handleNavigate(searchResults[selectedIndex].path);
+        } else if (searchResults.length > 0) {
+          handleNavigate(searchResults[0].path);
+        }
+        break;
+      case "Escape":
+        setShowSearchResults(false);
+        setSearchQuery("");
+        inputRef.current?.blur();
+        break;
+    }
+  };
+
+  // Close search results when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (searchContainerRef.current && !searchContainerRef.current.contains(event.target)) {
+        setShowSearchResults(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
 
   useEffect(() => {
     const handleKeyDown = (event) => {
@@ -117,7 +275,7 @@ const AppHeader = () => {
           </button>
 
           <div className="hidden lg:block">
-            <form>
+            <div ref={searchContainerRef}>
               <div className="relative">
                 <span className="absolute -translate-y-1/2 pointer-events-none left-4 top-1/2">
                   <svg
@@ -139,16 +297,61 @@ const AppHeader = () => {
                 <input
                   ref={inputRef}
                   type="text"
-                  placeholder="Search or type command..."
+                  placeholder="Search sections... (e.g. users, bookings, tracking)"
+                  value={searchQuery}
+                  onChange={(e) => handleSearch(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  onFocus={() => searchQuery && setShowSearchResults(true)}
                   className="dark:bg-dark-900 h-11 w-full rounded-lg border border-gray-200 bg-transparent py-2.5 pl-12 pr-14 text-sm text-gray-800 shadow-theme-xs placeholder:text-gray-400 focus:border-brand-300 focus:outline-hidden focus:ring-3 focus:ring-brand-500/10 dark:border-gray-800 dark:bg-gray-900 dark:bg-white/[0.03] dark:text-white/90 dark:placeholder:text-white/30 dark:focus:border-brand-800 xl:w-[430px]"
                 />
 
-                <button className="absolute right-2.5 top-1/2 inline-flex -translate-y-1/2 items-center gap-0.5 rounded-lg border border-gray-200 bg-gray-50 px-[7px] py-[4.5px] text-xs -tracking-[0.2px] text-gray-500 dark:border-gray-800 dark:bg-white/[0.03] dark:text-gray-400">
-                  <span> ⌘ </span>
-                  <span> K </span>
-                </button>
+                {/* Search Results Dropdown */}
+                {showSearchResults && searchResults.length > 0 && (
+                  <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 max-h-80 overflow-y-auto">
+                    {searchResults.map((result, index) => (
+                      <button
+                        key={result.path}
+                        onClick={() => handleNavigate(result.path)}
+                        className={`w-full px-4 py-3 text-left flex items-center gap-3 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors ${
+                          index === selectedIndex ? "bg-gray-100 dark:bg-gray-800" : ""
+                        } ${index !== searchResults.length - 1 ? "border-b border-gray-100 dark:border-gray-800" : ""}`}
+                      >
+                        <svg
+                          className="w-5 h-5 text-gray-400"
+                          fill="none"
+                          stroke="currentColor"
+                          viewBox="0 0 24 24"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M9 5l7 7-7 7"
+                          />
+                        </svg>
+                        <div>
+                          <div className="text-sm font-medium text-gray-800 dark:text-white">
+                            {result.name}
+                          </div>
+                          <div className="text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+                            {result.keywords.slice(0, 3).join(", ")}
+                          </div>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {/* No results message */}
+                {showSearchResults && searchQuery && searchResults.length === 0 && (
+                  <div className="absolute top-full left-0 right-0 mt-1 bg-white dark:bg-gray-900 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-50 p-4 text-center">
+                    <p className="text-sm text-gray-500 dark:text-gray-400">
+                      No sections found for "{searchQuery}"
+                    </p>
+                  </div>
+                )}
               </div>
-            </form>
+            </div>
           </div>
         </div>
         <div

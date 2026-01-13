@@ -59,7 +59,7 @@ export const adminOnly = async (req, res, next) => {
       req.user = await User.findById(decoded.id).select('-password');
 
       // Check if user is an operator (admin) based on role
-      if (req.user && req.user.role === 'operator') {
+      if (req.user && (req.user.role === 'operator' || req.user.role === 'admin')) {
         return next();
       } else {
         return res.status(403).json({ success: false, message: 'Not authorized as an admin' });

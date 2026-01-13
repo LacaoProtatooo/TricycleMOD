@@ -107,6 +107,7 @@ export const verifyLostFound = async (req, res) => {
     }
 
     // Update fields
+    const previousStatus = item.status;
     if (status) item.status = status;
     if (status === 'claimed' || status === 'returned') {
       item.claimedAt = item.claimedAt || new Date();
@@ -118,7 +119,29 @@ export const verifyLostFound = async (req, res) => {
     await item.save();
 
     // Populate driver info before returning
-    await item.populate('driver', 'firstname lastname username image');
+    await item.populate('driver', 'firstname lastname username image email');
+
+    // Log admin activity
+    const AdminActivityLog = (await import('../models/adminActivityLogModel.js')).default;
+    const admin = req.user;
+    
+    await AdminActivityLog.logActivity({
+      adminId: admin._id,
+      adminEmail: admin.email,
+      adminName: `${admin.firstname || ''} ${admin.lastname || ''}`.trim() || 'Admin',
+      action: status === 'returned' ? 'LOSTFOUND_RETURNED' : 'LOSTFOUND_VERIFIED',
+      description: `Updated lost & found item "${item.title}" status from ${previousStatus} to ${status}`,
+      targetUserId: item.driver?._id,
+      targetUserEmail: item.driver?.email,
+      targetUserName: `${item.driver?.firstname || ''} ${item.driver?.lastname || ''}`.trim(),
+      previousValue: { status: previousStatus },
+      newValue: { status, claimerName, claimerContact },
+      metadata: {
+        itemId: item._id,
+        itemTitle: item.title,
+      },
+      ipAddress: req.ip || req.connection?.remoteAddress,
+    });
 
     res.status(200).json({ success: true, data: item });
   } catch (error) {
@@ -132,7 +155,7 @@ export const deleteLostFound = async (req, res) => {
   try {
     const { id } = req.params;
 
-    const item = await LostFound.findById(id);
+    const item = await LostFound.findById(id).populate('driver', 'firstname lastname email');
     if (!item) {
       return res.status(404).json({ success: false, message: 'Item not found' });
     }
@@ -141,6 +164,29 @@ export const deleteLostFound = async (req, res) => {
     if (item.photoPublicId) {
       await cloudinary.uploader.destroy(item.photoPublicId).catch(() => {});
     }
+
+    // Log admin activity before deletion
+    const AdminActivityLog = (await import('../models/adminActivityLogModel.js')).default;
+    const admin = req.user;
+    
+    await AdminActivityLog.logActivity({
+      adminId: admin._id,
+      adminEmail: admin.email,
+      adminName: `${admin.firstname || ''} ${admin.lastname || ''}`.trim() || 'Admin',
+      action: 'LOSTFOUND_DELETED',
+      description: `Deleted lost & found item "${item.title}"`,
+      targetUserId: item.driver?._id,
+      targetUserEmail: item.driver?.email,
+      targetUserName: `${item.driver?.firstname || ''} ${item.driver?.lastname || ''}`.trim(),
+      previousValue: { title: item.title, status: item.status },
+      newValue: null,
+      metadata: {
+        itemId: item._id,
+        itemTitle: item.title,
+        deletedAt: new Date(),
+      },
+      ipAddress: req.ip || req.connection?.remoteAddress,
+    });
 
     await LostFound.findByIdAndDelete(id);
 

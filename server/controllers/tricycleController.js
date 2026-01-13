@@ -983,12 +983,37 @@ export const adminUpdateCodingDay = async (req, res) => {
       codingDayValue = codingDayNum;
     }
 
+    const previousCodingDay = tricycle.codingDay;
     tricycle.codingDay = codingDayValue;
     await tricycle.save();
 
     const updatedTricycle = await Tricycle.findById(id)
       .populate('operator', 'firstname lastname username email phone image')
       .populate('driver', 'firstname lastname username email phone image');
+
+    // Log admin activity
+    const AdminActivityLog = (await import('../models/adminActivityLogModel.js')).default;
+    const admin = req.user;
+    const dayNames = ['Sunday', 'Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    
+    await AdminActivityLog.logActivity({
+      adminId: admin._id,
+      adminEmail: admin.email,
+      adminName: `${admin.firstname || ''} ${admin.lastname || ''}`.trim() || 'Admin',
+      action: 'CODING_UPDATED',
+      description: `Updated coding day for tricycle ${tricycle.bodyNumber || tricycle.plateNumber} from ${previousCodingDay !== null ? dayNames[previousCodingDay] : 'None'} to ${codingDayValue !== null ? dayNames[codingDayValue] : 'None'}`,
+      targetUserId: updatedTricycle.driver?._id,
+      targetUserEmail: updatedTricycle.driver?.email,
+      targetUserName: `${updatedTricycle.driver?.firstname || ''} ${updatedTricycle.driver?.lastname || ''}`.trim(),
+      previousValue: { codingDay: previousCodingDay },
+      newValue: { codingDay: codingDayValue },
+      metadata: {
+        tricycleId: tricycle._id,
+        bodyNumber: tricycle.bodyNumber,
+        plateNumber: tricycle.plateNumber,
+      },
+      ipAddress: req.ip || req.connection?.remoteAddress,
+    });
 
     res.status(200).json({
       success: true,

@@ -501,18 +501,18 @@ export default function LiveDriversMap() {
                                 className="w-10 h-10 rounded-full object-cover"
                               />
                             ) : (
-                              <div className="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center">
-                                <span className="text-orange-600 font-semibold">
+                              <div className="w-10 h-10 rounded-full bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center">
+                                <span className="text-orange-600 dark:text-orange-400 font-semibold">
                                   {driver.driver?.name?.charAt(0) || "?"}
                                 </span>
                               </div>
                             )}
                             <div>
-                              <h4 className="font-semibold text-gray-900">
+                              <h4 className="font-semibold text-gray-900 dark:text-white">
                                 {driver.driver?.name || "Unknown Driver"}
                               </h4>
                               {driver.tricycle && (
-                                <p className="text-xs text-gray-500">
+                                <p className="text-xs text-gray-500 dark:text-gray-400">
                                   {driver.tricycle.plateNumber} • Body #{driver.tricycle.bodyNumber}
                                 </p>
                               )}
@@ -520,23 +520,23 @@ export default function LiveDriversMap() {
                           </div>
                           <div className="space-y-1 text-sm">
                             <div className="flex justify-between">
-                              <span className="text-gray-500">Speed:</span>
-                              <span className="font-medium">{formatSpeed(driver.currentLocation?.speed)}</span>
+                              <span className="text-gray-500 dark:text-gray-400">Speed:</span>
+                              <span className="font-medium text-gray-900 dark:text-white">{formatSpeed(driver.currentLocation?.speed)}</span>
                             </div>
                             <div className="flex justify-between">
-                              <span className="text-gray-500">Last Update:</span>
-                              <span className="font-medium">{formatTime(driver.currentLocation?.timestamp || driver.activity?.lastActiveAt)}</span>
+                              <span className="text-gray-500 dark:text-gray-400">Last Update:</span>
+                              <span className="font-medium text-gray-900 dark:text-white">{formatTime(driver.currentLocation?.timestamp || driver.activity?.lastActiveAt)}</span>
                             </div>
                             {driver.driver?.rating > 0 && (
                               <div className="flex justify-between">
-                                <span className="text-gray-500">Rating:</span>
-                                <span className="font-medium">⭐ {driver.driver.rating.toFixed(1)}</span>
+                                <span className="text-gray-500 dark:text-gray-400">Rating:</span>
+                                <span className="font-medium text-gray-900 dark:text-white">⭐ {driver.driver.rating.toFixed(1)}</span>
                               </div>
                             )}
                             {driver.driver?.tripCount > 0 && (
                               <div className="flex justify-between">
-                                <span className="text-gray-500">Trips:</span>
-                                <span className="font-medium">{driver.driver.tripCount}</span>
+                                <span className="text-gray-500 dark:text-gray-400">Trips:</span>
+                                <span className="font-medium text-gray-900 dark:text-white">{driver.driver.tripCount}</span>
                               </div>
                             )}
                           </div>

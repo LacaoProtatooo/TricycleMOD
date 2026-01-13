@@ -125,17 +125,35 @@ export default function NotificationDropdown() {
               Notifications
             </h5>
             {counts?.total > 0 && (
-              <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 mt-0.5">
+              <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-gray-400 mt-0.5 flex-wrap">
                 {counts.disputes > 0 && (
                   <span className="flex items-center gap-1">
                     <span className="h-1.5 w-1.5 rounded-full bg-red-500"></span>
                     {counts.disputes} dispute{counts.disputes > 1 ? "s" : ""}
                   </span>
                 )}
+                {counts.complaints > 0 && (
+                  <span className="flex items-center gap-1">
+                    <span className="h-1.5 w-1.5 rounded-full bg-orange-500"></span>
+                    {counts.complaints} complaint{counts.complaints > 1 ? "s" : ""}
+                  </span>
+                )}
                 {counts.expiring > 0 && (
                   <span className="flex items-center gap-1">
                     <span className="h-1.5 w-1.5 rounded-full bg-yellow-500"></span>
                     {counts.expiring} expiring
+                  </span>
+                )}
+                {counts.lostFound > 0 && (
+                  <span className="flex items-center gap-1">
+                    <span className="h-1.5 w-1.5 rounded-full bg-blue-500"></span>
+                    {counts.lostFound} lost item{counts.lostFound > 1 ? "s" : ""}
+                  </span>
+                )}
+                {counts.violations > 0 && (
+                  <span className="flex items-center gap-1">
+                    <span className="h-1.5 w-1.5 rounded-full bg-purple-500"></span>
+                    {counts.violations} violation{counts.violations > 1 ? "s" : ""}
                   </span>
                 )}
               </div>
@@ -209,6 +227,12 @@ export default function NotificationDropdown() {
                     to={
                       notification.type === "dispute"
                         ? "/bookings"
+                        : notification.type === "complaint"
+                        ? "/complaints"
+                        : notification.type === "lostfound"
+                        ? "/lost-found"
+                        : notification.type === "violation" || notification.type === "resolved"
+                        ? "/complaints"
                         : "/announcements"
                     }
                     className="flex gap-3 w-full"
@@ -218,6 +242,14 @@ export default function NotificationDropdown() {
                       className={`flex-shrink-0 flex h-10 w-10 items-center justify-center rounded-full ${
                         notification.type === "dispute"
                           ? "bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400"
+                          : notification.type === "complaint"
+                          ? "bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400"
+                          : notification.type === "lostfound"
+                          ? "bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400"
+                          : notification.type === "violation"
+                          ? "bg-purple-100 text-purple-600 dark:bg-purple-900/30 dark:text-purple-400"
+                          : notification.type === "resolved"
+                          ? "bg-green-100 text-green-600 dark:bg-green-900/30 dark:text-green-400"
                           : "bg-yellow-100 text-yellow-600 dark:bg-yellow-900/30 dark:text-yellow-400"
                       }`}
                     >
@@ -233,6 +265,62 @@ export default function NotificationDropdown() {
                             strokeLinejoin="round"
                             strokeWidth={2}
                             d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+                          />
+                        </svg>
+                      ) : notification.type === "complaint" ? (
+                        <svg
+                          className="w-5 h-5"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2"
+                          />
+                        </svg>
+                      ) : notification.type === "lostfound" ? (
+                        <svg
+                          className="w-5 h-5"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                          />
+                        </svg>
+                      ) : notification.type === "violation" ? (
+                        <svg
+                          className="w-5 h-5"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636"
+                          />
+                        </svg>
+                      ) : notification.type === "resolved" ? (
+                        <svg
+                          className="w-5 h-5"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                        >
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth={2}
+                            d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"
                           />
                         </svg>
                       ) : (
@@ -274,6 +362,94 @@ export default function NotificationDropdown() {
                               }`}
                             >
                               {notification.booking?.disputeReason || notification.reason || "Dispute"}
+                            </span>
+                            <span className="w-1 h-1 bg-gray-400 rounded-full"></span>
+                            <span>{formatTimeAgo(notification.createdAt)}</span>
+                          </span>
+                        </>
+                      ) : notification.type === "complaint" ? (
+                        <>
+                          <span className="mb-1 block text-theme-sm text-gray-500 dark:text-gray-400">
+                            <span className="font-medium text-gray-800 dark:text-white/90">
+                              {notification.title || "New Complaint"}
+                            </span>
+                            <span className="block truncate">
+                              Against {notification.driver?.firstname || "Driver"} {notification.driver?.lastname || ""}
+                            </span>
+                          </span>
+                          <span className="flex items-center gap-2 text-gray-500 text-theme-xs dark:text-gray-400">
+                            <span className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                              notification.priority === "high"
+                                ? "bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400"
+                                : notification.priority === "medium"
+                                ? "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400"
+                                : "bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300"
+                            }`}>
+                              {notification.complaint?.categoryLabel || notification.complaint?.category || "Complaint"}
+                            </span>
+                            <span className="w-1 h-1 bg-gray-400 rounded-full"></span>
+                            <span>{formatTimeAgo(notification.createdAt)}</span>
+                          </span>
+                        </>
+                      ) : notification.type === "lostfound" ? (
+                        <>
+                          <span className="mb-1 block text-theme-sm text-gray-500 dark:text-gray-400">
+                            <span className="font-medium text-gray-800 dark:text-white/90">
+                              {notification.title || "Lost & Found"}
+                            </span>
+                            <span className="block truncate">
+                              {notification.lostFound?.title || "Item"}
+                            </span>
+                          </span>
+                          <span className="flex items-center gap-2 text-gray-500 text-theme-xs dark:text-gray-400">
+                            <span className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                              notification.lostFound?.status === "returned"
+                                ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+                                : notification.lostFound?.status === "claimed"
+                                ? "bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400"
+                                : "bg-yellow-100 text-yellow-700 dark:bg-yellow-900/30 dark:text-yellow-400"
+                            }`}>
+                              {notification.lostFound?.status || "Posted"}
+                            </span>
+                            <span className="w-1 h-1 bg-gray-400 rounded-full"></span>
+                            <span>{formatTimeAgo(notification.createdAt)}</span>
+                          </span>
+                        </>
+                      ) : notification.type === "violation" ? (
+                        <>
+                          <span className="mb-1 block text-theme-sm text-gray-500 dark:text-gray-400">
+                            <span className="font-medium text-gray-800 dark:text-white/90">
+                              {notification.title || "Driver Violation"}
+                            </span>
+                            <span className="block truncate">
+                              {notification.driver?.firstname || "Driver"} {notification.driver?.lastname || ""}
+                            </span>
+                          </span>
+                          <span className="flex items-center gap-2 text-gray-500 text-theme-xs dark:text-gray-400">
+                            <span className="inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400">
+                              {notification.complaint?.actionTaken?.replace(/_/g, " ") || "Action Taken"}
+                            </span>
+                            <span className="w-1 h-1 bg-gray-400 rounded-full"></span>
+                            <span>{formatTimeAgo(notification.createdAt)}</span>
+                          </span>
+                        </>
+                      ) : notification.type === "resolved" ? (
+                        <>
+                          <span className="mb-1 block text-theme-sm text-gray-500 dark:text-gray-400">
+                            <span className="font-medium text-gray-800 dark:text-white/90">
+                              {notification.title || "Complaint Resolved"}
+                            </span>
+                            <span className="block truncate">
+                              {notification.complaint?.categoryLabel || "Complaint"} - {notification.driver?.firstname || "Driver"}
+                            </span>
+                          </span>
+                          <span className="flex items-center gap-2 text-gray-500 text-theme-xs dark:text-gray-400">
+                            <span className={`inline-flex px-1.5 py-0.5 rounded text-[10px] font-medium ${
+                              notification.complaint?.status === "resolved"
+                                ? "bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400"
+                                : "bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-300"
+                            }`}>
+                              {notification.complaint?.status || "Resolved"}
                             </span>
                             <span className="w-1 h-1 bg-gray-400 rounded-full"></span>
                             <span>{formatTimeAgo(notification.createdAt)}</span>

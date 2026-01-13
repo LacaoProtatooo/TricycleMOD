@@ -1,6 +1,7 @@
 import Booking from '../models/bookingModel.js';
 import Announcement from '../models/announcementModel.js';
 import Complaint from '../models/complaintModel.js';
+import LostFound from '../models/lostFoundModel.js';
 import AdminNotificationRead from '../models/adminNotificationModel.js';
 
 /**
@@ -148,6 +149,159 @@ export const getAdminNotifications = async (req, res) => {
       });
     }
 
+    // Get new lost & found items (posted within last 7 days)
+    if (!type || type === 'lostfound') {
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+      
+      const lostFoundItems = await LostFound.find({
+        createdAt: { $gte: sevenDaysAgo }
+      })
+        .populate('driver', 'firstname lastname email image')
+        .sort({ createdAt: -1 })
+        .limit(30);
+
+      lostFoundItems.forEach(item => {
+        const notificationId = `lostfound_${item._id}`;
+        const isRead = readIds.has(notificationId);
+        
+        // Skip read notifications if showRead is false
+        if (showRead === 'false' && isRead) return;
+
+        const statusLabels = {
+          posted: 'New Item Posted',
+          claimed: 'Item Claimed',
+          returned: 'Item Returned',
+        };
+
+        notifications.push({
+          _id: notificationId,
+          type: 'lostfound',
+          title: statusLabels[item.status] || 'Lost & Found Update',
+          message: item.status === 'posted' 
+            ? `${item.driver?.firstname || 'Driver'} found: "${item.title}"`
+            : `"${item.title}" has been ${item.status}`,
+          lostFound: {
+            _id: item._id,
+            title: item.title,
+            description: item.description,
+            status: item.status,
+            locationText: item.locationText,
+            photoUrl: item.photoUrl,
+          },
+          driver: item.driver,
+          createdAt: item.status === 'posted' ? item.createdAt : (item.claimedAt || item.updatedAt),
+          isRead,
+          priority: item.status === 'posted' ? 'low' : 'medium',
+        });
+      });
+    }
+
+    // Get recently resolved/dismissed complaints (within last 7 days)
+    if (!type || type === 'resolved') {
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+      
+      const resolvedComplaints = await Complaint.find({
+        status: { $in: ['resolved', 'dismissed'] },
+        resolvedAt: { $gte: sevenDaysAgo }
+      })
+        .populate('complainant', 'firstname lastname email image')
+        .populate('driver', 'firstname lastname email image')
+        .populate('resolvedBy', 'firstname lastname')
+        .sort({ resolvedAt: -1 })
+        .limit(30);
+
+      resolvedComplaints.forEach(complaint => {
+        const notificationId = `resolved_${complaint._id}`;
+        const isRead = readIds.has(notificationId);
+        
+        // Skip read notifications if showRead is false
+        if (showRead === 'false' && isRead) return;
+
+        const categoryLabels = {
+          rude_behavior: 'Rude Behavior',
+          overcharging: 'Overcharging',
+          unsafe_driving: 'Unsafe Driving',
+          route_deviation: 'Route Deviation',
+          vehicle_condition: 'Vehicle Condition',
+          refusal_of_service: 'Refusal of Service',
+          harassment: 'Harassment',
+          discrimination: 'Discrimination',
+          intoxicated_driving: 'Intoxicated Driving',
+          other: 'Other',
+        };
+
+        notifications.push({
+          _id: notificationId,
+          type: 'resolved',
+          title: `Complaint ${complaint.status === 'resolved' ? 'Resolved' : 'Dismissed'}`,
+          message: `${categoryLabels[complaint.category] || complaint.category} complaint against ${complaint.driver?.firstname || 'Driver'} ${complaint.driver?.lastname || ''} was ${complaint.status}`,
+          complaint: {
+            _id: complaint._id,
+            category: complaint.category,
+            categoryLabel: categoryLabels[complaint.category] || complaint.category,
+            status: complaint.status,
+            resolution: complaint.resolution,
+            actionTaken: complaint.actionTaken,
+          },
+          complainant: complaint.complainant,
+          driver: complaint.driver,
+          resolvedBy: complaint.resolvedBy,
+          createdAt: complaint.resolvedAt || complaint.updatedAt,
+          isRead,
+          priority: complaint.actionTaken ? 'high' : 'medium',
+        });
+      });
+    }
+
+    // Get driver violations (complaints with action taken within last 30 days)
+    if (!type || type === 'violation') {
+      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+      
+      const violationComplaints = await Complaint.find({
+        actionTaken: { $exists: true, $ne: null },
+        resolvedAt: { $gte: thirtyDaysAgo }
+      })
+        .populate('driver', 'firstname lastname email image isSuspended suspendedUntil')
+        .populate('resolvedBy', 'firstname lastname')
+        .sort({ resolvedAt: -1 })
+        .limit(20);
+
+      violationComplaints.forEach(complaint => {
+        const notificationId = `violation_${complaint._id}`;
+        const isRead = readIds.has(notificationId);
+        
+        // Skip read notifications if showRead is false
+        if (showRead === 'false' && isRead) return;
+
+        const actionLabels = {
+          warning: '⚠️ Warning Issued',
+          suspension_1day: '🚫 1-Day Suspension',
+          suspension_3day: '🚫 3-Day Suspension',
+          suspension_7day: '🚫 7-Day Suspension',
+          suspension_30day: '🔴 30-Day Suspension',
+          termination: '❌ Termination',
+        };
+
+        notifications.push({
+          _id: notificationId,
+          type: 'violation',
+          title: actionLabels[complaint.actionTaken] || 'Driver Violation',
+          message: `${complaint.driver?.firstname || 'Driver'} ${complaint.driver?.lastname || ''} received ${actionLabels[complaint.actionTaken] || complaint.actionTaken} for ${complaint.category}`,
+          complaint: {
+            _id: complaint._id,
+            category: complaint.category,
+            actionTaken: complaint.actionTaken,
+            resolution: complaint.resolution,
+          },
+          driver: complaint.driver,
+          resolvedBy: complaint.resolvedBy,
+          createdAt: complaint.resolvedAt || complaint.updatedAt,
+          isRead,
+          priority: complaint.actionTaken?.includes('suspension') || complaint.actionTaken === 'termination' ? 'high' : 'medium',
+        });
+      });
+    }
+
     // Sort all notifications by date (most recent first)
     notifications.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
 
@@ -214,13 +368,50 @@ export const getAdminNotificationCounts = async (req, res) => {
       if (!readIds.has(`complaint_${c._id}`)) complaintCount++;
     });
 
+    // Count new lost & found items (within 7 days, unread only)
+    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+    const lostFoundItems = await LostFound.find({
+      createdAt: { $gte: sevenDaysAgo }
+    }).select('_id');
+    
+    let lostFoundCount = 0;
+    lostFoundItems.forEach(item => {
+      if (!readIds.has(`lostfound_${item._id}`)) lostFoundCount++;
+    });
+
+    // Count resolved complaints (within 7 days, unread only)
+    const resolvedComplaints = await Complaint.find({
+      status: { $in: ['resolved', 'dismissed'] },
+      resolvedAt: { $gte: sevenDaysAgo }
+    }).select('_id');
+    
+    let resolvedCount = 0;
+    resolvedComplaints.forEach(c => {
+      if (!readIds.has(`resolved_${c._id}`)) resolvedCount++;
+    });
+
+    // Count violations (within 30 days, unread only)
+    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
+    const violationComplaints = await Complaint.find({
+      actionTaken: { $exists: true, $ne: null },
+      resolvedAt: { $gte: thirtyDaysAgo }
+    }).select('_id');
+    
+    let violationCount = 0;
+    violationComplaints.forEach(c => {
+      if (!readIds.has(`violation_${c._id}`)) violationCount++;
+    });
+
     res.status(200).json({
       success: true,
       counts: {
         disputes: disputeCount,
         expiring: expiringCount,
         complaints: complaintCount,
-        total: disputeCount + expiringCount + complaintCount,
+        lostFound: lostFoundCount,
+        resolved: resolvedCount,
+        violations: violationCount,
+        total: disputeCount + expiringCount + complaintCount + lostFoundCount + resolvedCount + violationCount,
       }
     });
   } catch (error) {

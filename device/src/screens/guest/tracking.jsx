@@ -31,8 +31,10 @@ import Ionicons from 'react-native-vector-icons/Ionicons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import axios from 'axios';
 import Constants from 'expo-constants';
+import { useNavigation } from '@react-navigation/native';
 
 import { colors, spacing } from '../../components/common/theme';
+import { getUserCredentials } from '../../utils/userStorage';
 
 const BASE_URL = Constants.expoConfig?.extra?.BACKEND_URL || 'http://192.168.254.105:5000';
 
@@ -215,10 +217,15 @@ function parseGPX(gpxContent) {
 }
 
 const GuestTracking = () => {
+  const navigation = useNavigation();
   const mapRef = useRef(null);
   const watchRef = useRef(null);
   const syncIntervalRef = useRef(null);
   const reliveAnimRef = useRef(null);
+
+  // Authentication state
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [checkingAuth, setCheckingAuth] = useState(true);
 
   // Location state
   const [region, setRegion] = useState(null);
@@ -267,11 +274,34 @@ const GuestTracking = () => {
   const distanceRef = useRef(0);
   const activeTripIdRef = useRef(null);
 
+  // Check authentication on mount
+  useEffect(() => {
+    checkAuthentication();
+  }, []);
+
+  const checkAuthentication = async () => {
+    try {
+      const credentials = await getUserCredentials();
+      if (credentials && (credentials._id || credentials.id)) {
+        setIsAuthenticated(true);
+      } else {
+        setIsAuthenticated(false);
+      }
+    } catch (error) {
+      console.error('Error checking authentication:', error);
+      setIsAuthenticated(false);
+    } finally {
+      setCheckingAuth(false);
+    }
+  };
+
   // Initialize device ID and check for active trip
   useEffect(() => {
-    initializeTracking();
-    return () => cleanup();
-  }, []);
+    if (isAuthenticated) {
+      initializeTracking();
+      return () => cleanup();
+    }
+  }, [isAuthenticated]);
 
   // Update trip duration while recording
   useEffect(() => {
@@ -1055,6 +1085,39 @@ const GuestTracking = () => {
     </TouchableOpacity>
   );
 
+  // Show loading while checking authentication
+  if (checkingAuth) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+        <View style={styles.authContainer}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={styles.authText}>Loading...</Text>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
+  // Show login prompt if not authenticated
+  if (!isAuthenticated) {
+    return (
+      <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
+        <View style={styles.authContainer}>
+          <Ionicons name="lock-closed-outline" size={80} color={colors.primary} />
+          <Text style={styles.authTitle}>Login Required</Text>
+          <Text style={styles.authText}>
+            Please log in to access GPS Tracking feature
+          </Text>
+          <TouchableOpacity 
+            style={styles.loginButton}
+            onPress={() => navigation.navigate('Login')}
+          >
+            <Text style={styles.loginButtonText}>Go to Login</Text>
+          </TouchableOpacity>
+        </View>
+      </SafeAreaView>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       {/* Header */}
@@ -1356,6 +1419,36 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: colors.ivory1,
+  },
+  authContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: spacing.large,
+  },
+  authTitle: {
+    fontSize: 24,
+    fontWeight: '700',
+    color: colors.primary,
+    marginTop: spacing.large,
+    marginBottom: spacing.small,
+  },
+  authText: {
+    fontSize: 16,
+    color: colors.orangeShade5,
+    textAlign: 'center',
+    marginBottom: spacing.large,
+  },
+  loginButton: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: spacing.large * 2,
+    paddingVertical: spacing.medium,
+    borderRadius: 12,
+  },
+  loginButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '600',
   },
   header: {
     flexDirection: 'row',

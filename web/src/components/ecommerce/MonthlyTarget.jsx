@@ -4,8 +4,24 @@ import { Dropdown } from "../ui/dropdown/Dropdown";
 import { DropdownItem } from "../ui/dropdown/DropdownItem";
 import { MoreDotIcon } from "../../icons";
 
-export default function MonthlyTarget({ stats, loading }) {
+const InfoIcon = () => (
+  <svg className="size-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 cursor-help" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+  </svg>
+);
+
+const ChevronDownIcon = () => (
+  <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
+  </svg>
+);
+
+export default function MonthlyTarget({ stats, loading, selectedYear, availableYears, onYearChange }) {
   const [isOpen, setIsOpen] = useState(false);
+  const [showTooltip, setShowTooltip] = useState(false);
+  const [showYearDropdown, setShowYearDropdown] = useState(false);
+
+  const currentYear = new Date().getFullYear();
 
   // Calculate current month's performance
   const currentMonthIndex = stats?.monthlyRevenue?.currentMonth ?? new Date().getMonth();
@@ -91,6 +107,7 @@ export default function MonthlyTarget({ stats, loading }) {
   const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 
                       'July', 'August', 'September', 'October', 'November', 'December'];
   const currentMonthName = monthNames[currentMonthIndex];
+  const isViewingCurrentYear = selectedYear === currentYear;
 
   const isAboveAverage = currentMonthRevenue > avgMonthlyRevenue;
 
@@ -98,30 +115,61 @@ export default function MonthlyTarget({ stats, loading }) {
     <div className="rounded-2xl border border-gray-200 bg-gray-100 dark:border-gray-800 dark:bg-white/[0.03]">
       <div className="px-5 pt-5 bg-white shadow-default rounded-2xl pb-11 dark:bg-gray-900 sm:px-6 sm:pt-6">
         <div className="flex justify-between">
-          <div>
-            <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">
-              {currentMonthName} Performance
-            </h3>
-            <p className="mt-1 text-gray-500 text-theme-sm dark:text-gray-400">
-              Compared to monthly average
-            </p>
-          </div>
-          <div className="relative inline-block">
-            <button className="dropdown-toggle" onClick={toggleDropdown}>
-              <MoreDotIcon className="text-gray-400 hover:text-gray-700 dark:hover:text-gray-300 size-6" />
-            </button>
-            <Dropdown
-              isOpen={isOpen}
-              onClose={closeDropdown}
-              className="w-40 p-2"
+          <div className="flex items-start gap-2">
+            <div>
+              <h3 className="text-lg font-semibold text-gray-800 dark:text-white/90">
+                {isViewingCurrentYear ? currentMonthName : selectedYear} Performance
+              </h3>
+              <p className="mt-1 text-gray-500 text-theme-sm dark:text-gray-400">
+                {isViewingCurrentYear ? 'Compared to monthly average' : 'Annual Performance Overview'}
+              </p>
+            </div>
+            <div 
+              className="relative mt-1"
+              onMouseEnter={() => setShowTooltip(true)}
+              onMouseLeave={() => setShowTooltip(false)}
             >
-              <DropdownItem
-                onItemClick={closeDropdown}
-                className="flex w-full font-normal text-left text-gray-500 rounded-lg hover:bg-gray-100 hover:text-gray-700 dark:text-gray-400 dark:hover:bg-white/5 dark:hover:text-gray-300"
-              >
-                View Details
-              </DropdownItem>
-            </Dropdown>
+              <InfoIcon />
+              {showTooltip && (
+                <div className="absolute left-0 top-6 z-50 w-72 p-3 bg-gray-800 text-white text-xs rounded-lg shadow-lg dark:bg-gray-700">
+                  <p className="font-semibold mb-1">Monthly Performance Chart</p>
+                  <p>Shows current month's revenue performance compared to the average of all previous months.</p>
+                  <p className="mt-2 text-gray-300"><span className="text-blue-400">Progress %</span> = Current Month Revenue ÷ Average Monthly Revenue</p>
+                  <p className="mt-1 text-gray-300">Source: Completed bookings (agreedFare)</p>
+                  <div className="absolute -top-1 left-2 w-2 h-2 bg-gray-800 dark:bg-gray-700 rotate-45"></div>
+                </div>
+              )}
+            </div>
+          </div>
+          {/* Year Selector */}
+          <div className="relative">
+            <button
+              onClick={() => setShowYearDropdown(!showYearDropdown)}
+              className="flex items-center gap-2 px-3 py-1.5 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700 transition-colors"
+            >
+              {selectedYear}
+              <ChevronDownIcon />
+            </button>
+            {showYearDropdown && (
+              <div className="absolute right-0 top-full mt-1 z-50 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg py-1 min-w-[100px]">
+                {availableYears?.map((year) => (
+                  <button
+                    key={year}
+                    onClick={() => {
+                      onYearChange(year);
+                      setShowYearDropdown(false);
+                    }}
+                    className={`w-full px-4 py-2 text-sm text-left hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors ${
+                      year === selectedYear 
+                        ? 'text-blue-600 dark:text-blue-400 font-medium bg-blue-50 dark:bg-blue-900/20' 
+                        : 'text-gray-700 dark:text-gray-300'
+                    }`}
+                  >
+                    {year}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </div>
         <div className="relative">

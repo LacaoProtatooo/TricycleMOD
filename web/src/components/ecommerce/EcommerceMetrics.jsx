@@ -42,7 +42,7 @@ const InfoIcon = () => (
 );
 
 export default function EcommerceMetrics({ stats, loading }) {
-  const [showTooltip, setShowTooltip] = useState(false);
+  const [activeTooltip, setActiveTooltip] = useState(null);
 
   const formatNumber = (num) => {
     if (num === undefined || num === null) return '0';
@@ -54,12 +54,35 @@ export default function EcommerceMetrics({ stats, loading }) {
     return `₱${amount.toLocaleString('en-PH', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
   };
 
+  const Tooltip = ({ id, title, children }) => (
+    <div 
+      className="relative"
+      onMouseEnter={() => setActiveTooltip(id)}
+      onMouseLeave={() => setActiveTooltip(null)}
+    >
+      <InfoIcon />
+      {activeTooltip === id && (
+        <div className="absolute right-0 top-6 z-50 w-64 p-3 bg-gray-800 text-white text-xs rounded-lg shadow-lg dark:bg-gray-700">
+          <p className="font-semibold mb-1">{title}</p>
+          {children}
+          <div className="absolute -top-1 right-2 w-2 h-2 bg-gray-800 dark:bg-gray-700 rotate-45"></div>
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3 md:gap-6">
       {/* Total Users */}
       <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] md:p-6">
-        <div className="flex items-center justify-center w-12 h-12 bg-blue-100 rounded-xl dark:bg-blue-900/30">
-          <UsersIcon />
+        <div className="flex items-center justify-between">
+          <div className="flex items-center justify-center w-12 h-12 bg-blue-100 rounded-xl dark:bg-blue-900/30">
+            <UsersIcon />
+          </div>
+          <Tooltip id="users" title="Total Users">
+            <p>Count of all registered users in the system including guests, drivers, operators, and admins.</p>
+            <p className="mt-2 text-gray-300">Source: User collection</p>
+          </Tooltip>
         </div>
         <div className="mt-5">
           <span className="text-sm text-gray-500 dark:text-gray-400">
@@ -73,8 +96,15 @@ export default function EcommerceMetrics({ stats, loading }) {
 
       {/* Total Drivers */}
       <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] md:p-6">
-        <div className="flex items-center justify-center w-12 h-12 bg-green-100 rounded-xl dark:bg-green-900/30">
-          <DriverIcon />
+        <div className="flex items-center justify-between">
+          <div className="flex items-center justify-center w-12 h-12 bg-green-100 rounded-xl dark:bg-green-900/30">
+            <DriverIcon />
+          </div>
+          <Tooltip id="drivers" title="Total Drivers">
+            <p>Count of users with the <span className="text-green-400">driver</span> role who operate tricycles.</p>
+            <p className="mt-2 text-gray-300">Verified: {stats?.users?.verifiedDrivers || 0}</p>
+            <p className="text-gray-300">Pending: {stats?.users?.pendingDrivers || 0}</p>
+          </Tooltip>
         </div>
         <div className="mt-5">
           <span className="text-sm text-gray-500 dark:text-gray-400">
@@ -88,8 +118,14 @@ export default function EcommerceMetrics({ stats, loading }) {
 
       {/* Total Operators */}
       <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] md:p-6">
-        <div className="flex items-center justify-center w-12 h-12 bg-purple-100 rounded-xl dark:bg-purple-900/30">
-          <OperatorIcon />
+        <div className="flex items-center justify-between">
+          <div className="flex items-center justify-center w-12 h-12 bg-purple-100 rounded-xl dark:bg-purple-900/30">
+            <OperatorIcon />
+          </div>
+          <Tooltip id="operators" title="Total Operators">
+            <p>Count of users with the <span className="text-purple-400">operator</span> role who own and manage tricycles.</p>
+            <p className="mt-2 text-gray-300">Source: Users with role "operator"</p>
+          </Tooltip>
         </div>
         <div className="mt-5">
           <span className="text-sm text-gray-500 dark:text-gray-400">
@@ -103,8 +139,15 @@ export default function EcommerceMetrics({ stats, loading }) {
 
       {/* Total Tricycles */}
       <div className="rounded-2xl border border-gray-200 bg-white p-5 dark:border-gray-800 dark:bg-white/[0.03] md:p-6">
-        <div className="flex items-center justify-center w-12 h-12 bg-orange-100 rounded-xl dark:bg-orange-900/30">
-          <TricycleIcon />
+        <div className="flex items-center justify-between">
+          <div className="flex items-center justify-center w-12 h-12 bg-orange-100 rounded-xl dark:bg-orange-900/30">
+            <TricycleIcon />
+          </div>
+          <Tooltip id="tricycles" title="Total Tricycles">
+            <p>Count of all registered tricycles in the system.</p>
+            <p className="mt-2 text-gray-300">Active: {stats?.tricycles?.active || 0}</p>
+            <p className="text-gray-300">Source: Tricycle collection</p>
+          </Tooltip>
         </div>
         <div className="mt-5">
           <span className="text-sm text-gray-500 dark:text-gray-400">
@@ -122,22 +165,11 @@ export default function EcommerceMetrics({ stats, loading }) {
           <div className="flex items-center justify-center w-12 h-12 bg-emerald-100 rounded-xl dark:bg-emerald-900/30">
             <RevenueIcon />
           </div>
-          <div 
-            className="relative"
-            onMouseEnter={() => setShowTooltip(true)}
-            onMouseLeave={() => setShowTooltip(false)}
-          >
-            <InfoIcon />
-            {showTooltip && (
-              <div className="absolute right-0 top-6 z-50 w-64 p-3 bg-gray-800 text-white text-xs rounded-lg shadow-lg dark:bg-gray-700">
-                <p className="font-semibold mb-1">How Total Revenue is Computed:</p>
-                <p>Sum of all <span className="text-emerald-400">agreedFare</span> values from completed bookings (status: "completed").</p>
-                <p className="mt-2 text-gray-300">Total Trips: {stats?.revenue?.totalTrips || 0}</p>
-                <p className="text-gray-300">Average Fare: {formatCurrency(stats?.revenue?.avgFare)}</p>
-                <div className="absolute -top-1 right-2 w-2 h-2 bg-gray-800 dark:bg-gray-700 rotate-45"></div>
-              </div>
-            )}
-          </div>
+          <Tooltip id="revenue" title="How Total Revenue is Computed:">
+            <p>Sum of all <span className="text-emerald-400">agreedFare</span> values from completed bookings (status: "completed").</p>
+            <p className="mt-2 text-gray-300">Total Trips: {stats?.revenue?.totalTrips || 0}</p>
+            <p className="text-gray-300">Average Fare: {formatCurrency(stats?.revenue?.avgFare)}</p>
+          </Tooltip>
         </div>
         <div className="mt-5">
           <span className="text-sm text-gray-500 dark:text-gray-400">

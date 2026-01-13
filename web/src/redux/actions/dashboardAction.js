@@ -18,10 +18,11 @@ const getAuthHeaders = () => {
  */
 export const fetchDashboardStats = createAsyncThunk(
   'dashboard/fetchStats',
-  async (_, { rejectWithValue }) => {
+  async (year, { rejectWithValue }) => {
     try {
+      const params = year ? `?year=${year}` : '';
       const response = await axios.get(
-        `${API_URL}/dashboard/stats`,
+        `${API_URL}/dashboard/stats${params}`,
         getAuthHeaders()
       );
       return response.data;

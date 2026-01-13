@@ -10,12 +10,12 @@ export default function SidebarWidget() {
       <p className="mb-4 text-gray-500 text-theme-sm dark:text-gray-400">
         Western Bicutan Tenement - Tricycle Regulatory and Compliance System
       </p>
-      <a
+      {/* <a
         href="/about"
         className="flex items-center justify-center p-3 font-medium text-white rounded-lg bg-brand-500 text-theme-sm hover:bg-brand-600"
       >
         Learn More
-      </a>
+      </a> */}
     </div>
   );
 }
