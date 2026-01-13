@@ -76,7 +76,8 @@ const BOOKING_STATUS = {
   SELECTING_LOCATIONS: 'selecting_locations',
   SETTING_FARE: 'setting_fare',
   WAITING_FOR_DRIVER: 'waiting_for_driver',
-  OFFER_RECEIVED: 'offer_received',
+  OFFERS_RECEIVED: 'offers_received',  // New: multiple offers available
+  OFFER_RECEIVED: 'offer_received',    // Kept for backward compatibility
   TRIP_ACTIVE: 'trip_active',
   AWAITING_CONFIRMATION: 'awaiting_confirmation',
   TRIP_COMPLETED: 'trip_completed',
@@ -137,6 +138,11 @@ const BookingScreen = ({ navigation }) => {
   const [cancellationDetails, setCancellationDetails] = useState(null);
   const [reportReason, setReportReason] = useState('');
   const [isReporting, setIsReporting] = useState(false);
+  
+  // Multi-offer state
+  const [driverOffers, setDriverOffers] = useState([]);
+  const [showOffersModal, setShowOffersModal] = useState(false);
+  const [selectedOffer, setSelectedOffer] = useState(null);
   
   // Trip tracking
   const [distanceToDestination, setDistanceToDestination] = useState(null);
@@ -216,11 +222,26 @@ const BookingScreen = ({ navigation }) => {
         setDestinationLocation(currentBooking.destination);
       }
       
+      // Update driver offers state for multi-offer support
+      if (currentBooking.driverOffers && currentBooking.driverOffers.length > 0) {
+        const pendingOffers = currentBooking.driverOffers.filter(offer => offer.status === 'pending');
+        setDriverOffers(pendingOffers);
+      } else {
+        setDriverOffers([]);
+      }
+      
       switch (currentBooking.status) {
         case 'pending':
-          setBookingStatus(BOOKING_STATUS.WAITING_FOR_DRIVER);
+          // Check if there are pending driver offers
+          const pendingOffers = currentBooking.driverOffers?.filter(offer => offer.status === 'pending') || [];
+          if (pendingOffers.length > 0) {
+            setBookingStatus(BOOKING_STATUS.OFFERS_RECEIVED);
+          } else {
+            setBookingStatus(BOOKING_STATUS.WAITING_FOR_DRIVER);
+          }
           break;
         case 'offer_made':
+          // Backward compatibility for single offer
           setBookingStatus(BOOKING_STATUS.OFFER_RECEIVED);
           setOfferedFare(currentBooking.driverOffer?.amount);
           break;
@@ -452,11 +473,63 @@ const BookingScreen = ({ navigation }) => {
 
   const handleAcceptOffer = () => {
     if (currentBooking) {
+      // For backward compatibility with single offer
       dispatch(respondToOffer({
         bookingId: currentBooking._id,
         accepted: true,
         db,
       }));
+    }
+  };
+
+  // Accept a specific offer from multiple offers
+  const handleAcceptSpecificOffer = (offer) => {
+    if (currentBooking && offer) {
+      Alert.alert(
+        'Accept Offer',
+        `Accept ₱${offer.amount} from ${offer.driver?.firstname || 'Driver'}?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Accept',
+            onPress: () => {
+              dispatch(respondToOffer({
+                bookingId: currentBooking._id,
+                accepted: true,
+                offerId: offer._id,
+                db,
+              }));
+              setShowOffersModal(false);
+              setSelectedOffer(null);
+            },
+          },
+        ]
+      );
+    }
+  };
+
+  // Decline a specific offer
+  const handleDeclineSpecificOffer = (offer) => {
+    if (currentBooking && offer) {
+      Alert.alert(
+        'Decline Offer',
+        `Decline offer from ${offer.driver?.firstname || 'Driver'}?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Decline',
+            style: 'destructive',
+            onPress: () => {
+              dispatch(respondToOffer({
+                bookingId: currentBooking._id,
+                accepted: false,
+                offerId: offer._id,
+                db,
+              }));
+            },
+          },
+        ]
+      );
     }
   };
 
@@ -525,6 +598,10 @@ const BookingScreen = ({ navigation }) => {
     setReportReason('');
     setDisputeReason('');
     setShowCompletionModal(false);
+    // Reset multi-offer states
+    setDriverOffers([]);
+    setShowOffersModal(false);
+    setSelectedOffer(null);
     // Reset WEBTODA area warning states
     setDestinationWarning(null);
     setShowAreaWarningModal(false);
@@ -773,6 +850,7 @@ const BookingScreen = ({ navigation }) => {
               {bookingStatus === BOOKING_STATUS.SELECTING_LOCATIONS && 'Select locations'}
               {bookingStatus === BOOKING_STATUS.SETTING_FARE && 'Set your fare'}
               {bookingStatus === BOOKING_STATUS.WAITING_FOR_DRIVER && 'Finding drivers...'}
+              {bookingStatus === BOOKING_STATUS.OFFERS_RECEIVED && `${driverOffers.length} driver offer${driverOffers.length > 1 ? 's' : ''} available`}
               {bookingStatus === BOOKING_STATUS.OFFER_RECEIVED && 'Driver offer received'}
               {bookingStatus === BOOKING_STATUS.TRIP_ACTIVE && 'Trip in progress'}
               {bookingStatus === BOOKING_STATUS.TRIP_COMPLETED && 'Trip completed'}
@@ -1140,6 +1218,98 @@ const BookingScreen = ({ navigation }) => {
                 Your offer: ₱{currentBooking?.preferredFare || preferredFare}
               </Text>
             </View>
+            <TouchableOpacity
+              style={styles.cancelButton}
+              onPress={handleCancelBooking}
+            >
+              <Text style={styles.cancelButtonText}>Cancel Request</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* OFFERS_RECEIVED State - Multiple driver offers */}
+        {bookingStatus === BOOKING_STATUS.OFFERS_RECEIVED && (
+          <View style={styles.panelContent}>
+            <View style={styles.offersHeader}>
+              <Text style={styles.panelTitle}>
+                {driverOffers.length} Driver{driverOffers.length > 1 ? 's' : ''} Interested!
+              </Text>
+              <Text style={styles.panelDescription}>
+                Choose the best offer for your trip
+              </Text>
+            </View>
+            
+            <Text style={styles.yourFareLabel}>
+              Your offer: ₱{currentBooking?.preferredFare || preferredFare}
+            </Text>
+
+            <ScrollView 
+              style={styles.offersScrollView}
+              showsVerticalScrollIndicator={false}
+              nestedScrollEnabled={true}
+            >
+              {driverOffers.map((offer, index) => (
+                <View key={offer._id || index} style={styles.offerCard}>
+                  <View style={styles.offerDriverInfo}>
+                    <View style={styles.driverAvatarSmall}>
+                      <Ionicons name="person" size={20} color="#fff" />
+                    </View>
+                    <View style={styles.offerDriverDetails}>
+                      <Text style={styles.offerDriverName}>
+                        {offer.driver?.firstname || 'Driver'} {offer.driver?.lastname || ''}
+                      </Text>
+                      <View style={styles.ratingDisplaySmall}>
+                        <Ionicons name="star" size={12} color={colors.starYellow} />
+                        <Text style={styles.ratingTextSmall}>
+                          {offer.driver?.rating?.toFixed(1) || 'N/A'}
+                        </Text>
+                        {offer.tricycle?.plateNumber && (
+                          <Text style={styles.plateNumber}>
+                            • {offer.tricycle.plateNumber}
+                          </Text>
+                        )}
+                      </View>
+                    </View>
+                    <View style={styles.offerAmountContainer}>
+                      <Text style={styles.offerAmountLabel}>Fare</Text>
+                      <Text style={[
+                        styles.offerAmount,
+                        offer.amount <= (currentBooking?.preferredFare || 0) && styles.offerAmountGood
+                      ]}>
+                        ₱{offer.amount}
+                      </Text>
+                    </View>
+                  </View>
+                  
+                  {offer.message ? (
+                    <View style={styles.offerMessageContainer}>
+                      <Ionicons name="chatbubble-outline" size={12} color="#666" />
+                      <Text style={styles.offerMessage} numberOfLines={2}>
+                        {offer.message}
+                      </Text>
+                    </View>
+                  ) : null}
+                  
+                  <View style={styles.offerActions}>
+                    <TouchableOpacity
+                      style={styles.declineOfferButton}
+                      onPress={() => handleDeclineSpecificOffer(offer)}
+                    >
+                      <Ionicons name="close-outline" size={18} color="#dc3545" />
+                      <Text style={styles.declineOfferText}>Decline</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.acceptOfferButton}
+                      onPress={() => handleAcceptSpecificOffer(offer)}
+                    >
+                      <Ionicons name="checkmark-outline" size={18} color="#fff" />
+                      <Text style={styles.acceptOfferText}>Accept</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ))}
+            </ScrollView>
+
             <TouchableOpacity
               style={styles.cancelButton}
               onPress={handleCancelBooking}
@@ -1965,6 +2135,127 @@ const styles = StyleSheet.create({
     color: '#dc3545',
     fontSize: 14,
     fontWeight: '600',
+  },
+
+  // Multi-offer styles
+  offersHeader: {
+    marginBottom: spacing.small,
+  },
+  yourFareLabel: {
+    fontSize: 14,
+    color: colors.orangeShade5,
+    marginBottom: spacing.medium,
+  },
+  offersScrollView: {
+    maxHeight: 300,
+  },
+  offerCard: {
+    backgroundColor: colors.ivory4,
+    borderRadius: 12,
+    padding: spacing.medium,
+    marginBottom: spacing.small,
+    borderWidth: 1,
+    borderColor: colors.ivory3,
+  },
+  offerDriverInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  driverAvatarSmall: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: spacing.small,
+  },
+  offerDriverDetails: {
+    flex: 1,
+  },
+  offerDriverName: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.orangeShade7,
+  },
+  ratingDisplaySmall: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 2,
+  },
+  ratingTextSmall: {
+    fontSize: 12,
+    color: colors.orangeShade5,
+    marginLeft: 3,
+  },
+  plateNumber: {
+    fontSize: 12,
+    color: colors.orangeShade4,
+    marginLeft: 4,
+  },
+  offerAmountContainer: {
+    alignItems: 'flex-end',
+  },
+  offerAmountLabel: {
+    fontSize: 10,
+    color: colors.orangeShade4,
+    marginBottom: 2,
+  },
+  offerAmountGood: {
+    color: '#28a745',
+  },
+  offerMessageContainer: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: colors.ivory3,
+    padding: spacing.small,
+    borderRadius: 8,
+    marginTop: spacing.small,
+    marginBottom: spacing.small,
+  },
+  offerMessage: {
+    flex: 1,
+    fontSize: 12,
+    color: colors.orangeShade6,
+    marginLeft: 6,
+    fontStyle: 'italic',
+  },
+  offerActions: {
+    flexDirection: 'row',
+    marginTop: spacing.small,
+  },
+  declineOfferButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#fff',
+    paddingVertical: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#dc3545',
+    marginRight: spacing.small,
+  },
+  declineOfferText: {
+    color: '#dc3545',
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 4,
+  },
+  acceptOfferButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#28a745',
+    paddingVertical: 10,
+    borderRadius: 8,
+  },
+  acceptOfferText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 4,
   },
 
   // Driver info

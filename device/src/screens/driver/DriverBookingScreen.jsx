@@ -395,48 +395,106 @@ const DriverBookingScreen = ({ navigation }) => {
 
   /**
    * Check for offers the driver made that are awaiting user response
+   * Updated for multi-offer support - uses new endpoint
    */
   const checkPendingOffers = async (token = null) => {
     const currentToken = token || authToken;
     if (!currentToken) return;
 
     try {
+      // Use the new driver pending offers endpoint
       const response = await axios.get(
-        `${API_URL}/driver?status=offer_made`,
+        `${API_URL}/driver/pending-offers`,
         getAuthHeaders(currentToken)
       );
 
       if (response.data.success) {
-        const offers = response.data.bookings || [];
-        setPendingOffers(offers);
+        const offers = response.data.pendingOffers || [];
+        // Map to the expected format for display
+        const formattedOffers = offers.map(item => ({
+          _id: item.booking._id,
+          user: item.booking.user,
+          pickup: item.booking.pickup,
+          destination: item.booking.destination,
+          preferredFare: item.booking.preferredFare,
+          createdAt: item.booking.createdAt,
+          expiresAt: item.booking.expiresAt,
+          driverOffer: item.offer,
+        }));
+        setPendingOffers(formattedOffers);
         
-        // If we had pending offers before, check if any have been accepted
-        // by re-checking for accepted bookings
-        if (offers.length < pendingOffers.length || pendingOffers.length > 0) {
-          const acceptedResponse = await axios.get(
-            `${API_URL}/driver?status=accepted`,
-            getAuthHeaders(currentToken)
+        // Check if any of our offers have been accepted
+        const acceptedResponse = await axios.get(
+          `${API_URL}/driver?status=accepted`,
+          getAuthHeaders(currentToken)
+        );
+        
+        if (acceptedResponse.data.success && acceptedResponse.data.bookings?.length > 0) {
+          const acceptedBooking = acceptedResponse.data.bookings[0];
+          setActiveBooking(acceptedBooking);
+          setIsOnline(true);
+          setIsPickedUp(false);
+          startLocationTracking();
+          Alert.alert(
+            'Offer Accepted!',
+            'A passenger has accepted your offer. Navigate to the pickup location.',
+            [{ text: 'OK' }]
           );
-          
-          if (acceptedResponse.data.success && acceptedResponse.data.bookings?.length > 0) {
-            const acceptedBooking = acceptedResponse.data.bookings[0];
-            setActiveBooking(acceptedBooking);
-            setIsOnline(true);
-            setIsPickedUp(false);
-            startLocationTracking();
-            Alert.alert(
-              'Offer Accepted!',
-              'A passenger has accepted your offer. Navigate to the pickup location.',
-              [{ text: 'OK' }]
-            );
-          }
         }
       } else {
         setPendingOffers([]);
       }
     } catch (error) {
       console.error('Error checking pending offers:', error);
+      // Fallback to old endpoint format if new one doesn't exist
+      try {
+        const fallbackResponse = await axios.get(
+          `${API_URL}/driver?status=offer_made`,
+          getAuthHeaders(currentToken)
+        );
+        if (fallbackResponse.data.success) {
+          setPendingOffers(fallbackResponse.data.bookings || []);
+        }
+      } catch (fallbackError) {
+        console.error('Fallback also failed:', fallbackError);
+      }
     }
+  };
+
+  /**
+   * Withdraw an offer that is still pending
+   */
+  const handleWithdrawOffer = async (bookingId) => {
+    if (!authToken) return;
+
+    Alert.alert(
+      'Withdraw Offer',
+      'Are you sure you want to withdraw your offer?',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Withdraw',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              const response = await axios.post(
+                `${API_URL}/${bookingId}/withdraw-offer`,
+                {},
+                getAuthHeaders()
+              );
+
+              if (response.data.success) {
+                Alert.alert('Success', 'Your offer has been withdrawn.');
+                // Refresh pending offers
+                await checkPendingOffers();
+              }
+            } catch (error) {
+              Alert.alert('Error', error.response?.data?.message || 'Failed to withdraw offer');
+            }
+          },
+        },
+      ]
+    );
   };
 
   const fetchNearbyBookings = async () => {
@@ -1259,7 +1317,7 @@ const DriverBookingScreen = ({ navigation }) => {
             <View style={styles.pendingOffersSection}>
               <View style={styles.sectionHeader}>
                 <Ionicons name="hourglass-outline" size={20} color={colors.primary} />
-                <Text style={styles.sectionTitle}>Pending Offers</Text>
+                <Text style={styles.sectionTitle}>Your Pending Offers</Text>
                 <View style={styles.pendingBadge}>
                   <Text style={styles.pendingBadgeText}>{pendingOffers.length}</Text>
                 </View>
@@ -1288,11 +1346,26 @@ const DriverBookingScreen = ({ navigation }) => {
                       </Text>
                     </View>
                     <View style={styles.pendingOfferRow}>
+                      <Ionicons name="pricetag-outline" size={16} color="#6c757d" />
+                      <Text style={styles.pendingOfferOriginal}>
+                        Guest's fare: ₱{offer.preferredFare}
+                      </Text>
+                    </View>
+                    <View style={styles.pendingOfferRow}>
                       <Ionicons name="location" size={16} color={colors.primary} />
                       <Text style={styles.pendingOfferLocation} numberOfLines={1}>
                         {offer.pickup?.address || 'Pickup location'}
                       </Text>
                     </View>
+                  </View>
+                  <View style={styles.pendingOfferActions}>
+                    <TouchableOpacity
+                      style={styles.withdrawOfferBtn}
+                      onPress={() => handleWithdrawOffer(offer._id)}
+                    >
+                      <Ionicons name="close-outline" size={16} color="#dc3545" />
+                      <Text style={styles.withdrawOfferBtnText}>Withdraw</Text>
+                    </TouchableOpacity>
                   </View>
                   <Text style={styles.pendingOfferHint}>
                     Waiting for passenger to accept or decline...
@@ -2646,11 +2719,38 @@ const styles = StyleSheet.create({
     color: '#28a745',
     marginLeft: 8,
   },
+  pendingOfferOriginal: {
+    fontSize: 13,
+    color: '#6c757d',
+    marginLeft: 8,
+  },
   pendingOfferLocation: {
     fontSize: 13,
     color: colors.orangeShade6 || '#555',
     marginLeft: 8,
     flex: 1,
+  },
+  pendingOfferActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    marginTop: 8,
+    marginBottom: 8,
+  },
+  withdrawOfferBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: '#dc3545',
+  },
+  withdrawOfferBtnText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#dc3545',
+    marginLeft: 4,
   },
   pendingOfferHint: {
     fontSize: 12,

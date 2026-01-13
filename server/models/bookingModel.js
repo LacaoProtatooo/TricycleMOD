@@ -68,7 +68,7 @@ const bookingSchema = new mongoose.Schema({
     min: [0, 'Fare cannot be negative'],
   },
   
-  // Driver's counter offer
+  // Driver's counter offer (kept for backward compatibility - stores the accepted offer)
   driverOffer: {
     amount: {
       type: Number,
@@ -83,6 +83,38 @@ const bookingSchema = new mongoose.Schema({
       default: '',
     },
   },
+  
+  // Multiple driver offers (new feature)
+  driverOffers: [{
+    driver: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'User',
+      required: true,
+    },
+    tricycle: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: 'Tricycle',
+      default: null,
+    },
+    amount: {
+      type: Number,
+      required: true,
+      min: [0, 'Offer amount cannot be negative'],
+    },
+    message: {
+      type: String,
+      default: '',
+    },
+    offeredAt: {
+      type: Date,
+      default: Date.now,
+    },
+    status: {
+      type: String,
+      enum: ['pending', 'accepted', 'declined', 'withdrawn'],
+      default: 'pending',
+    },
+  }],
   
   // Final agreed fare
   agreedFare: {

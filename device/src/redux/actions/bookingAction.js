@@ -205,8 +205,9 @@ export const getActiveBooking = (db) => async (dispatch) => {
 
 /**
  * Respond to driver's fare offer (accept or decline)
+ * For multi-offer support, offerId should be provided to specify which offer to respond to
  */
-export const respondToOffer = ({ bookingId, accepted, db }) => async (dispatch) => {
+export const respondToOffer = ({ bookingId, accepted, offerId, db }) => async (dispatch) => {
   try {
     dispatch({ type: BOOKING_TYPES.RESPOND_OFFER_REQUEST });
 
@@ -220,7 +221,7 @@ export const respondToOffer = ({ bookingId, accepted, db }) => async (dispatch) 
 
     const { data } = await axios.post(
       `${API_URL}/${bookingId}/respond-offer`,
-      { accepted },
+      { accepted, offerId },
       config
     );
 

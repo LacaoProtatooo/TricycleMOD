@@ -254,6 +254,9 @@ export const getBookingDetails = async (req, res) => {
 /**
  * Driver accepts a booking and optionally makes a counter offer
  * POST /api/booking/:id/driver-respond
+ * 
+ * Multi-offer support: Multiple drivers can make counter offers.
+ * The booking remains 'pending' until the guest accepts one offer.
  */
 export const driverRespondToBooking = async (req, res) => {
   try {
@@ -268,10 +271,11 @@ export const driverRespondToBooking = async (req, res) => {
       });
     }
 
+    // Allow offers on pending bookings (multi-offer support)
     if (booking.status !== 'pending') {
       return res.status(400).json({
         success: false,
-        message: 'This booking is no longer available',
+        message: 'This booking is no longer available for offers',
       });
     }
 
@@ -285,64 +289,116 @@ export const driverRespondToBooking = async (req, res) => {
       });
     }
 
+    // Check if this driver already made an offer
+    const existingOffer = booking.driverOffers?.find(
+      offer => offer.driver.toString() === driverId.toString() && offer.status === 'pending'
+    );
+
+    if (existingOffer) {
+      return res.status(400).json({
+        success: false,
+        message: 'You have already made an offer on this booking. Please wait for the guest to respond.',
+      });
+    }
+
+    // Get driver's tricycle
+    const Tricycle = (await import('../models/tricycleModel.js')).default;
+    const driverTricycle = await Tricycle.findOne({ driver: driverId });
+
     if (accept && !counterOffer) {
-      // Driver accepts at user's preferred fare
-      booking.driver = driverId;
-      booking.agreedFare = booking.preferredFare;
-      booking.status = 'accepted';
-      booking.acceptedAt = new Date();
+      // Driver accepts at user's preferred fare - add as an offer
+      const newOffer = {
+        driver: driverId,
+        tricycle: driverTricycle?._id || null,
+        amount: booking.preferredFare,
+        message: message || 'I accept your fare offer.',
+        offeredAt: new Date(),
+        status: 'pending',
+      };
+
+      booking.driverOffers = booking.driverOffers || [];
+      booking.driverOffers.push(newOffer);
+      
+      await booking.save();
+      
+      // Populate driver info for response
+      await booking.populate('driverOffers.driver', 'firstname lastname rating image phone');
+      await booking.populate('driverOffers.tricycle', 'plateNumber bodyNumber');
+      
+      // Notify the user about new offer
+      const user = await User.findById(booking.user);
+      const driver = await User.findById(driverId);
+      if (user && user.FCMToken) {
+        await sendNotification(
+          user.FCMToken,
+          '🚗 New Driver Offer!',
+          `Driver ${driver.firstname} offers ₱${booking.preferredFare} for your trip`,
+          {
+            type: 'new_driver_offer',
+            bookingId: booking._id.toString(),
+            offerAmount: booking.preferredFare.toString(),
+            driverName: driver.firstname,
+          }
+        );
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: 'Offer submitted. Waiting for guest to accept.',
+        booking,
+        offer: newOffer,
+      });
+
     } else if (counterOffer) {
       // Driver makes a counter offer
-      booking.driver = driverId;
-      booking.driverOffer = {
+      const newOffer = {
+        driver: driverId,
+        tricycle: driverTricycle?._id || null,
         amount: counterOffer,
-        offeredAt: new Date(),
         message: message || '',
+        offeredAt: new Date(),
+        status: 'pending',
       };
-      booking.status = 'offer_made';
+
+      booking.driverOffers = booking.driverOffers || [];
+      booking.driverOffers.push(newOffer);
+      
+      await booking.save();
+      
+      // Populate for response
+      await booking.populate('driverOffers.driver', 'firstname lastname rating image phone');
+      await booking.populate('driverOffers.tricycle', 'plateNumber bodyNumber');
+
+      // Notify the user
+      const user = await User.findById(booking.user);
+      const driver = await User.findById(driverId);
+      if (user && user.FCMToken) {
+        await sendNotification(
+          user.FCMToken,
+          '💰 New Counter Offer!',
+          `Driver ${driver.firstname} offers ₱${counterOffer} for your trip`,
+          {
+            type: 'new_driver_offer',
+            bookingId: booking._id.toString(),
+            offerAmount: counterOffer.toString(),
+            driverName: driver.firstname,
+          }
+        );
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: 'Counter offer sent',
+        booking,
+        offer: newOffer,
+      });
+
     } else {
       return res.status(400).json({
         success: false,
         message: 'Invalid response. Must accept or provide counter offer.',
       });
     }
-
-    await booking.save();
-    await booking.populate('driver', 'firstname lastname rating image');
-
-    // Notify the user
-    const user = await User.findById(booking.user);
-    if (user && user.FCMToken) {
-      const driver = await User.findById(driverId);
-      if (counterOffer) {
-        await sendNotification(
-          user.FCMToken,
-          '💰 Counter Offer Received!',
-          `Driver ${driver.firstname} offers ₱${counterOffer} for your trip`,
-          {
-            type: 'driver_offer',
-            bookingId: booking._id.toString(),
-            offerAmount: counterOffer.toString(),
-          }
-        );
-      } else {
-        await sendNotification(
-          user.FCMToken,
-          '✅ Booking Accepted!',
-          `Driver ${driver.firstname} accepted your booking at ₱${booking.agreedFare}`,
-          {
-            type: 'booking_accepted',
-            bookingId: booking._id.toString(),
-          }
-        );
-      }
-    }
-
-    res.status(200).json({
-      success: true,
-      message: counterOffer ? 'Counter offer sent' : 'Booking accepted',
-      booking,
-    });
   } catch (error) {
     console.error('Error responding to booking:', error);
     res.status(500).json({
@@ -356,10 +412,13 @@ export const driverRespondToBooking = async (req, res) => {
 /**
  * User responds to driver's offer (accept or decline)
  * POST /api/booking/:id/respond-offer
+ * 
+ * Multi-offer support: User can accept a specific offer from multiple drivers
+ * Request body should include offerId to specify which offer to accept
  */
 export const respondToOffer = async (req, res) => {
   try {
-    const { accepted } = req.body;
+    const { accepted, offerId } = req.body;
     const userId = req.user._id;
     const booking = await Booking.findById(req.params.id);
 
@@ -377,62 +436,203 @@ export const respondToOffer = async (req, res) => {
       });
     }
 
-    if (booking.status !== 'offer_made') {
+    // For multi-offer support, accept offers from pending bookings
+    if (booking.status !== 'pending' && booking.status !== 'offer_made') {
       return res.status(400).json({
         success: false,
-        message: 'No pending offer to respond to',
+        message: 'No pending offers to respond to',
+      });
+    }
+
+    // Check if there are driver offers
+    if (!booking.driverOffers || booking.driverOffers.length === 0) {
+      // Backward compatibility - check old single driverOffer
+      if (booking.status === 'offer_made' && booking.driverOffer?.amount) {
+        // Handle old-style single offer
+        if (accepted) {
+          booking.agreedFare = booking.driverOffer.amount;
+          booking.status = 'accepted';
+          booking.acceptedAt = new Date();
+
+          // Notify driver
+          const driver = await User.findById(booking.driver);
+          if (driver && driver.FCMToken) {
+            await sendNotification(
+              driver.FCMToken,
+              '✅ Offer Accepted!',
+              `Passenger accepted your fare of ₱${booking.agreedFare}`,
+              {
+                type: 'offer_accepted',
+                bookingId: booking._id.toString(),
+              }
+            );
+          }
+        } else {
+          // User declined - reset to pending for other drivers
+          booking.driver = null;
+          booking.driverOffer = { amount: null, offeredAt: null, message: '' };
+          booking.status = 'pending';
+          booking.expiresAt = new Date(Date.now() + 5 * 60 * 1000);
+
+          const driver = await User.findById(booking.driver);
+          if (driver && driver.FCMToken) {
+            await sendNotification(
+              driver.FCMToken,
+              '❌ Offer Declined',
+              'The passenger declined your offer',
+              {
+                type: 'offer_declined',
+                bookingId: booking._id.toString(),
+              }
+            );
+          }
+        }
+
+        await booking.save();
+        await booking.populate('driver', 'firstname lastname rating image');
+
+        return res.status(200).json({
+          success: true,
+          message: accepted ? 'Offer accepted' : 'Offer declined',
+          booking,
+        });
+      }
+
+      return res.status(400).json({
+        success: false,
+        message: 'No offers available to respond to',
+      });
+    }
+
+    // Multi-offer handling
+    if (!offerId) {
+      return res.status(400).json({
+        success: false,
+        message: 'Please specify which offer to respond to (offerId required)',
+      });
+    }
+
+    // Find the specific offer
+    const offerIndex = booking.driverOffers.findIndex(
+      offer => offer._id.toString() === offerId
+    );
+
+    if (offerIndex === -1) {
+      return res.status(404).json({
+        success: false,
+        message: 'Offer not found',
+      });
+    }
+
+    const selectedOffer = booking.driverOffers[offerIndex];
+
+    if (selectedOffer.status !== 'pending') {
+      return res.status(400).json({
+        success: false,
+        message: 'This offer is no longer available',
       });
     }
 
     if (accepted) {
-      booking.agreedFare = booking.driverOffer.amount;
+      // Accept this offer
+      selectedOffer.status = 'accepted';
+      
+      // Mark all other offers as declined
+      booking.driverOffers.forEach((offer, index) => {
+        if (index !== offerIndex && offer.status === 'pending') {
+          offer.status = 'declined';
+        }
+      });
+
+      // Set the booking to accepted with this driver
+      booking.driver = selectedOffer.driver;
+      booking.tricycle = selectedOffer.tricycle;
+      booking.agreedFare = selectedOffer.amount;
+      booking.driverOffer = {
+        amount: selectedOffer.amount,
+        offeredAt: selectedOffer.offeredAt,
+        message: selectedOffer.message,
+      };
       booking.status = 'accepted';
       booking.acceptedAt = new Date();
 
-      // Notify driver
-      const driver = await User.findById(booking.driver);
-      if (driver && driver.FCMToken) {
+      await booking.save();
+      await booking.populate('driver', 'firstname lastname rating image phone');
+      await booking.populate('tricycle', 'plateNumber bodyNumber');
+      await booking.populate('driverOffers.driver', 'firstname lastname rating image');
+
+      // Notify the accepted driver
+      const acceptedDriver = await User.findById(selectedOffer.driver);
+      if (acceptedDriver && acceptedDriver.FCMToken) {
         await sendNotification(
-          driver.FCMToken,
+          acceptedDriver.FCMToken,
           '✅ Offer Accepted!',
-          `Passenger accepted your fare of ₱${booking.agreedFare}`,
+          `Passenger accepted your fare of ₱${booking.agreedFare}. Head to pickup!`,
           {
             type: 'offer_accepted',
             bookingId: booking._id.toString(),
           }
         );
       }
-    } else {
-      // User declined - reset to pending for other drivers
-      booking.driver = null;
-      booking.driverOffer = { amount: null, offeredAt: null, message: '' };
-      booking.status = 'pending';
-      // Extend expiration
-      booking.expiresAt = new Date(Date.now() + 5 * 60 * 1000);
 
-      // Notify driver
-      const driver = await User.findById(booking.driver);
-      if (driver && driver.FCMToken) {
+      // Notify declined drivers
+      for (const offer of booking.driverOffers) {
+        if (offer._id.toString() !== offerId && offer.driver) {
+          const declinedDriver = await User.findById(offer.driver);
+          if (declinedDriver && declinedDriver.FCMToken) {
+            await sendNotification(
+              declinedDriver.FCMToken,
+              '❌ Offer Not Selected',
+              'The passenger chose another driver for this trip.',
+              {
+                type: 'offer_declined',
+                bookingId: booking._id.toString(),
+              }
+            );
+          }
+        }
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: 'Offer accepted! Driver is on their way.',
+        booking,
+        acceptedOffer: selectedOffer,
+      });
+
+    } else {
+      // Decline this specific offer
+      selectedOffer.status = 'declined';
+      
+      // Notify the declined driver
+      const declinedDriver = await User.findById(selectedOffer.driver);
+      if (declinedDriver && declinedDriver.FCMToken) {
         await sendNotification(
-          driver.FCMToken,
+          declinedDriver.FCMToken,
           '❌ Offer Declined',
-          'The passenger declined your offer',
+          'The passenger declined your offer.',
           {
             type: 'offer_declined',
             bookingId: booking._id.toString(),
           }
         );
       }
+
+      // Check if there are still pending offers
+      const hasPendingOffers = booking.driverOffers.some(offer => offer.status === 'pending');
+      
+      await booking.save();
+      await booking.populate('driverOffers.driver', 'firstname lastname rating image');
+      await booking.populate('driverOffers.tricycle', 'plateNumber bodyNumber');
+
+      return res.status(200).json({
+        success: true,
+        message: 'Offer declined',
+        booking,
+        hasPendingOffers,
+      });
     }
 
-    await booking.save();
-    await booking.populate('driver', 'firstname lastname rating image');
-
-    res.status(200).json({
-      success: true,
-      message: accepted ? 'Offer accepted' : 'Offer declined',
-      booking,
-    });
   } catch (error) {
     console.error('Error responding to offer:', error);
     res.status(500).json({
@@ -939,6 +1139,8 @@ export const getNearbyBookings = async (req, res) => {
 /**
  * Get user's active booking (pending, offer_made, accepted, in_progress, awaiting_confirmation)
  * GET /api/booking/active
+ * 
+ * Now includes all driver offers for multi-offer support
  */
 export const getActiveBooking = async (req, res) => {
   try {
@@ -949,7 +1151,9 @@ export const getActiveBooking = async (req, res) => {
       status: { $in: ['pending', 'offer_made', 'accepted', 'in_progress', 'awaiting_confirmation'] },
     })
     .populate('driver', 'firstname lastname rating image phone')
-    .populate('tricycle', 'plateNumber')
+    .populate('tricycle', 'plateNumber bodyNumber')
+    .populate('driverOffers.driver', 'firstname lastname rating image phone')
+    .populate('driverOffers.tricycle', 'plateNumber bodyNumber')
     .sort({ createdAt: -1 });
 
     // Check if booking has expired
@@ -963,9 +1167,16 @@ export const getActiveBooking = async (req, res) => {
       });
     }
 
+    // Add count of pending offers for the response
+    let pendingOffersCount = 0;
+    if (activeBooking && activeBooking.driverOffers) {
+      pendingOffersCount = activeBooking.driverOffers.filter(offer => offer.status === 'pending').length;
+    }
+
     res.status(200).json({
       success: true,
       booking: activeBooking,
+      pendingOffersCount,
     });
   } catch (error) {
     console.error('Error fetching active booking:', error);
@@ -1338,6 +1549,173 @@ export const adminGetBookingStats = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to fetch statistics',
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Get all offers for a booking (for guest to view multiple driver offers)
+ * GET /api/booking/:id/offers
+ */
+export const getBookingOffers = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const booking = await Booking.findById(req.params.id)
+      .populate('driverOffers.driver', 'firstname lastname rating image phone')
+      .populate('driverOffers.tricycle', 'plateNumber bodyNumber');
+
+    if (!booking) {
+      return res.status(404).json({
+        success: false,
+        message: 'Booking not found',
+      });
+    }
+
+    // Only the booking owner can view offers
+    if (booking.user.toString() !== userId.toString() && req.user.role !== 'admin') {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized to view offers for this booking',
+      });
+    }
+
+    // Filter to get only pending offers for display
+    const pendingOffers = booking.driverOffers?.filter(offer => offer.status === 'pending') || [];
+    const allOffers = booking.driverOffers || [];
+
+    res.status(200).json({
+      success: true,
+      pendingOffers,
+      allOffers,
+      preferredFare: booking.preferredFare,
+      bookingStatus: booking.status,
+    });
+  } catch (error) {
+    console.error('Error fetching booking offers:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch offers',
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Driver withdraws their offer
+ * POST /api/booking/:id/withdraw-offer
+ */
+export const withdrawOffer = async (req, res) => {
+  try {
+    const driverId = req.user._id;
+    const booking = await Booking.findById(req.params.id);
+
+    if (!booking) {
+      return res.status(404).json({
+        success: false,
+        message: 'Booking not found',
+      });
+    }
+
+    if (booking.status !== 'pending') {
+      return res.status(400).json({
+        success: false,
+        message: 'Cannot withdraw offer - booking is no longer pending',
+      });
+    }
+
+    // Find the driver's offer
+    const offerIndex = booking.driverOffers?.findIndex(
+      offer => offer.driver.toString() === driverId.toString() && offer.status === 'pending'
+    );
+
+    if (offerIndex === -1 || offerIndex === undefined) {
+      return res.status(404).json({
+        success: false,
+        message: 'No pending offer found for this driver',
+      });
+    }
+
+    // Mark the offer as withdrawn
+    booking.driverOffers[offerIndex].status = 'withdrawn';
+
+    await booking.save();
+
+    // Notify the user that an offer was withdrawn
+    const user = await User.findById(booking.user);
+    const driver = await User.findById(driverId);
+    if (user && user.FCMToken) {
+      await sendNotification(
+        user.FCMToken,
+        '🔄 Offer Withdrawn',
+        `Driver ${driver?.firstname || 'A driver'} has withdrawn their offer.`,
+        {
+          type: 'offer_withdrawn',
+          bookingId: booking._id.toString(),
+        }
+      );
+    }
+
+    res.status(200).json({
+      success: true,
+      message: 'Offer withdrawn successfully',
+    });
+  } catch (error) {
+    console.error('Error withdrawing offer:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to withdraw offer',
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Get driver's pending offers (offers they made that are awaiting user response)
+ * GET /api/booking/driver/pending-offers
+ */
+export const getDriverPendingOffers = async (req, res) => {
+  try {
+    const driverId = req.user._id;
+
+    // Find all pending bookings where this driver has a pending offer
+    const bookingsWithOffers = await Booking.find({
+      status: 'pending',
+      'driverOffers.driver': driverId,
+      'driverOffers.status': 'pending',
+    })
+    .populate('user', 'firstname lastname rating image')
+    .sort({ createdAt: -1 });
+
+    // Extract the driver's offers from each booking
+    const pendingOffers = bookingsWithOffers.map(booking => {
+      const driverOffer = booking.driverOffers.find(
+        offer => offer.driver.toString() === driverId.toString() && offer.status === 'pending'
+      );
+      return {
+        booking: {
+          _id: booking._id,
+          pickup: booking.pickup,
+          destination: booking.destination,
+          preferredFare: booking.preferredFare,
+          user: booking.user,
+          createdAt: booking.createdAt,
+          expiresAt: booking.expiresAt,
+        },
+        offer: driverOffer,
+      };
+    });
+
+    res.status(200).json({
+      success: true,
+      pendingOffers,
+      count: pendingOffers.length,
+    });
+  } catch (error) {
+    console.error('Error fetching driver pending offers:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch pending offers',
       error: error.message,
     });
   }

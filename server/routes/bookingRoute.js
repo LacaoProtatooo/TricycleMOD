@@ -17,6 +17,9 @@ import {
   adminGetAllBookings,
   adminGetBookingDetails,
   adminGetBookingStats,
+  getBookingOffers,
+  withdrawOffer,
+  getDriverPendingOffers,
 } from '../controllers/bookingController.js';
 import { protect, authorize, requireVerified, requireDriverLicense } from '../middleware/authMiddleware.js';
 
@@ -36,6 +39,7 @@ router.get('/admin/:id', protect, authorize('admin'), adminGetBookingDetails);
 router.post('/create', protect, requireVerified, createBooking);
 router.get('/user', protect, getUserBookings);
 router.get('/active', protect, getActiveBooking);
+router.get('/:id/offers', protect, getBookingOffers);  // Get all offers for a booking
 router.post('/:id/respond-offer', protect, requireVerified, respondToOffer);
 router.post('/:id/confirm-completion', protect, requireVerified, confirmCompletion);
 router.post('/:id/rate', protect, rateDriver);
@@ -43,7 +47,9 @@ router.post('/:id/rate', protect, rateDriver);
 // Driver routes (requires verified license)
 router.get('/nearby', protect, authorize('driver'), getNearbyBookings);
 router.get('/driver', protect, authorize('driver'), getDriverBookings);
+router.get('/driver/pending-offers', protect, authorize('driver'), getDriverPendingOffers);  // Get driver's pending offers
 router.post('/:id/driver-respond', protect, authorize('driver'), requireDriverLicense, driverRespondToBooking);
+router.post('/:id/withdraw-offer', protect, authorize('driver'), withdrawOffer);  // Withdraw driver's offer
 router.post('/:id/start-trip', protect, authorize('driver'), requireDriverLicense, startTrip);
 
 // Shared routes (user or driver)
