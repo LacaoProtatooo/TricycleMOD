@@ -17,6 +17,9 @@ import {
   ScrollView,
   Dimensions,
   ActivityIndicator,
+  Modal,
+  TextInput,
+  Alert,
 } from 'react-native';
 import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import Ionicons from 'react-native-vector-icons/Ionicons';
@@ -43,6 +46,12 @@ const BookingHistoryDetail = ({ navigation, route }) => {
   const [booking, setBooking] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState(null);
+
+  // Rating state
+  const [showRatingModal, setShowRatingModal] = useState(false);
+  const [selectedRating, setSelectedRating] = useState(0);
+  const [ratingComment, setRatingComment] = useState('');
+  const [isSubmittingRating, setIsSubmittingRating] = useState(false);
 
   useEffect(() => {
     fetchBookingDetails();
@@ -95,6 +104,65 @@ const BookingHistoryDetail = ({ navigation, route }) => {
         }
       );
     }
+  };
+
+  // Submit rating for driver
+  const handleSubmitRating = async () => {
+    if (selectedRating === 0) {
+      Alert.alert('Rating Required', 'Please select a rating before submitting.');
+      return;
+    }
+
+    try {
+      setIsSubmittingRating(true);
+      const token = await getToken(db);
+      
+      if (!token) {
+        Alert.alert('Error', 'Authentication required');
+        return;
+      }
+
+      const response = await axios.post(
+        `${API_URL}/${bookingId}/rate`,
+        {
+          driverId: booking.driver?._id,
+          rating: selectedRating,
+          comment: ratingComment,
+        },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      if (response.data.success) {
+        Alert.alert('Thank You!', 'Your rating has been submitted successfully.');
+        setShowRatingModal(false);
+        // Refresh booking details to show the new rating
+        fetchBookingDetails();
+      } else {
+        Alert.alert('Error', response.data.message || 'Failed to submit rating');
+      }
+    } catch (err) {
+      console.error('Error submitting rating:', err);
+      Alert.alert('Error', err.response?.data?.message || 'Failed to submit rating');
+    } finally {
+      setIsSubmittingRating(false);
+    }
+  };
+
+  // Check if user can rate this booking
+  const canRateDriver = () => {
+    // User can rate if:
+    // 1. Not viewing as driver
+    // 2. Trip is completed OR cancelled by driver
+    // 3. Hasn't rated yet
+    // 4. Driver exists
+    if (isDriver) return false;
+    if (!booking?.driver) return false;
+    if (booking.rating) return false;
+    
+    return (
+      booking.status === 'completed' ||
+      (booking.status === 'cancelled' && booking.cancelledBy === 'driver')
+    );
   };
 
   const formatDate = (dateString) => {
@@ -453,7 +521,7 @@ const BookingHistoryDetail = ({ navigation, route }) => {
           <View style={styles.card}>
             <View style={styles.cardHeader}>
               <Ionicons name="star" size={20} color={colors.primary} />
-              <Text style={styles.cardTitle}>Rating</Text>
+              <Text style={styles.cardTitle}>Your Rating</Text>
             </View>
             
             <View style={styles.ratingSection}>
@@ -465,12 +533,36 @@ const BookingHistoryDetail = ({ navigation, route }) => {
 
             {booking.ratingComment ? (
               <View style={styles.commentSection}>
-                <Text style={styles.commentLabel}>Comment:</Text>
+                <Text style={styles.commentLabel}>Your Comment:</Text>
                 <Text style={styles.commentText}>{booking.ratingComment}</Text>
               </View>
             ) : null}
           </View>
         ) : null}
+
+        {/* Rate Driver Button (if not yet rated) */}
+        {canRateDriver() && (
+          <View style={styles.card}>
+            <View style={styles.cardHeader}>
+              <Ionicons name="star" size={20} color={colors.primary} />
+              <Text style={styles.cardTitle}>Rate Your Driver</Text>
+            </View>
+            <Text style={styles.ratePromptText}>
+              How was your experience with this driver?
+            </Text>
+            <TouchableOpacity
+              style={styles.rateButton}
+              onPress={() => {
+                setSelectedRating(0);
+                setRatingComment('');
+                setShowRatingModal(true);
+              }}
+            >
+              <Ionicons name="star" size={18} color="#fff" />
+              <Text style={styles.rateButtonText}>Rate Driver</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* Driver's Message (if any) */}
         {booking.driverOffer?.message ? (
@@ -486,6 +578,103 @@ const BookingHistoryDetail = ({ navigation, route }) => {
         {/* Bottom spacing */}
         <View style={{ height: 30 }} />
       </ScrollView>
+
+      {/* Rating Modal */}
+      <Modal
+        visible={showRatingModal}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowRatingModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.ratingModal}>
+            <View style={styles.ratingModalHeader}>
+              <Text style={styles.ratingModalTitle}>Rate Your Driver</Text>
+              <TouchableOpacity
+                style={styles.closeModalBtn}
+                onPress={() => setShowRatingModal(false)}
+              >
+                <Ionicons name="close" size={24} color="#666" />
+              </TouchableOpacity>
+            </View>
+
+            {booking?.driver && (
+              <View style={styles.driverInfoInModal}>
+                <View style={styles.driverAvatarModal}>
+                  <Ionicons name="person" size={28} color="#fff" />
+                </View>
+                <Text style={styles.driverNameModal}>
+                  {booking.driver.firstname} {booking.driver.lastname}
+                </Text>
+              </View>
+            )}
+
+            <Text style={styles.ratingModalSubtitle}>
+              How was your trip experience?
+            </Text>
+
+            {/* Star Rating */}
+            <View style={styles.modalStarsContainer}>
+              {[1, 2, 3, 4, 5].map((star) => (
+                <TouchableOpacity
+                  key={star}
+                  onPress={() => setSelectedRating(star)}
+                  style={styles.modalStarButton}
+                >
+                  <Ionicons
+                    name={star <= selectedRating ? 'star' : 'star-outline'}
+                    size={44}
+                    color={star <= selectedRating ? '#ffc107' : '#ccc'}
+                  />
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            {selectedRating > 0 && (
+              <Text style={styles.ratingLabel}>
+                {selectedRating === 1 ? 'Poor' :
+                 selectedRating === 2 ? 'Fair' :
+                 selectedRating === 3 ? 'Good' :
+                 selectedRating === 4 ? 'Very Good' : 'Excellent'}
+              </Text>
+            )}
+
+            {/* Comment Input */}
+            <TextInput
+              style={styles.ratingCommentInput}
+              placeholder="Add a comment about your experience (optional)"
+              placeholderTextColor="#999"
+              multiline
+              numberOfLines={3}
+              value={ratingComment}
+              onChangeText={setRatingComment}
+            />
+
+            <View style={styles.ratingModalButtons}>
+              <TouchableOpacity
+                style={styles.skipRatingBtn}
+                onPress={() => setShowRatingModal(false)}
+              >
+                <Text style={styles.skipRatingBtnText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.submitRatingBtn,
+                  (selectedRating === 0 || isSubmittingRating) && styles.buttonDisabled,
+                ]}
+                onPress={handleSubmitRating}
+                disabled={selectedRating === 0 || isSubmittingRating}
+              >
+                {isSubmittingRating ? (
+                  <ActivityIndicator color="#fff" size="small" />
+                ) : (
+                  <Text style={styles.submitRatingBtnText}>Submit Rating</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -833,6 +1022,140 @@ const styles = StyleSheet.create({
     color: colors.orangeShade6 || '#555',
     lineHeight: 20,
     fontStyle: 'italic',
+  },
+
+  // Rate Button
+  ratePromptText: {
+    fontSize: 14,
+    color: colors.orangeShade5 || '#666',
+    marginBottom: 12,
+    textAlign: 'center',
+  },
+  rateButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#ffc107',
+    paddingVertical: 14,
+    borderRadius: 10,
+    gap: 8,
+  },
+  rateButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+
+  // Rating Modal
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  ratingModal: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    padding: spacing.large || 20,
+    paddingBottom: 40,
+  },
+  ratingModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  ratingModalTitle: {
+    fontSize: 22,
+    fontWeight: '700',
+    color: colors.orangeShade7 || '#333',
+  },
+  closeModalBtn: {
+    padding: 4,
+  },
+  driverInfoInModal: {
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  driverAvatarModal: {
+    width: 60,
+    height: 60,
+    borderRadius: 30,
+    backgroundColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  driverNameModal: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: colors.orangeShade7 || '#333',
+  },
+  ratingModalSubtitle: {
+    fontSize: 14,
+    color: colors.orangeShade5 || '#666',
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  modalStarsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 8,
+    marginBottom: 8,
+  },
+  modalStarButton: {
+    padding: 4,
+  },
+  ratingLabel: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: '#ffc107',
+    textAlign: 'center',
+    marginBottom: 16,
+  },
+  ratingCommentInput: {
+    backgroundColor: colors.ivory4 || '#F5F5F5',
+    borderRadius: 12,
+    padding: spacing.medium || 16,
+    fontSize: 14,
+    color: colors.orangeShade7 || '#333',
+    textAlignVertical: 'top',
+    minHeight: 80,
+    borderWidth: 1,
+    borderColor: colors.ivory3 || '#E8E8E8',
+    marginBottom: 16,
+  },
+  ratingModalButtons: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  skipRatingBtn: {
+    flex: 1,
+    backgroundColor: colors.ivory4 || '#F5F5F5',
+    paddingVertical: 14,
+    borderRadius: 10,
+    alignItems: 'center',
+  },
+  skipRatingBtnText: {
+    color: colors.orangeShade6 || '#555',
+    fontSize: 16,
+    fontWeight: '600',
+  },
+  submitRatingBtn: {
+    flex: 1,
+    backgroundColor: colors.primary,
+    paddingVertical: 14,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  submitRatingBtnText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  buttonDisabled: {
+    opacity: 0.5,
   },
 });
 
