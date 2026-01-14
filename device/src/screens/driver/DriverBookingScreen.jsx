@@ -32,6 +32,7 @@ import Ionicons from 'react-native-vector-icons/Ionicons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSelector } from 'react-redux';
 import axios from 'axios';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 import { colors, spacing } from '../../components/common/theme';
 import { getToken } from '../../utils/jwtStorage';
@@ -185,6 +186,34 @@ const DriverBookingScreen = ({ navigation }) => {
     
     calculateActiveRoute();
   }, [activeBooking?.pickup, activeBooking?.destination]);
+
+  // Calculate distances when active booking or user location changes
+  useEffect(() => {
+    if (activeBooking && userLocation) {
+      // Calculate distance to pickup if not picked up yet
+      if (!isPickedUp && activeBooking.pickup) {
+        const pickupDist = calculateDistance(
+          userLocation.latitude,
+          userLocation.longitude,
+          activeBooking.pickup.latitude,
+          activeBooking.pickup.longitude
+        );
+        setDistanceToPickup(pickupDist);
+        console.log('Distance to pickup:', pickupDist, 'meters');
+      }
+
+      // Calculate distance to destination
+      if (activeBooking.destination) {
+        const destDist = calculateDistance(
+          userLocation.latitude,
+          userLocation.longitude,
+          activeBooking.destination.latitude,
+          activeBooking.destination.longitude
+        );
+        setDistanceToDestination(destDist);
+      }
+    }
+  }, [activeBooking?._id, userLocation?.latitude, userLocation?.longitude, isPickedUp]);
 
   // Poll for trip cancellation by passenger when there's an active booking
   useEffect(() => {
@@ -736,7 +765,24 @@ const DriverBookingScreen = ({ navigation }) => {
               if (response.data.success) {
                 setIsPickedUp(true);
                 setActiveBooking(response.data.booking);
-                Alert.alert('Trip Started', 'Navigate to the destination.');
+                
+                // Trigger recording on the Maps tab by setting a flag in AsyncStorage
+                const passengerName = activeBooking?.user?.firstname 
+                  ? `${activeBooking.user.firstname} ${activeBooking.user.lastname || ''}`
+                  : 'Passenger';
+                  
+                await AsyncStorage.setItem('booking_trigger_recording_v1', JSON.stringify({
+                  shouldStart: true,
+                  bookingId: activeBooking._id,
+                  passengerName: passengerName.trim(),
+                  timestamp: Date.now(),
+                }));
+                
+                Alert.alert(
+                  'Trip Started', 
+                  'Navigate to the destination. Go to the Maps tab to see trip recording.',
+                  [{ text: 'OK' }]
+                );
               }
             } catch (error) {
               Alert.alert('Error', error.response?.data?.message || 'Failed to start trip');
@@ -779,7 +825,7 @@ const DriverBookingScreen = ({ navigation }) => {
         const fare = activeBooking.agreedFare || activeBooking.preferredFare;
         Alert.alert(
           'Trip Completed!',
-          `Fare collected: ₱${fare}\n\nThank you for completing the trip.`
+          `Fare collected: ₱${fare}\n\nRemember to stop recording on the Maps tab.`
         );
         resetTripState();
       }
@@ -804,7 +850,7 @@ const DriverBookingScreen = ({ navigation }) => {
                 { reason: 'Driver cancelled' },
                 getAuthHeaders()
               );
-              Alert.alert('Trip Cancelled', 'The trip has been cancelled.');
+              Alert.alert('Trip Cancelled', 'The trip has been cancelled. Remember to stop recording on the Maps tab if active.');
               resetTripState();
             } catch (error) {
               Alert.alert('Error', 'Failed to cancel trip');
@@ -1355,12 +1401,18 @@ const DriverBookingScreen = ({ navigation }) => {
                 <Ionicons name="enter-outline" size={20} color="#fff" />
                 <Text style={styles.pickupBtnText}>Confirm Passenger Pickup</Text>
               </TouchableOpacity>
-              {(distanceToPickup === null || distanceToPickup > PICKUP_RADIUS_METERS) && (
-                <Text style={styles.pickupHint}>
-                  Get within {PICKUP_RADIUS_METERS}m of passenger to confirm pickup
-                  {distanceToPickup !== null && ` (currently ${formatDistance(distanceToPickup)} away)`}
-                </Text>
-              )}
+              {/* Always show distance info for debugging */}
+              <Text style={[
+                styles.pickupHint,
+                distanceToPickup !== null && distanceToPickup <= PICKUP_RADIUS_METERS && styles.pickupHintSuccess
+              ]}>
+                {distanceToPickup === null 
+                  ? 'Getting your location...'
+                  : distanceToPickup <= PICKUP_RADIUS_METERS
+                    ? `✓ Within range (${formatDistance(distanceToPickup)} from pickup)`
+                    : `Get within ${PICKUP_RADIUS_METERS}m of passenger (currently ${formatDistance(distanceToPickup)} away)`
+                }
+              </Text>
             </>
           ) : (
             <TouchableOpacity
@@ -2694,6 +2746,9 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     marginTop: 10,
     fontWeight: '500',
+  },
+  pickupHintSuccess: {
+    color: '#28a745',
   },
 
   // Modal

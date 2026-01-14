@@ -19,6 +19,7 @@ const BASE_URL = API_URL;
 const KM_KEY = 'vehicle_current_km_v1';
 const DEVICE_ID_KEY = 'driver_tracking_device_id_v1';
 const ACTIVE_TRIP_KEY = 'driver_tracking_active_trip_v1';
+const BOOKING_TRIGGER_RECORDING_KEY = 'booking_trigger_recording_v1';
 
 // Sync settings
 const SYNC_INTERVAL_MS = 30000;
@@ -160,6 +161,44 @@ export default function TrackingMap({ follow = true, onEnterTerminalZone, odomet
   useEffect(() => {
     initializeDeviceTracking();
   }, []);
+
+  // Check for booking trigger to auto-start recording
+  useEffect(() => {
+    let checkInterval;
+    
+    const checkBookingTrigger = async () => {
+      try {
+        const triggerData = await AsyncStorage.getItem(BOOKING_TRIGGER_RECORDING_KEY);
+        if (triggerData && !isRecording) {
+          const { shouldStart, bookingId, passengerName, timestamp } = JSON.parse(triggerData);
+          
+          // Only trigger if the request is recent (within 30 seconds)
+          if (shouldStart && (Date.now() - timestamp) < 30000) {
+            console.log('Auto-starting recording from booking trigger');
+            
+            // Clear the trigger immediately to prevent re-triggering
+            await AsyncStorage.removeItem(BOOKING_TRIGGER_RECORDING_KEY);
+            
+            // Auto-start recording with booking info
+            await startRecordingFromBooking(bookingId, passengerName);
+          } else if (shouldStart) {
+            // Clear stale trigger
+            await AsyncStorage.removeItem(BOOKING_TRIGGER_RECORDING_KEY);
+          }
+        }
+      } catch (error) {
+        console.error('Error checking booking trigger:', error);
+      }
+    };
+    
+    // Check immediately and then every 2 seconds
+    checkBookingTrigger();
+    checkInterval = setInterval(checkBookingTrigger, 2000);
+    
+    return () => {
+      if (checkInterval) clearInterval(checkInterval);
+    };
+  }, [isRecording, deviceId]);
 
   // Update trip duration while recording
   useEffect(() => {
@@ -533,6 +572,85 @@ export default function TrackingMap({ follow = true, onEnterTerminalZone, odomet
     } catch (error) {
       console.error('Error starting recording:', error);
       Alert.alert('Error', error.message || 'Failed to start recording');
+    }
+  };
+
+  // Start recording triggered from booking screen (auto-start without alert)
+  const startRecordingFromBooking = async (bookingId, passengerName) => {
+    // Check if coding day restriction is active
+    if (codingDayRestricted) {
+      console.log('Cannot auto-start recording: Coding day restriction');
+      return;
+    }
+
+    if (isRecording) {
+      console.log('Recording already active, skipping auto-start');
+      return;
+    }
+
+    if (!deviceId) {
+      console.log('Device ID not ready, cannot start recording');
+      return;
+    }
+
+    try {
+      const loc = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.BestForNavigation,
+      });
+
+      const initialCoord = {
+        latitude: loc.coords.latitude,
+        longitude: loc.coords.longitude,
+        altitude: loc.coords.altitude || 0,
+        accuracy: loc.coords.accuracy || 0,
+        speed: loc.coords.speed || 0,
+        heading: loc.coords.heading || 0,
+        timestamp: Date.now(),
+      };
+
+      // Start trip on server with booking info
+      const tripName = passengerName 
+        ? `Booking Trip - ${passengerName} ${new Date().toLocaleDateString()}`
+        : `Booking Trip ${new Date().toLocaleDateString()}`;
+        
+      const response = await axios.post(`${BASE_URL}/api/tracking/start`, {
+        deviceId,
+        name: tripName,
+        initialCoordinate: initialCoord,
+        bookingId, // Include booking reference
+      });
+
+      if (!response.data.success) {
+        throw new Error(response.data.message);
+      }
+
+      const { tripId, startTime } = response.data;
+
+      // Initialize recording state
+      setActiveTripId(tripId);
+      activeTripIdRef.current = tripId;
+      setIsRecording(true);
+      tripStartRef.current = new Date(startTime).getTime();
+      recordedPosRef.current = [initialCoord];
+      distanceRef.current = 0;
+      setRecordedPositions([initialCoord]);
+      setTripDistance(0);
+      setTripDuration(0);
+
+      // Save to AsyncStorage for persistence
+      await AsyncStorage.setItem(ACTIVE_TRIP_KEY, JSON.stringify({
+        tripId,
+        startTime: tripStartRef.current,
+        positions: [initialCoord],
+        bookingId,
+      }));
+
+      // Start sync interval
+      syncIntervalRef.current = setInterval(syncToServer, SYNC_INTERVAL_MS);
+
+      console.log('Auto-started recording from booking:', tripId);
+    } catch (error) {
+      console.error('Error auto-starting recording from booking:', error);
     }
   };
 
