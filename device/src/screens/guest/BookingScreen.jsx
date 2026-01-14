@@ -213,6 +213,7 @@ const BookingScreen = ({ navigation }) => {
   useEffect(() => {
     const shouldPoll = [
       BOOKING_STATUS.WAITING_FOR_DRIVER,
+      BOOKING_STATUS.OFFERS_RECEIVED,  // Include OFFERS_RECEIVED to get new offers
       BOOKING_STATUS.OFFER_RECEIVED,
       BOOKING_STATUS.TRIP_ACTIVE,
       BOOKING_STATUS.AWAITING_CONFIRMATION,
@@ -267,6 +268,10 @@ const BookingScreen = ({ navigation }) => {
       if (currentBooking.driverOffers && currentBooking.driverOffers.length > 0) {
         const pendingOffers = currentBooking.driverOffers.filter(offer => offer.status === 'pending');
         setDriverOffers(pendingOffers);
+        // Auto-show offers modal when there are pending offers
+        if (pendingOffers.length > 0 && currentBooking.status === 'pending') {
+          setShowOffersModal(true);
+        }
       } else {
         setDriverOffers([]);
       }
@@ -279,6 +284,7 @@ const BookingScreen = ({ navigation }) => {
             setBookingStatus(BOOKING_STATUS.OFFERS_RECEIVED);
           } else {
             setBookingStatus(BOOKING_STATUS.WAITING_FOR_DRIVER);
+            setShowOffersModal(false);
           }
           break;
         case 'offer_made':
@@ -609,6 +615,16 @@ const BookingScreen = ({ navigation }) => {
             text: 'Decline',
             style: 'destructive',
             onPress: () => {
+              // Optimistically update local state to remove declined offer
+              const remainingOffers = driverOffers.filter(o => o._id !== offer._id);
+              setDriverOffers(remainingOffers);
+              
+              // If no more offers, close the modal
+              if (remainingOffers.length === 0) {
+                setShowOffersModal(false);
+              }
+              
+              // Dispatch the decline action to server
               dispatch(respondToOffer({
                 bookingId: currentBooking._id,
                 accepted: false,
@@ -987,6 +1003,18 @@ const BookingScreen = ({ navigation }) => {
         
         {/* History and status */}
         <View style={styles.headerRight}>
+          {/* Offers badge button - only show when offers are available */}
+          {driverOffers.length > 0 && bookingStatus === BOOKING_STATUS.OFFERS_RECEIVED && (
+            <TouchableOpacity 
+              style={styles.offersHeaderButton} 
+              onPress={() => setShowOffersModal(true)}
+            >
+              <View style={styles.offersHeaderBadge}>
+                <Text style={styles.offersHeaderBadgeText}>{driverOffers.length}</Text>
+              </View>
+              <Ionicons name="car-outline" size={18} color={colors.primary} />
+            </TouchableOpacity>
+          )}
           <TouchableOpacity style={styles.historyButton} onPress={openHistoryModal}>
             <Ionicons name="time-outline" size={22} color={colors.primary} />
           </TouchableOpacity>
@@ -1438,84 +1466,68 @@ const BookingScreen = ({ navigation }) => {
         {bookingStatus === BOOKING_STATUS.OFFERS_RECEIVED && (
           <View style={styles.panelContent}>
             <View style={styles.offersHeader}>
-              <Text style={styles.panelTitle}>
-                {driverOffers.length} Driver{driverOffers.length > 1 ? 's' : ''} Interested!
-              </Text>
+              <View style={styles.offersBadgeContainer}>
+                <View style={styles.offersBadge}>
+                  <Text style={styles.offersBadgeText}>{driverOffers.length}</Text>
+                </View>
+                <Text style={styles.panelTitle}>
+                  Driver{driverOffers.length > 1 ? 's' : ''} Interested!
+                </Text>
+              </View>
               <Text style={styles.panelDescription}>
-                Choose the best offer for your trip
+                {driverOffers.length > 1 
+                  ? 'Multiple drivers have made offers. Compare and choose the best one!'
+                  : 'A driver has made an offer for your trip'}
               </Text>
             </View>
             
-            <Text style={styles.yourFareLabel}>
-              Your offer: ₱{currentBooking?.preferredFare || preferredFare}
-            </Text>
+            <View style={styles.yourFareContainer}>
+              <Text style={styles.yourFareLabel}>Your requested fare:</Text>
+              <Text style={styles.yourFareAmount}>₱{currentBooking?.preferredFare || preferredFare}</Text>
+            </View>
 
-            <ScrollView 
-              style={styles.offersScrollView}
-              showsVerticalScrollIndicator={false}
-              nestedScrollEnabled={true}
-            >
-              {driverOffers.map((offer, index) => (
-                <View key={offer._id || index} style={styles.offerCard}>
-                  <View style={styles.offerDriverInfo}>
-                    <View style={styles.driverAvatarSmall}>
-                      <Ionicons name="person" size={20} color="#fff" />
-                    </View>
-                    <View style={styles.offerDriverDetails}>
-                      <Text style={styles.offerDriverName}>
-                        {offer.driver?.firstname || 'Driver'} {offer.driver?.lastname || ''}
-                      </Text>
-                      <View style={styles.ratingDisplaySmall}>
-                        <Ionicons name="star" size={12} color={colors.starYellow} />
-                        <Text style={styles.ratingTextSmall}>
-                          {offer.driver?.rating?.toFixed(1) || 'N/A'}
-                        </Text>
-                        {offer.tricycle?.plateNumber && (
-                          <Text style={styles.plateNumber}>
-                            • {offer.tricycle.plateNumber}
-                          </Text>
-                        )}
-                      </View>
-                    </View>
-                    <View style={styles.offerAmountContainer}>
-                      <Text style={styles.offerAmountLabel}>Fare</Text>
-                      <Text style={[
-                        styles.offerAmount,
-                        offer.amount <= (currentBooking?.preferredFare || 0) && styles.offerAmountGood
-                      ]}>
-                        ₱{offer.amount}
+            {/* Preview of first offer in panel */}
+            {driverOffers.length > 0 && (
+              <View style={styles.offerPreview}>
+                <View style={styles.offerPreviewInfo}>
+                  <View style={styles.driverAvatarSmall}>
+                    <Ionicons name="person" size={20} color="#fff" />
+                  </View>
+                  <View style={styles.offerDriverDetails}>
+                    <Text style={styles.offerDriverName}>
+                      {driverOffers[0].driver?.firstname || 'Driver'} {driverOffers[0].driver?.lastname || ''}
+                    </Text>
+                    <View style={styles.ratingDisplaySmall}>
+                      <Ionicons name="star" size={12} color={colors.starYellow} />
+                      <Text style={styles.ratingTextSmall}>
+                        {driverOffers[0].driver?.rating?.toFixed(1) || 'N/A'}
                       </Text>
                     </View>
                   </View>
-                  
-                  {offer.message ? (
-                    <View style={styles.offerMessageContainer}>
-                      <Ionicons name="chatbubble-outline" size={12} color="#666" />
-                      <Text style={styles.offerMessage} numberOfLines={2}>
-                        {offer.message}
-                      </Text>
-                    </View>
-                  ) : null}
-                  
-                  <View style={styles.offerActions}>
-                    <TouchableOpacity
-                      style={styles.declineOfferButton}
-                      onPress={() => handleDeclineSpecificOffer(offer)}
-                    >
-                      <Ionicons name="close-outline" size={18} color="#dc3545" />
-                      <Text style={styles.declineOfferText}>Decline</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity
-                      style={styles.acceptOfferButton}
-                      onPress={() => handleAcceptSpecificOffer(offer)}
-                    >
-                      <Ionicons name="checkmark-outline" size={18} color="#fff" />
-                      <Text style={styles.acceptOfferText}>Accept</Text>
-                    </TouchableOpacity>
-                  </View>
+                  <Text style={[
+                    styles.offerPreviewAmount,
+                    driverOffers[0].amount <= (currentBooking?.preferredFare || 0) && styles.offerAmountGood
+                  ]}>
+                    ₱{driverOffers[0].amount}
+                  </Text>
                 </View>
-              ))}
-            </ScrollView>
+                {driverOffers.length > 1 && (
+                  <Text style={styles.moreOffersText}>
+                    +{driverOffers.length - 1} more offer{driverOffers.length > 2 ? 's' : ''} available
+                  </Text>
+                )}
+              </View>
+            )}
+
+            <TouchableOpacity
+              style={styles.viewAllOffersButton}
+              onPress={() => setShowOffersModal(true)}
+            >
+              <Ionicons name="list-outline" size={20} color="#fff" />
+              <Text style={styles.viewAllOffersText}>
+                {driverOffers.length > 1 ? 'View All Offers' : 'View Offer Details'}
+              </Text>
+            </TouchableOpacity>
 
             <TouchableOpacity
               style={styles.cancelButton}
@@ -1957,6 +1969,165 @@ const BookingScreen = ({ navigation }) => {
                 onPress={handleConfirmOutsideDestination}
               >
                 <Text style={styles.areaWarningConfirmText}>Proceed Anyway</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Driver Offers Modal - Shows all available driver offers */}
+      <Modal
+        visible={showOffersModal && driverOffers.length > 0}
+        transparent={true}
+        animationType="slide"
+        onRequestClose={() => setShowOffersModal(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.offersModal}>
+            <View style={styles.offersModalHeader}>
+              <View style={styles.offersModalTitleRow}>
+                <View style={styles.offersModalBadge}>
+                  <Text style={styles.offersModalBadgeText}>{driverOffers.length}</Text>
+                </View>
+                <Text style={styles.offersModalTitle}>
+                  Driver Offer{driverOffers.length > 1 ? 's' : ''} Available
+                </Text>
+              </View>
+              <TouchableOpacity 
+                style={styles.offersModalCloseButton}
+                onPress={() => setShowOffersModal(false)}
+              >
+                <Ionicons name="close" size={24} color={colors.orangeShade5} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.offersModalYourFare}>
+              <Text style={styles.offersModalYourFareLabel}>Your requested fare:</Text>
+              <Text style={styles.offersModalYourFareAmount}>₱{currentBooking?.preferredFare || preferredFare}</Text>
+            </View>
+
+            {driverOffers.length > 1 && (
+              <View style={styles.offersModalTip}>
+                <Ionicons name="bulb-outline" size={16} color="#856404" />
+                <Text style={styles.offersModalTipText}>
+                  Compare offers below and choose the best one for your trip
+                </Text>
+              </View>
+            )}
+
+            <ScrollView 
+              style={styles.offersModalScrollView}
+              showsVerticalScrollIndicator={true}
+              contentContainerStyle={styles.offersModalScrollContent}
+            >
+              {driverOffers.map((offer, index) => (
+                <View key={offer._id || index} style={styles.offerCardModal}>
+                  <View style={styles.offerCardHeader}>
+                    <View style={styles.offerNumberBadge}>
+                      <Text style={styles.offerNumberText}>#{index + 1}</Text>
+                    </View>
+                    <View style={[
+                      styles.offerFareBadge,
+                      offer.amount <= (currentBooking?.preferredFare || 0) && styles.offerFareBadgeGood,
+                      offer.amount > (currentBooking?.preferredFare || 0) && styles.offerFareBadgeHigher
+                    ]}>
+                      <Text style={[
+                        styles.offerFareBadgeText,
+                        offer.amount <= (currentBooking?.preferredFare || 0) && styles.offerFareBadgeTextGood
+                      ]}>
+                        ₱{offer.amount}
+                      </Text>
+                      {offer.amount <= (currentBooking?.preferredFare || 0) ? (
+                        <Ionicons name="checkmark-circle" size={14} color="#28a745" style={{marginLeft: 4}} />
+                      ) : (
+                        <Ionicons name="arrow-up" size={14} color="#dc3545" style={{marginLeft: 4}} />
+                      )}
+                    </View>
+                  </View>
+                  
+                  <View style={styles.offerDriverInfoModal}>
+                    <View style={styles.driverAvatarModal}>
+                      <Ionicons name="person" size={28} color="#fff" />
+                    </View>
+                    <View style={styles.offerDriverDetailsModal}>
+                      <Text style={styles.offerDriverNameModal}>
+                        {offer.driver?.firstname || 'Driver'} {offer.driver?.lastname || ''}
+                      </Text>
+                      <View style={styles.ratingDisplayModal}>
+                        <Ionicons name="star" size={14} color={colors.starYellow} />
+                        <Text style={styles.ratingTextModal}>
+                          {offer.driver?.rating?.toFixed(1) || 'N/A'}
+                        </Text>
+                        {offer.tricycle?.plateNumber && (
+                          <>
+                            <Text style={styles.dotSeparator}>•</Text>
+                            <Ionicons name="car-outline" size={14} color={colors.orangeShade5} />
+                            <Text style={styles.plateNumberModal}>
+                              {offer.tricycle.plateNumber}
+                            </Text>
+                          </>
+                        )}
+                      </View>
+                    </View>
+                  </View>
+                  
+                  {offer.message ? (
+                    <View style={styles.offerMessageContainerModal}>
+                      <Ionicons name="chatbubble-outline" size={14} color={colors.orangeShade5} />
+                      <Text style={styles.offerMessageModal}>
+                        "{offer.message}"
+                      </Text>
+                    </View>
+                  ) : null}
+
+                  <View style={styles.offerFareComparison}>
+                    {offer.amount < (currentBooking?.preferredFare || 0) && (
+                      <Text style={styles.fareSavingsText}>
+                        Save ₱{(currentBooking?.preferredFare || 0) - offer.amount} from your offer!
+                      </Text>
+                    )}
+                    {offer.amount === (currentBooking?.preferredFare || 0) && (
+                      <Text style={styles.fareMatchText}>
+                        Matches your requested fare
+                      </Text>
+                    )}
+                    {offer.amount > (currentBooking?.preferredFare || 0) && (
+                      <Text style={styles.fareHigherText}>
+                        ₱{offer.amount - (currentBooking?.preferredFare || 0)} above your offer
+                      </Text>
+                    )}
+                  </View>
+                  
+                  <View style={styles.offerActionsModal}>
+                    <TouchableOpacity
+                      style={styles.declineOfferButtonModal}
+                      onPress={() => handleDeclineSpecificOffer(offer)}
+                    >
+                      <Ionicons name="close-outline" size={20} color="#dc3545" />
+                      <Text style={styles.declineOfferTextModal}>Decline</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.acceptOfferButtonModal}
+                      onPress={() => handleAcceptSpecificOffer(offer)}
+                    >
+                      <Ionicons name="checkmark-outline" size={20} color="#fff" />
+                      <Text style={styles.acceptOfferTextModal}>Accept Offer</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              ))}
+            </ScrollView>
+
+            <View style={styles.offersModalFooter}>
+              <TouchableOpacity
+                style={styles.cancelBookingButtonModal}
+                onPress={() => {
+                  setShowOffersModal(false);
+                  handleCancelBooking();
+                }}
+              >
+                <Ionicons name="close-circle-outline" size={18} color="#dc3545" />
+                <Text style={styles.cancelBookingTextModal}>Cancel Booking</Text>
               </TouchableOpacity>
             </View>
           </View>
@@ -2859,6 +3030,30 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 12,
   },
+  offersHeaderButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.ivory2,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 2,
+    borderColor: colors.primary,
+  },
+  offersHeaderBadge: {
+    width: 20,
+    height: 20,
+    borderRadius: 10,
+    backgroundColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: 4,
+  },
+  offersHeaderBadgeText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '700',
+  },
   historyButton: {
     width: 40,
     height: 40,
@@ -3292,6 +3487,346 @@ const styles = StyleSheet.create({
     color: '#28a745',
     marginLeft: spacing.small,
     fontWeight: '500',
+  },
+
+  // Multi-offer panel styles
+  offersBadgeContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing.small,
+  },
+  offersBadge: {
+    width: 28,
+    height: 28,
+    borderRadius: 14,
+    backgroundColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: spacing.small,
+  },
+  offersBadgeText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  yourFareContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.ivory3,
+    padding: spacing.small,
+    borderRadius: 8,
+    marginBottom: spacing.medium,
+  },
+  yourFareAmount: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.primary,
+  },
+  offerPreview: {
+    backgroundColor: colors.ivory4,
+    padding: spacing.medium,
+    borderRadius: 12,
+    marginBottom: spacing.medium,
+    borderWidth: 1,
+    borderColor: colors.ivory3,
+  },
+  offerPreviewInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  offerPreviewAmount: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: colors.orangeShade7,
+  },
+  moreOffersText: {
+    fontSize: 13,
+    color: colors.primary,
+    fontWeight: '600',
+    marginTop: spacing.small,
+    textAlign: 'center',
+  },
+  viewAllOffersButton: {
+    backgroundColor: colors.primary,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 14,
+    borderRadius: 12,
+    marginBottom: spacing.small,
+  },
+  viewAllOffersText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+    marginLeft: spacing.small,
+  },
+
+  // Driver Offers Modal styles
+  offersModal: {
+    backgroundColor: colors.ivory1,
+    borderTopLeftRadius: 24,
+    borderTopRightRadius: 24,
+    maxHeight: '90%',
+    paddingBottom: spacing.large,
+  },
+  offersModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: spacing.medium,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.ivory3,
+  },
+  offersModalTitleRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  offersModalBadge: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: spacing.small,
+  },
+  offersModalBadgeText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  offersModalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: colors.orangeShade7,
+  },
+  offersModalCloseButton: {
+    padding: spacing.small,
+  },
+  offersModalYourFare: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.ivory3,
+    marginHorizontal: spacing.medium,
+    marginTop: spacing.medium,
+    padding: spacing.medium,
+    borderRadius: 12,
+  },
+  offersModalYourFareLabel: {
+    fontSize: 14,
+    color: colors.orangeShade5,
+  },
+  offersModalYourFareAmount: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: colors.primary,
+  },
+  offersModalTip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff3cd',
+    marginHorizontal: spacing.medium,
+    marginTop: spacing.medium,
+    padding: spacing.small,
+    borderRadius: 8,
+  },
+  offersModalTipText: {
+    flex: 1,
+    fontSize: 12,
+    color: '#856404',
+    marginLeft: spacing.small,
+  },
+  offersModalScrollView: {
+    marginTop: spacing.medium,
+    maxHeight: 400,
+  },
+  offersModalScrollContent: {
+    paddingHorizontal: spacing.medium,
+    paddingBottom: spacing.medium,
+  },
+  offerCardModal: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: spacing.medium,
+    marginBottom: spacing.medium,
+    borderWidth: 1,
+    borderColor: colors.ivory3,
+    shadowColor: '#000',
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 2,
+  },
+  offerCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: spacing.small,
+  },
+  offerNumberBadge: {
+    backgroundColor: colors.ivory4,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  offerNumberText: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: colors.orangeShade5,
+  },
+  offerFareBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.ivory4,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+  },
+  offerFareBadgeGood: {
+    backgroundColor: '#e8f5e9',
+  },
+  offerFareBadgeHigher: {
+    backgroundColor: '#ffebee',
+  },
+  offerFareBadgeText: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.orangeShade7,
+  },
+  offerFareBadgeTextGood: {
+    color: '#28a745',
+  },
+  offerDriverInfoModal: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: spacing.small,
+  },
+  driverAvatarModal: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: spacing.medium,
+  },
+  offerDriverDetailsModal: {
+    flex: 1,
+  },
+  offerDriverNameModal: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.orangeShade7,
+  },
+  ratingDisplayModal: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginTop: 4,
+  },
+  ratingTextModal: {
+    fontSize: 14,
+    color: colors.orangeShade6,
+    marginLeft: 4,
+  },
+  dotSeparator: {
+    marginHorizontal: 6,
+    color: colors.orangeShade4,
+  },
+  plateNumberModal: {
+    fontSize: 13,
+    color: colors.orangeShade5,
+    marginLeft: 4,
+  },
+  offerMessageContainerModal: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: colors.ivory3,
+    padding: spacing.small,
+    borderRadius: 10,
+    marginVertical: spacing.small,
+  },
+  offerMessageModal: {
+    flex: 1,
+    fontSize: 13,
+    color: colors.orangeShade6,
+    marginLeft: 8,
+    fontStyle: 'italic',
+  },
+  offerFareComparison: {
+    alignItems: 'center',
+    paddingVertical: spacing.small,
+  },
+  fareSavingsText: {
+    fontSize: 13,
+    color: '#28a745',
+    fontWeight: '600',
+  },
+  fareMatchText: {
+    fontSize: 13,
+    color: colors.primary,
+    fontWeight: '600',
+  },
+  fareHigherText: {
+    fontSize: 13,
+    color: '#dc3545',
+    fontWeight: '500',
+  },
+  offerActionsModal: {
+    flexDirection: 'row',
+    marginTop: spacing.small,
+  },
+  declineOfferButtonModal: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#fff',
+    paddingVertical: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#dc3545',
+    marginRight: spacing.small,
+  },
+  declineOfferTextModal: {
+    color: '#dc3545',
+    fontSize: 15,
+    fontWeight: '600',
+    marginLeft: 4,
+  },
+  acceptOfferButtonModal: {
+    flex: 1.5,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#28a745',
+    paddingVertical: 12,
+    borderRadius: 10,
+  },
+  acceptOfferTextModal: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '700',
+    marginLeft: 4,
+  },
+  offersModalFooter: {
+    paddingHorizontal: spacing.medium,
+    paddingTop: spacing.medium,
+    borderTopWidth: 1,
+    borderTopColor: colors.ivory3,
+  },
+  cancelBookingButtonModal: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 12,
+  },
+  cancelBookingTextModal: {
+    color: '#dc3545',
+    fontSize: 14,
+    fontWeight: '600',
+    marginLeft: 4,
   },
 });
 
