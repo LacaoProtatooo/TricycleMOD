@@ -21,11 +21,11 @@ import { useAsyncSQLiteContext } from '../../utils/asyncSQliteProvider';
 import { colors, spacing, fonts } from '../../components/common/theme';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import axios from 'axios';
-import Constants from 'expo-constants';
 import { getToken } from '../../utils/jwtStorage';
+import { API_URL } from '../../utils/config';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const BASE_URL = Constants.expoConfig.extra?.BACKEND_URL || 'http://192.168.254.105:5000';
+const BASE_URL = API_URL;
 
 const NotificationInbox = ({ navigation }) => {
   const dispatch = useDispatch();

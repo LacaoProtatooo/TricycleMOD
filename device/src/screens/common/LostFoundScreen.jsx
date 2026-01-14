@@ -1,13 +1,13 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, TextInput, ActivityIndicator, Image, Alert, ScrollView } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import Constants from 'expo-constants';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { colors, spacing } from '../../components/common/theme';
 import { useAsyncSQLiteContext } from '../../utils/asyncSQliteProvider';
 import { getToken } from '../../utils/jwtStorage';
+import { API_URL } from '../../utils/config';
 
-const BACKEND = (Constants?.expoConfig?.extra?.BACKEND_URL) || (Constants?.manifest?.extra?.BACKEND_URL) || 'http://192.168.254.105:5000';
+const BACKEND = API_URL;
 
 export default function LostFoundScreen() {
   const db = useAsyncSQLiteContext();

@@ -1,8 +1,8 @@
 import * as TaskManager from 'expo-task-manager';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import Constants from 'expo-constants';
+import { API_URL } from '../../utils/config';
 
-const BACKEND = (Constants?.expoConfig?.extra?.BACKEND_URL) || (Constants?.manifest?.extra?.BACKEND_URL) || 'http://192.168.254.105:5000';
+const BACKEND = API_URL;
 
 // same key used elsewhere
 const KM_KEY = 'vehicle_current_km_v1';

@@ -15,14 +15,14 @@ import {
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { useSelector } from 'react-redux';
 import Ionicons from 'react-native-vector-icons/Ionicons';
-import Constants from 'expo-constants';
 import axios from 'axios';
 
 import { colors, spacing } from "../../components/common/theme";
 import { useAsyncSQLiteContext } from "../../utils/asyncSQliteProvider";
 import { getToken } from "../../utils/jwtStorage";
+import { API_URL } from '../../utils/config';
 
-const apiURL = Constants.expoConfig.extra?.BACKEND_URL;
+const apiURL = API_URL;
 
 const ChatMenu = () => {
   const navigation = useNavigation();

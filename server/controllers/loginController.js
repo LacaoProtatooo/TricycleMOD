@@ -45,7 +45,7 @@ export const signup = async (req, res) => {
       phone: phone || "",
       role: 'guest',
       FCMToken: FCMToken || "",
-      isVerified: false,
+      isVerified: true,
       verificationTokenExpiresAt: Date.now() + 24 * 60 * 60 * 1000, // 24 hours
     };
 

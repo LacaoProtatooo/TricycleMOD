@@ -18,9 +18,9 @@ import * as FileSystem from 'expo-file-system';
 import { colors, spacing } from '../../components/common/theme';
 import { useAsyncSQLiteContext } from '../../utils/asyncSQliteProvider';
 import { getToken } from '../../utils/jwtStorage';
-import Constants from 'expo-constants';
+import { API_URL } from '../../utils/config';
 
-const BACKEND = Constants.expoConfig?.extra?.BACKEND_URL || 'http://192.168.254.105:5000';
+const BACKEND = API_URL;
 
 const SickLeaveScreen = ({ navigation }) => {
   const db = useAsyncSQLiteContext();

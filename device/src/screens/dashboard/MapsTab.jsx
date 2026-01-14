@@ -9,10 +9,10 @@ import { useAsyncSQLiteContext } from '../../utils/asyncSQliteProvider';
 import { getToken } from '../../utils/jwtStorage';
 import { getUserCredentials } from '../../utils/userStorage';
 import { getCodingDayStatus, getCodingDayName } from '../../utils/codingDayUtils';
-import Constants from 'expo-constants';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { API_URL } from '../../utils/config';
 
-const BACKEND = (Constants?.expoConfig?.extra?.BACKEND_URL) || (Constants?.manifest?.extra?.BACKEND_URL) || 'http://192.168.254.105:5000';
+const BACKEND = API_URL;
 const KM_KEY = 'vehicle_current_km_v1';
 
 const MapsTab = () => {

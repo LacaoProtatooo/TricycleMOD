@@ -29,12 +29,12 @@ import Ionicons from 'react-native-vector-icons/Ionicons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSelector, useDispatch } from 'react-redux';
 import axios from 'axios';
-import Constants from 'expo-constants';
 
 import { colors, spacing } from '../../components/common/theme';
 import { useAsyncSQLiteContext } from '../../utils/asyncSQliteProvider';
 import { getToken } from '../../utils/jwtStorage';
 import { getUserCredentials } from '../../utils/userStorage';
+import { API_URL as BASE_URL } from '../../utils/config';
 import {
   WEBTODA_SERVICE_AREA,
   WEBTODA_ROUTE_COORDINATES,
@@ -60,7 +60,7 @@ import {
   resetBookingState,
 } from '../../redux/actions/bookingAction';
 
-const BACKEND_URL = Constants.expoConfig?.extra?.BACKEND_URL || 'http://192.168.254.105:5000';
+const BACKEND_URL = BASE_URL;
 const API_URL = `${BACKEND_URL}/api/booking`;
 
 // Use WEBTODA GPX-based service area instead of generic circle

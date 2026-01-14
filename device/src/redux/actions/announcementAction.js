@@ -1,9 +1,9 @@
 // device/src/redux/actions/announcementAction.js
 import axios from 'axios';
 import { getToken } from '../../utils/jwtStorage';
-import Constants from 'expo-constants';
+import { API_URL } from '../../utils/config';
 
-const apiURL = Constants.expoConfig.extra?.BACKEND_URL || 'http://192.168.254.105:5000';
+const apiURL = API_URL;
 
 export const FETCH_UNREAD_ANNOUNCEMENTS_REQUEST = 'FETCH_UNREAD_ANNOUNCEMENTS_REQUEST';
 export const FETCH_UNREAD_ANNOUNCEMENTS_SUCCESS = 'FETCH_UNREAD_ANNOUNCEMENTS_SUCCESS';

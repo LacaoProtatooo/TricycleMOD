@@ -22,8 +22,8 @@ import { colors, spacing, fonts } from '../../components/common/theme';
 import * as ImagePicker from "expo-image-picker";
 import { MaterialIcons, Ionicons } from '@expo/vector-icons';
 import axios from 'axios';
-import Constants from 'expo-constants';
 import { getToken } from '../../utils/jwtStorage';
+import { API_URL } from '../../utils/config';
 
 const Account = () => {
   const dispatch = useDispatch();
@@ -64,7 +64,7 @@ const Account = () => {
     rawOcrText: null
   });
 
-  const BASE_URL = Constants.expoConfig.extra?.BACKEND_URL || 'http://192.168.254.105:5000';
+  const BASE_URL = API_URL;
 
   useEffect(() => {
     dispatch(fetchCurrentUser());

@@ -4,19 +4,19 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import * as Notifications from 'expo-notifications';
 import { colors, spacing, fonts } from '../../components/common/theme';
-import Constants from 'expo-constants';
 import { getToken } from '../../utils/jwtStorage';
 import { useAsyncSQLiteContext } from '../../utils/asyncSQliteProvider';
 import VehicleDiagnostic, { getWearColor } from './VehicleDiagnostic';
 import PredictiveMaintenance from './PredictiveMaintenance';
 import ServiceHistory from './ServiceHistory';
+import { API_URL } from '../../utils/config';
 
 // Key for tracking which notifications have been sent
 const NOTIFIED_ITEMS_KEY = 'maintenance_notified_items_v1';
 const WEAR_PATTERNS_KEY = 'wear_patterns_v1';
 const MAINTENANCE_HISTORY_KEY = 'maintenance_history_v2';
 
-const BACKEND = (Constants?.expoConfig?.extra?.BACKEND_URL) || (Constants?.manifest?.extra?.BACKEND_URL) || 'http://192.168.254.105:5000';
+const BACKEND = API_URL;
 const STORAGE_KEY = 'maintenance_data_v1';
 
 // same key used in BackgroundLocationTask

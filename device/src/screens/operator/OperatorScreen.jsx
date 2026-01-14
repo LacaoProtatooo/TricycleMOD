@@ -5,9 +5,9 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { useAsyncSQLiteContext } from '../../utils/asyncSQliteProvider';
 import { getToken } from '../../utils/jwtStorage';
-import Constants from 'expo-constants';
 import { colors } from '../../components/common/theme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { API_URL } from '../../utils/config';
 
 // Redux Actions
 import { 
@@ -42,7 +42,7 @@ import LoadingScreen from '../../components/common/LoadingScreen';
 // Utils
 import { validateTricycleData, validateSchedule } from './operatorHelpers';
 
-const BACKEND = (Constants?.expoConfig?.extra?.BACKEND_URL) || (Constants?.manifest?.extra?.BACKEND_URL) || 'http://192.168.254.105:5000';
+const BACKEND = API_URL;
 const Tab = createBottomTabNavigator();
 
 export default function OperatorScreen({ navigation }) {

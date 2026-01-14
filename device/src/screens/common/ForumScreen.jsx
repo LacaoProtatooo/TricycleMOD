@@ -2,11 +2,11 @@ import React from 'react';
 import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
-import Constants from 'expo-constants';
 import ForumBoard from '../../components/forum/ForumBoard';
 import { colors, spacing } from '../../components/common/theme';
+import { API_URL } from '../../utils/config';
 
-const BACKEND = Constants.expoConfig?.extra?.BACKEND_URL || 'http://192.168.254.105:5000';
+const BACKEND = API_URL;
 
 const ForumScreen = ({ navigation }) => {
   return (

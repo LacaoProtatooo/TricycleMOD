@@ -24,13 +24,13 @@ import {
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import axios from 'axios';
-import Constants from 'expo-constants';
 
 import { colors, spacing } from '../../components/common/theme';
 import { getToken } from '../../utils/jwtStorage';
 import { useAsyncSQLiteContext } from '../../utils/asyncSQliteProvider';
+import { API_URL } from '../../utils/config';
 
-const BACKEND_URL = Constants.expoConfig?.extra?.BACKEND_URL || 'http://192.168.254.105:5000';
+const BACKEND_URL = API_URL;
 
 const BoundarySettlementsScreen = ({ navigation }) => {
   const db = useAsyncSQLiteContext();

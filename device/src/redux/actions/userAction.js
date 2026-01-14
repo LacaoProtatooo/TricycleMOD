@@ -1,10 +1,10 @@
 // userAction.js
 import { createAsyncThunk } from '@reduxjs/toolkit';
-import Constants from 'expo-constants';
 import { getUserCredentials, storeUserCredentials } from '../../utils/userStorage';
 import { getToken } from '../../utils/jwtStorage';
+import { API_URL } from '../../utils/config';
 
-const apiURL = Constants.expoConfig.extra?.BACKEND_URL || 'http://192.168.254.105:5000';
+const apiURL = API_URL;
 
 export const fetchCurrentUser = createAsyncThunk(
   'user/fetchCurrentUser',

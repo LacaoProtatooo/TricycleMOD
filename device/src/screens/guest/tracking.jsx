@@ -30,13 +30,13 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import axios from 'axios';
-import Constants from 'expo-constants';
 import { useNavigation } from '@react-navigation/native';
 
 import { colors, spacing } from '../../components/common/theme';
 import { getUserCredentials } from '../../utils/userStorage';
+import { API_URL } from '../../utils/config';
 
-const BASE_URL = Constants.expoConfig?.extra?.BACKEND_URL || 'http://192.168.254.105:5000';
+const BASE_URL = API_URL;
 
 // Storage keys
 const DEVICE_ID_KEY = 'tracking_device_id_v1';

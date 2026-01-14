@@ -12,11 +12,11 @@ import {
   Platform,
   ScrollView
 } from 'react-native';
-import Constants from 'expo-constants';
 import { useDispatch } from 'react-redux';
 import { useAsyncSQLiteContext } from '../../utils/asyncSQliteProvider';
 import { useNavigation, CommonActions } from '@react-navigation/native';
 import { Ionicons } from '@expo/vector-icons';
+import { API_URL } from '../../utils/config';
 
 import { auth } from '../../utils/firebaseConfig';
 import {
@@ -44,8 +44,7 @@ const Login = () => {
   const [password, setPassword] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const { extra: { BACKEND_URL } = {} } = Constants.expoConfig;
-  const apiURL = BACKEND_URL || 'http://192.168.254.105:5000';
+  const apiURL = API_URL;
 
   const navigateAfterLogin = (user) => {
     // Route operators to OperatorScreen, others to Home
@@ -73,7 +72,8 @@ const Login = () => {
         navigateAfterLogin(user);
       })
       .catch((error) => {
-        Toasthelper.showError('Login Failed', error.message || 'Invalid Credentials');
+        console.error('❌ Login failed:', error);
+        Toasthelper.showError('Login Failed', typeof error === 'string' ? error : (error?.message || 'Invalid Credentials'));
       })
       .finally(() => {
         setIsSubmitting(false);

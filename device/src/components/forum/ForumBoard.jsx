@@ -15,13 +15,13 @@ import {
   Modal,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
-import Constants from 'expo-constants';
 import { colors, spacing } from '../common/theme';
 import { useAsyncSQLiteContext } from '../../utils/asyncSQliteProvider';
 import { getToken } from '../../utils/jwtStorage';
 import { useSelector } from 'react-redux';
+import { API_URL } from '../../utils/config';
 
-const DEFAULT_BACKEND = Constants.expoConfig?.extra?.BACKEND_URL || 'http://192.168.254.105:5000';
+const DEFAULT_BACKEND = API_URL;
 const MAX_CHARS = 2000;
 
 // Helper function for relative time

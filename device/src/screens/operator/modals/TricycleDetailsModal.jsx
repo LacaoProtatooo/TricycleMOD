@@ -16,12 +16,12 @@ import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing } from '../../../components/common/theme';
 import VehicleDiagnostic, { getWearColor } from '../../../components/home/VehicleDiagnostic';
 import { getCodingDayName, isTodayCodingDay } from '../../../utils/codingDayUtils';
-import Constants from 'expo-constants';
 import { getToken } from '../../../utils/jwtStorage';
 import { useAsyncSQLiteContext } from '../../../utils/asyncSQliteProvider';
+import { API_URL } from '../../../utils/config';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
-const BACKEND = (Constants?.expoConfig?.extra?.BACKEND_URL) || (Constants?.manifest?.extra?.BACKEND_URL) || 'http://192.168.254.105:5000';
+const BACKEND = API_URL;
 
 // Coding days for picker
 const CODING_DAYS = [

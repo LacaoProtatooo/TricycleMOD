@@ -14,9 +14,9 @@ import Ionicons from 'react-native-vector-icons/Ionicons';
 import { colors, spacing, fonts } from '../../components/common/theme';
 import { getToken } from '../../utils/jwtStorage';
 import { useAsyncSQLiteContext } from '../../utils/asyncSQliteProvider';
-import Constants from 'expo-constants';
+import { API_URL } from '../../utils/config';
 
-const BACKEND = (Constants?.expoConfig?.extra?.BACKEND_URL) || (Constants?.manifest?.extra?.BACKEND_URL) || 'http://192.168.254.105:5000';
+const BACKEND = API_URL;
 
 const LeaderboardTab = () => {
   const db = useAsyncSQLiteContext();

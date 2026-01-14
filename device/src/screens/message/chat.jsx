@@ -18,13 +18,13 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { useSelector } from 'react-redux';
 import Ionicons from 'react-native-vector-icons/Ionicons';
-import Constants from 'expo-constants';
 import axios from 'axios';
 import { colors, spacing } from '../../components/common/theme';
 import { useAsyncSQLiteContext } from '../../utils/asyncSQliteProvider';
 import { getToken } from '../../utils/jwtStorage';
+import { API_URL } from '../../utils/config';
 
-const apiURL = Constants.expoConfig.extra?.BACKEND_URL || 'http://192.168.254.105:5000';
+const apiURL = API_URL;
 
 // Polling interval in milliseconds (5 seconds)
 const POLLING_INTERVAL = 5000;

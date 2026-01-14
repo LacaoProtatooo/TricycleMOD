@@ -8,10 +8,10 @@ import { useNavigation } from '@react-navigation/native';
 import { fetchUnreadCount } from '../../redux/actions/announcementAction';
 import { useAsyncSQLiteContext } from '../../utils/asyncSQliteProvider';
 import axios from 'axios';
-import Constants from 'expo-constants';
 import { getToken } from '../../utils/jwtStorage';
+import { API_URL } from '../../utils/config';
 
-const BASE_URL = Constants.expoConfig.extra?.BACKEND_URL || 'http://192.168.254.105:5000';
+const BASE_URL = API_URL;
 
 const NotificationBell = () => {
   const navigation = useNavigation();

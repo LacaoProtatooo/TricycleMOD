@@ -7,14 +7,14 @@ import * as Application from 'expo-application';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import axios from 'axios';
-import Constants from 'expo-constants';
 import { colors, spacing } from '../../components/common/theme';
+import { API_URL } from '../../utils/config';
 
 // ensure background task is registered at runtime
 import '../../components/services/BackgroundLocationTask';
 import { BG_TASK_NAME } from '../../components/services/BackgroundLocationTask';
 
-const BASE_URL = Constants.expoConfig?.extra?.BACKEND_URL || 'http://192.168.254.105:5000';
+const BASE_URL = API_URL;
 
 const KM_KEY = 'vehicle_current_km_v1';
 const DEVICE_ID_KEY = 'driver_tracking_device_id_v1';

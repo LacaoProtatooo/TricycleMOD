@@ -1,8 +1,8 @@
 // messageAction.js
 
 import axios from 'axios';
-import Constants from 'expo-constants';
 import { getToken } from '../../utils/jwtStorage';
+import { API_URL } from '../../utils/config';
 import {
   setLoading,
   setConversations,
@@ -11,7 +11,7 @@ import {
   setError
 } from '../reducers/messageReducer';
 
-const BACKEND_URL = Constants.expoConfig.extra.BACKEND_URL;
+const BACKEND_URL = API_URL;
 
 // Helper function
 const getDbAndToken = async (getState) => {

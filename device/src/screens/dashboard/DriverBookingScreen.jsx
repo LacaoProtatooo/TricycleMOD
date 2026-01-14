@@ -28,14 +28,14 @@ import Ionicons from 'react-native-vector-icons/Ionicons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSelector, useDispatch } from 'react-redux';
 import axios from 'axios';
-import Constants from 'expo-constants';
 
 import { colors, spacing } from '../../components/common/theme';
 import { getToken } from '../../utils/jwtStorage';
 import { useAsyncSQLiteContext } from '../../utils/asyncSQliteProvider';
 import { getCodingDayStatus, getCodingDayName } from '../../utils/codingDayUtils';
+import { API_URL } from '../../utils/config';
 
-const BACKEND = (Constants?.expoConfig?.extra?.BACKEND_URL) || 'http://192.168.1.1:5000';
+const BACKEND = API_URL;
 const COMPLETION_RADIUS_METERS = 300;
 
 const DriverBookingScreen = () => {

@@ -3,11 +3,10 @@
  */
 
 import axios from 'axios';
-import Constants from 'expo-constants';
 import { getToken } from '../../utils/jwtStorage';
+import { API_URL as BASE_URL } from '../../utils/config';
 
-const BACKEND_URL = Constants.expoConfig?.extra?.BACKEND_URL || 'http://192.168.254.105:5000';
-const API_URL = `${BACKEND_URL}/api/booking`;
+const BOOKING_API_URL = `${BASE_URL}/api/booking`;
 
 // Action Types
 export const BOOKING_TYPES = {
@@ -85,7 +84,7 @@ export const createBooking = (bookingData, db) => async (dispatch) => {
       },
     };
 
-    const { data } = await axios.post(`${API_URL}/create`, bookingData, config);
+    const { data } = await axios.post(`${BOOKING_API_URL}/create`, bookingData, config);
 
     dispatch({
       type: BOOKING_TYPES.CREATE_BOOKING_SUCCESS,
@@ -118,7 +117,7 @@ export const getUserBookings = (db, page = 1, limit = 10) => async (dispatch) =>
     };
 
     const { data } = await axios.get(
-      `${API_URL}/user?page=${page}&limit=${limit}`,
+      `${BOOKING_API_URL}/user?page=${page}&limit=${limit}`,
       config
     );
 
@@ -152,7 +151,7 @@ export const getBookingDetails = (bookingId, db) => async (dispatch) => {
       },
     };
 
-    const { data } = await axios.get(`${API_URL}/${bookingId}`, config);
+    const { data } = await axios.get(`${BOOKING_API_URL}/${bookingId}`, config);
 
     dispatch({
       type: BOOKING_TYPES.GET_BOOKING_SUCCESS,
@@ -184,7 +183,7 @@ export const getActiveBooking = (db) => async (dispatch) => {
       },
     };
 
-    const { data } = await axios.get(`${API_URL}/active`, config);
+    const { data } = await axios.get(`${BOOKING_API_URL}/active`, config);
 
     dispatch({
       type: BOOKING_TYPES.GET_ACTIVE_BOOKING_SUCCESS,
@@ -220,7 +219,7 @@ export const respondToOffer = ({ bookingId, accepted, offerId, db }) => async (d
     };
 
     const { data } = await axios.post(
-      `${API_URL}/${bookingId}/respond-offer`,
+      `${BOOKING_API_URL}/${bookingId}/respond-offer`,
       { accepted, offerId },
       config
     );
@@ -258,7 +257,7 @@ export const completeTrip = ({ bookingId, db, confirmed = true, disputeReason = 
     };
 
     const { data } = await axios.post(
-      `${API_URL}/${bookingId}/confirm-completion`,
+      `${BOOKING_API_URL}/${bookingId}/confirm-completion`,
       { confirmed, disputeReason },
       config
     );
@@ -295,7 +294,7 @@ export const cancelBooking = ({ bookingId, reason, db }) => async (dispatch) => 
     };
 
     const { data } = await axios.post(
-      `${API_URL}/${bookingId}/cancel`,
+      `${BOOKING_API_URL}/${bookingId}/cancel`,
       { reason },
       config
     );
@@ -332,7 +331,7 @@ export const rateDriver = ({ bookingId, driverId, rating, comment, db }) => asyn
     };
 
     const { data } = await axios.post(
-      `${API_URL}/${bookingId}/rate`,
+      `${BOOKING_API_URL}/${bookingId}/rate`,
       { driverId, rating, comment },
       config
     );

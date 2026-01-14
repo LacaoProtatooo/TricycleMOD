@@ -1,11 +1,11 @@
 // actions/authAction.js
 import { createAsyncThunk } from '@reduxjs/toolkit';
-import Constants from 'expo-constants';
 import { storeToken, removeToken, getToken } from '../../utils/jwtStorage';
 import { removeUserCredentials, storeUserCredentials } from '../../utils/userStorage';
 import { registerForPushNotificationsAsync } from '../../utils/notification';
+import { API_URL } from '../../utils/config';
 
-const apiURL = Constants.expoConfig.extra?.BACKEND_URL || 'http://192.168.254.105:5000';
+const apiURL = API_URL;
 
 // Helper function to register FCM token after login
 const registerFCMToken = async (userId) => {
@@ -34,6 +34,7 @@ export const loginUser = createAsyncThunk(
   'auth/login',
   async ({ email, password, db }, thunkAPI) => {
     try {
+      console.log('🔐 Attempting login to:', `${apiURL}/api/auth/login`);
       const token = await getToken(db);
       const res = await fetch(`${apiURL}/api/auth/login`, {
         method: 'POST',
@@ -43,7 +44,9 @@ export const loginUser = createAsyncThunk(
         },
         body: JSON.stringify({ email, password }),
       });
+      console.log('📡 Response status:', res.status);
       const data = await res.json();
+      console.log('📦 Response data:', data.success ? 'Login successful' : data.message);
       if (data.success) {
         // Save JWT and user data
         await storeToken(db, data.token);
@@ -58,6 +61,7 @@ export const loginUser = createAsyncThunk(
         return thunkAPI.rejectWithValue(data.message);
       }
     } catch (error) {
+      console.error('❌ Login error:', error.message);
       return thunkAPI.rejectWithValue(error.message);
     }
   }

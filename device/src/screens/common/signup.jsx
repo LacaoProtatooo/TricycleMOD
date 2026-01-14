@@ -15,7 +15,6 @@ import {
 } from 'react-native';
 import { useDispatch } from 'react-redux';
 import { useNavigation } from '@react-navigation/native';
-import Constants from 'expo-constants';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -23,14 +22,14 @@ import { Ionicons } from '@expo/vector-icons';
 import { signupUser } from '../../redux/actions/authAction';
 // Import theme
 import { colors, spacing } from '../../components/common/theme';
+import { API_URL } from '../../utils/config';
 
 const Signup = () => {
   const dispatch = useDispatch();
   const navigation = useNavigation();
 
   // API URL
-  const { extra: { BACKEND_URL } = {} } = Constants.expoConfig;
-  const apiURL = BACKEND_URL || 'http://192.168.254.105:5000';
+  const apiURL = API_URL;
 
   // Form field references for focus navigation
   const firstnameRef = useRef(null);
