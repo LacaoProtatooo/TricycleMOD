@@ -148,6 +148,9 @@ const BookingScreen = ({ navigation }) => {
   const [showCancellationModal, setShowCancellationModal] = useState(false);
   const [cancellationDetails, setCancellationDetails] = useState(null);
   const [reportReason, setReportReason] = useState('');
+  const [cancellationRating, setCancellationRating] = useState(0);
+  const [cancellationRatingComment, setCancellationRatingComment] = useState('');
+  const [isSubmittingCancellationRating, setIsSubmittingCancellationRating] = useState(false);
   const [isReporting, setIsReporting] = useState(false);
   
   // Multi-offer state
@@ -313,10 +316,13 @@ const BookingScreen = ({ navigation }) => {
               driverName: currentBooking.driver 
                 ? `${currentBooking.driver.firstname} ${currentBooking.driver.lastname}`
                 : 'Driver',
+              driverId: currentBooking.driver?._id,
               reason: currentBooking.cancellationReason || 'No reason provided',
               bookingId: currentBooking._id,
               cancelledAt: currentBooking.cancelledAt,
             });
+            setCancellationRating(0);
+            setCancellationRatingComment('');
             setShowCancellationModal(true);
           } else {
             resetBooking();
@@ -703,6 +709,9 @@ const BookingScreen = ({ navigation }) => {
     setReportReason('');
     setDisputeReason('');
     setShowCompletionModal(false);
+    // Reset cancellation rating states
+    setCancellationRating(0);
+    setCancellationRatingComment('');
     // Reset multi-offer states
     setDriverOffers([]);
     setShowOffersModal(false);
@@ -840,7 +849,49 @@ const BookingScreen = ({ navigation }) => {
   // Dismiss cancellation modal without reporting
   const handleDismissCancellation = () => {
     setShowCancellationModal(false);
+    setCancellationRating(0);
+    setCancellationRatingComment('');
     resetBooking();
+  };
+
+  // Submit rating for cancelled trip
+  const handleSubmitCancellationRating = async () => {
+    if (cancellationRating === 0 || !cancellationDetails?.driverId) {
+      handleDismissCancellation();
+      return;
+    }
+
+    try {
+      setIsSubmittingCancellationRating(true);
+      const token = await getToken(db);
+      if (!token) {
+        Alert.alert('Error', 'Authentication required');
+        return;
+      }
+
+      const response = await axios.post(
+        `${API_URL}/${cancellationDetails.bookingId}/rate`,
+        {
+          driverId: cancellationDetails.driverId,
+          rating: cancellationRating,
+          comment: cancellationRatingComment || 'Trip cancelled by driver',
+        },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      if (response.data.success) {
+        Alert.alert('Thank You', 'Your rating has been submitted.');
+      }
+    } catch (error) {
+      console.error('Error submitting cancellation rating:', error);
+      // Still dismiss even if rating fails
+    } finally {
+      setIsSubmittingCancellationRating(false);
+      setShowCancellationModal(false);
+      setCancellationRating(0);
+      setCancellationRatingComment('');
+      resetBooking();
+    }
   };
 
   // ==================== HISTORY FUNCTIONS ====================
@@ -1843,75 +1894,135 @@ const BookingScreen = ({ navigation }) => {
         onRequestClose={handleDismissCancellation}
       >
         <View style={styles.modalOverlay}>
-          <View style={styles.cancellationModal}>
-            <View style={styles.cancellationHeader}>
-              <Ionicons name="close-circle" size={50} color="#dc3545" />
-              <Text style={styles.cancellationTitle}>Booking Cancelled</Text>
-              <Text style={styles.cancellationSubtitle}>
-                Your booking was cancelled by the driver
-              </Text>
-            </View>
-
-            {cancellationDetails && (
-              <View style={styles.cancellationDetails}>
-                <View style={styles.cancellationDetailRow}>
-                  <Ionicons name="person-outline" size={18} color={colors.orangeShade5} />
-                  <Text style={styles.cancellationDetailLabel}>Driver:</Text>
-                  <Text style={styles.cancellationDetailValue}>
-                    {cancellationDetails.driverName}
-                  </Text>
-                </View>
-                <View style={styles.cancellationDetailRow}>
-                  <Ionicons name="chatbubble-outline" size={18} color={colors.orangeShade5} />
-                  <Text style={styles.cancellationDetailLabel}>Reason:</Text>
-                  <Text style={styles.cancellationDetailValue}>
-                    {cancellationDetails.reason}
-                  </Text>
-                </View>
+          <ScrollView contentContainerStyle={styles.cancellationScrollContent}>
+            <View style={styles.cancellationModal}>
+              <View style={styles.cancellationHeader}>
+                <Ionicons name="close-circle" size={50} color="#dc3545" />
+                <Text style={styles.cancellationTitle}>Booking Cancelled</Text>
+                <Text style={styles.cancellationSubtitle}>
+                  Your booking was cancelled by the driver
+                </Text>
               </View>
-            )}
 
-            <View style={styles.reportSection}>
-              <Text style={styles.reportSectionTitle}>
-                Was there an issue? Report this incident
-              </Text>
-              <TextInput
-                style={styles.reportInput}
-                placeholder="Describe the issue (optional)"
-                placeholderTextColor={colors.orangeShade4}
-                multiline
-                numberOfLines={4}
-                value={reportReason}
-                onChangeText={setReportReason}
-              />
-            </View>
+              {cancellationDetails && (
+                <View style={styles.cancellationDetails}>
+                  <View style={styles.cancellationDetailRow}>
+                    <Ionicons name="person-outline" size={18} color={colors.orangeShade5} />
+                    <Text style={styles.cancellationDetailLabel}>Driver:</Text>
+                    <Text style={styles.cancellationDetailValue}>
+                      {cancellationDetails.driverName}
+                    </Text>
+                  </View>
+                  <View style={styles.cancellationDetailRow}>
+                    <Ionicons name="chatbubble-outline" size={18} color={colors.orangeShade5} />
+                    <Text style={styles.cancellationDetailLabel}>Reason:</Text>
+                    <Text style={styles.cancellationDetailValue}>
+                      {cancellationDetails.reason}
+                    </Text>
+                  </View>
+                </View>
+              )}
 
-            <View style={styles.cancellationButtons}>
-              <TouchableOpacity
-                style={styles.dismissButton}
-                onPress={handleDismissCancellation}
-              >
-                <Text style={styles.dismissButtonText}>Dismiss</Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.reportButton,
-                  (!reportReason.trim() || isReporting) && styles.buttonDisabled,
-                ]}
-                onPress={handleSubmitCancellationReport}
-                disabled={!reportReason.trim() || isReporting}
-              >
-                {isReporting ? (
-                  <ActivityIndicator color="#fff" size="small" />
+              {/* Rating Section for Cancelled Trip */}
+              {cancellationDetails?.driverId && (
+                <View style={styles.cancellationRatingSection}>
+                  <Text style={styles.cancellationRatingSectionTitle}>
+                    Rate this driver
+                  </Text>
+                  <Text style={styles.cancellationRatingSubtitle}>
+                    Your feedback helps improve service quality
+                  </Text>
+                  <View style={styles.cancellationStarsContainer}>
+                    {[1, 2, 3, 4, 5].map((star) => (
+                      <TouchableOpacity
+                        key={star}
+                        onPress={() => setCancellationRating(star)}
+                        style={styles.starButton}
+                      >
+                        <Ionicons
+                          name={star <= cancellationRating ? 'star' : 'star-outline'}
+                          size={32}
+                          color={star <= cancellationRating ? colors.starYellow : colors.orangeShade4}
+                        />
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                  {cancellationRating > 0 && (
+                    <TextInput
+                      style={styles.cancellationRatingInput}
+                      placeholder="Add a comment about your experience (optional)"
+                      placeholderTextColor={colors.orangeShade4}
+                      multiline
+                      numberOfLines={2}
+                      value={cancellationRatingComment}
+                      onChangeText={setCancellationRatingComment}
+                    />
+                  )}
+                </View>
+              )}
+
+              <View style={styles.reportSection}>
+                <Text style={styles.reportSectionTitle}>
+                  Was there an issue? Report this incident
+                </Text>
+                <TextInput
+                  style={styles.reportInput}
+                  placeholder="Describe the issue (optional)"
+                  placeholderTextColor={colors.orangeShade4}
+                  multiline
+                  numberOfLines={3}
+                  value={reportReason}
+                  onChangeText={setReportReason}
+                />
+              </View>
+
+              <View style={styles.cancellationButtons}>
+                <TouchableOpacity
+                  style={styles.dismissButton}
+                  onPress={handleDismissCancellation}
+                >
+                  <Text style={styles.dismissButtonText}>Dismiss</Text>
+                </TouchableOpacity>
+                
+                {reportReason.trim() ? (
+                  <TouchableOpacity
+                    style={[
+                      styles.reportButton,
+                      isReporting && styles.buttonDisabled,
+                    ]}
+                    onPress={handleSubmitCancellationReport}
+                    disabled={isReporting}
+                  >
+                    {isReporting ? (
+                      <ActivityIndicator color="#fff" size="small" />
+                    ) : (
+                      <>
+                        <Ionicons name="flag-outline" size={18} color="#fff" />
+                        <Text style={styles.reportButtonText}>Submit Report</Text>
+                      </>
+                    )}
+                  </TouchableOpacity>
                 ) : (
-                  <>
-                    <Ionicons name="flag-outline" size={18} color="#fff" />
-                    <Text style={styles.reportButtonText}>Submit Report</Text>
-                  </>
+                  <TouchableOpacity
+                    style={[
+                      styles.submitRatingBtn,
+                      isSubmittingCancellationRating && styles.buttonDisabled,
+                    ]}
+                    onPress={handleSubmitCancellationRating}
+                    disabled={isSubmittingCancellationRating}
+                  >
+                    {isSubmittingCancellationRating ? (
+                      <ActivityIndicator color="#fff" size="small" />
+                    ) : (
+                      <Text style={styles.submitRatingBtnText}>
+                        {cancellationRating > 0 ? 'Submit Rating' : 'Done'}
+                      </Text>
+                    )}
+                  </TouchableOpacity>
                 )}
-              </TouchableOpacity>
+              </View>
             </View>
-          </View>
+          </ScrollView>
         </View>
       </Modal>
 
@@ -3247,6 +3358,60 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     marginLeft: spacing.small,
+  },
+  cancellationScrollContent: {
+    flexGrow: 1,
+    justifyContent: 'flex-end',
+  },
+  cancellationRatingSection: {
+    backgroundColor: colors.ivory4,
+    borderRadius: 12,
+    padding: spacing.medium,
+    marginBottom: spacing.medium,
+    alignItems: 'center',
+  },
+  cancellationRatingSectionTitle: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: colors.orangeShade7,
+    marginBottom: 4,
+  },
+  cancellationRatingSubtitle: {
+    fontSize: 12,
+    color: colors.orangeShade5,
+    marginBottom: spacing.medium,
+  },
+  cancellationStarsContainer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: spacing.small,
+    marginBottom: spacing.small,
+  },
+  cancellationRatingInput: {
+    width: '100%',
+    backgroundColor: colors.ivory1,
+    borderRadius: 10,
+    padding: spacing.small,
+    fontSize: 14,
+    color: colors.orangeShade7,
+    textAlignVertical: 'top',
+    minHeight: 60,
+    borderWidth: 1,
+    borderColor: colors.ivory3,
+    marginTop: spacing.small,
+  },
+  submitRatingBtn: {
+    flex: 1,
+    backgroundColor: colors.primary,
+    paddingVertical: 14,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  submitRatingBtnText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
   },
 
   // WEBTODA Area Warning Modal

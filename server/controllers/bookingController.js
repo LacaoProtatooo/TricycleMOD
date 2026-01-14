@@ -1056,10 +1056,15 @@ export const rateDriver = async (req, res) => {
       });
     }
 
-    if (booking.status !== 'completed') {
+    // Allow rating for completed trips OR cancelled trips (if cancelled by driver after pickup)
+    const canRate = 
+      booking.status === 'completed' || 
+      (booking.status === 'cancelled' && booking.cancelledBy === 'driver' && booking.driver);
+      
+    if (!canRate) {
       return res.status(400).json({
         success: false,
-        message: 'Can only rate completed trips',
+        message: 'Can only rate completed trips or trips cancelled by driver',
       });
     }
 

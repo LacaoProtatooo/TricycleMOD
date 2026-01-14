@@ -144,6 +144,9 @@ export default function TrackingMap({ follow = true, onEnterTerminalZone, odomet
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
 
+  // Map ready state - prevents rendering children before map is initialized
+  const [mapReady, setMapReady] = useState(false);
+
   useEffect(() => {
     onEnterRef.current = onEnterTerminalZone;
   }, [onEnterTerminalZone]);
@@ -1154,6 +1157,11 @@ ${trackPoints}
     })
   ).current;
 
+  // Handle map ready event
+  const handleMapReady = useCallback(() => {
+    setMapReady(true);
+  }, []);
+
   return (
     <View style={styles.container}>
       {region ? (
@@ -1166,65 +1174,91 @@ ${trackPoints}
           showsUserLocation
           followsUserLocation={false}
           showsMyLocationButton={true}
+          onMapReady={handleMapReady}
         >
-          {TERMINALS.map((t) => (
-            <React.Fragment key={t.id}>
-              <Circle
-                center={{ latitude: t.latitude, longitude: t.longitude }}
-                radius={t.radiusMeters}
-                strokeColor="rgba(255,102,0,0.6)"
-                fillColor="rgba(255,102,0,0.15)"
-              />
-              <Marker
-                coordinate={{ latitude: t.latitude, longitude: t.longitude }}
-                title={t.name}
-                description={t.id}
-              >
-                <View style={styles.terminalMarker}>
-                  <Ionicons name="flag" size={16} color="#fff" />
-                </View>
-              </Marker>
-            </React.Fragment>
-          ))}
-
-          {positions.length > 0 && !reliveActive && (
+          {/* Only render map children after map is ready */}
+          {mapReady && (
             <>
-              <Polyline
-                coordinates={positions}
-                strokeColor={colors.primary}
-                strokeWidth={5}
-              />
-              <Marker coordinate={positions[positions.length - 1]}>
-                <View style={styles.marker}>
-                  <Ionicons name="bicycle" size={20} color="#fff" />
-                </View>
-              </Marker>
-            </>
-          )}
+              {/* Terminal Circles */}
+              {TERMINALS.map((t) => (
+                <Circle
+                  key={`circle-${t.id}`}
+                  center={{ latitude: t.latitude, longitude: t.longitude }}
+                  radius={t.radiusMeters}
+                  strokeColor="rgba(255,102,0,0.6)"
+                  fillColor="rgba(255,102,0,0.15)"
+                />
+              ))}
 
-          {/* Relive mode polyline and marker */}
-          {reliveActive && relivePathRef.current.length > 0 && (
-            <>
-              <Polyline
-                coordinates={relivePathRef.current}
-                strokeColor="#0d6efd"
-                strokeWidth={5}
-              />
-              <Marker.Animated coordinate={reliveMarker} anchor={{ x: 0.5, y: 0.5 }}>
-                <View style={styles.reliveMarker}>
-                  <Ionicons name="navigate" size={18} color="#fff" />
-                </View>
-              </Marker.Animated>
-            </>
-          )}
+              {/* Terminal Markers */}
+              {TERMINALS.map((t) => (
+                <Marker
+                  key={`marker-${t.id}`}
+                  coordinate={{ latitude: t.latitude, longitude: t.longitude }}
+                  title={t.name}
+                  description={t.id}
+                >
+                  <View style={styles.terminalMarker}>
+                    <Ionicons name="flag" size={16} color="#fff" />
+                  </View>
+                </Marker>
+              ))}
 
-          {/* Recorded path for trip recording */}
-          {recordedPositions.length > 1 && isRecording && (
-            <Polyline
-              coordinates={recordedPositions}
-              strokeColor="#dc3545"
-              strokeWidth={4}
-            />
+              {/* Current position polyline */}
+              {positions.length > 0 && !reliveActive && (
+                <Polyline
+                  key="position-polyline"
+                  coordinates={positions}
+                  strokeColor={colors.primary}
+                  strokeWidth={5}
+                />
+              )}
+
+              {/* Current position marker */}
+              {positions.length > 0 && !reliveActive && (
+                <Marker
+                  key="position-marker"
+                  coordinate={positions[positions.length - 1]}
+                >
+                  <View style={styles.marker}>
+                    <Ionicons name="bicycle" size={20} color="#fff" />
+                  </View>
+                </Marker>
+              )}
+
+              {/* Relive mode polyline */}
+              {reliveActive && relivePathRef.current.length > 0 && (
+                <Polyline
+                  key="relive-polyline"
+                  coordinates={relivePathRef.current}
+                  strokeColor="#0d6efd"
+                  strokeWidth={5}
+                />
+              )}
+
+              {/* Relive mode animated marker */}
+              {reliveActive && relivePathRef.current.length > 0 && (
+                <Marker.Animated
+                  key="relive-marker"
+                  coordinate={reliveMarker}
+                  anchor={{ x: 0.5, y: 0.5 }}
+                >
+                  <View style={styles.reliveMarker}>
+                    <Ionicons name="navigate" size={18} color="#fff" />
+                  </View>
+                </Marker.Animated>
+              )}
+
+              {/* Recorded path for trip recording */}
+              {recordedPositions.length > 1 && isRecording && (
+                <Polyline
+                  key="recording-polyline"
+                  coordinates={recordedPositions}
+                  strokeColor="#dc3545"
+                  strokeWidth={4}
+                />
+              )}
+            </>
           )}
         </MapView>
       ) : (
