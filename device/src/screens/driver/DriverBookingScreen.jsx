@@ -51,8 +51,9 @@ const API_URL = `${BACKEND_URL}/api/booking`;
 
 // Trip completion radius (300 meters)
 const COMPLETION_RADIUS_METERS = 300;
-// Pickup confirmation radius (2 meters) - driver must be within this distance to confirm pickup
-const PICKUP_RADIUS_METERS = 2;
+// Pickup confirmation radius (50 meters) - driver must be within this distance to confirm pickup
+// Note: GPS accuracy is typically ±5-15m, so 10m was too strict
+const PICKUP_RADIUS_METERS = 50;
 // Default search radius for nearby bookings (km)
 const SEARCH_RADIUS_KM = 5;
 // Polling interval for fetching bookings (ms)
