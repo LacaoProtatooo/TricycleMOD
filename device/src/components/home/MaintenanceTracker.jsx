@@ -22,11 +22,16 @@ const STORAGE_KEY = 'maintenance_data_v1';
 // same key used in BackgroundLocationTask
 const KM_KEY = 'vehicle_current_km_v1';
 
+// Scheduled notification key
+const SCHEDULED_NOTIFICATIONS_KEY = 'maintenance_scheduled_notifications_v1';
+
 const defaultSchedule = [
 	{
 		id: 'weekly',
 		title: 'Weekly (or every 300–500 km)',
 		intervalKm: 500,
+		baselineDays: 7,
+		reminderLabel: 'Weekly',
 		items: [
 			{ key: 'tire_pressure', name: 'Tire pressure', notes: 'Recheck and inflate, check for uneven wear' },
 			{ key: 'chain', name: 'Chain', notes: 'Clean, lubricate, and adjust' },
@@ -40,6 +45,8 @@ const defaultSchedule = [
 		id: '1000',
 		title: 'Every 1,000 km (monthly heavy use)',
 		intervalKm: 1000,
+		baselineDays: 30,
+		reminderLabel: 'Monthly',
 		items: [
 			{ key: 'engine_oil', name: 'Engine oil', notes: 'Replace (SAE 10W-40 or 20W-50)' },
 			{ key: 'spark_plug', name: 'Spark plug', notes: 'Inspect/clean or replace; gap 0.7–0.8 mm' },
@@ -51,6 +58,8 @@ const defaultSchedule = [
 		id: '3000-5000',
 		title: 'Every 3,000–5,000 km',
 		intervalKm: 4000,
+		baselineDays: 90,
+		reminderLabel: 'Quarterly',
 		items: [
 			{ key: 'oil_filter', name: 'Oil filter', notes: 'Replace if equipped' },
 			{ key: 'air_filter_replace', name: 'Air filter (replace)', notes: 'Replace if dusty/oily' },
@@ -62,6 +71,8 @@ const defaultSchedule = [
 		id: '10000',
 		title: 'Every 10,000–12,000 km (or annually)',
 		intervalKm: 11000,
+		baselineDays: 365,
+		reminderLabel: 'Annual',
 		items: [
 			{ key: 'brake_fluid_flush', name: 'Brake fluid (flush)', notes: 'Flush & replace' },
 			{ key: 'clutch_plates', name: 'Clutch plates', notes: 'Inspect & replace if slipping' },
@@ -72,6 +83,8 @@ const defaultSchedule = [
 		id: '20000',
 		title: 'Major service — Every 20,000 km',
 		intervalKm: 20000,
+		baselineDays: 730,
+		reminderLabel: 'Bi-Annual',
 		items: [
 			{ key: 'engine_overhaul', name: 'Engine overhaul', notes: 'Check rings, valves, gaskets' },
 			{ key: 'transmission_oil', name: 'Transmission oil', notes: 'Replace if applicable' },
@@ -87,6 +100,7 @@ const MaintenanceTracker = ({ tricycleId, serverHistory }) => {
 	const [loaded, setLoaded] = useState(false);
 	const [odometerKm, setOdometerKm] = useState(null);
 	const [notifiedItems, setNotifiedItems] = useState({}); // Track which items have been notified
+	const [lastServiceDates, setLastServiceDates] = useState({}); // { itemKey: ISODate }
 	const hasCheckedNotifications = useRef(false);
 	const [activeTab, setActiveTab] = useState('schedule'); // 'schedule' | 'predictive' | 'history'
 	const [wearPatterns, setWearPatterns] = useState({});
@@ -102,6 +116,15 @@ const MaintenanceTracker = ({ tricycleId, serverHistory }) => {
 				sound: 'default',
 				vibrationPattern: [0, 250, 250, 250],
 				lightColor: '#FF6B35',
+				showBadge: true,
+			});
+			
+			// Also create a channel for scheduled reminders
+			await Notifications.setNotificationChannelAsync('maintenance-reminders', {
+				name: 'Scheduled Maintenance Reminders',
+				description: 'Periodic reminders to check maintenance items',
+				importance: Notifications.AndroidImportance.DEFAULT,
+				sound: 'default',
 				showBadge: true,
 			});
 		};
@@ -122,6 +145,128 @@ const MaintenanceTracker = ({ tricycleId, serverHistory }) => {
 		loadNotifiedItems();
 	}, [tricycleId]);
 
+	// Schedule periodic maintenance reminder notifications
+	const scheduleMaintenanceReminders = async (serviceDates) => {
+		try {
+			// Cancel all existing scheduled maintenance notifications first
+			const allScheduled = await Notifications.getAllScheduledNotificationsAsync();
+			const maintenanceNotifs = allScheduled.filter(n => 
+				n.content.data?.type === 'scheduled_maintenance_reminder'
+			);
+			for (const notif of maintenanceNotifs) {
+				await Notifications.cancelScheduledNotificationAsync(notif.identifier);
+			}
+
+			const now = Date.now();
+			const scheduledIds = {};
+
+			// Schedule notifications for each maintenance group based on their interval
+			for (const group of defaultSchedule) {
+				const { baselineDays, reminderLabel, items } = group;
+				if (!baselineDays || !reminderLabel) continue;
+
+				// Collect items that need attention in this group
+				const itemsNeedingCheck = [];
+				for (const item of items) {
+					const lastDate = serviceDates[item.key];
+					if (lastDate) {
+						const daysSince = Math.floor((now - new Date(lastDate)) / (1000 * 60 * 60 * 24));
+						const daysRemaining = baselineDays - daysSince;
+						
+						// Schedule reminder when approaching due date (at 80% of interval)
+						if (daysRemaining <= Math.ceil(baselineDays * 0.2) && daysRemaining > 0) {
+							itemsNeedingCheck.push({ ...item, daysRemaining });
+						}
+						// If overdue, add to immediate check list
+						if (daysRemaining <= 0) {
+							itemsNeedingCheck.push({ ...item, daysRemaining, overdue: true });
+						}
+					} else {
+						// No service date recorded - schedule a reminder to check
+						itemsNeedingCheck.push({ ...item, noRecord: true });
+					}
+				}
+
+				// Schedule a group notification if there are items needing attention
+				if (itemsNeedingCheck.length > 0) {
+					const overdueItems = itemsNeedingCheck.filter(i => i.overdue);
+					const upcomingItems = itemsNeedingCheck.filter(i => !i.overdue && !i.noRecord);
+					const noRecordItems = itemsNeedingCheck.filter(i => i.noRecord);
+
+					let body = '';
+					if (overdueItems.length > 0) {
+						body += `OVERDUE: ${overdueItems.map(i => i.name).join(', ')}. `;
+					}
+					if (upcomingItems.length > 0) {
+						body += `Due soon: ${upcomingItems.map(i => `${i.name} (${i.daysRemaining}d)`).join(', ')}. `;
+					}
+					if (noRecordItems.length > 0 && noRecordItems.length <= 3) {
+						body += `Please check: ${noRecordItems.map(i => i.name).join(', ')}`;
+					}
+
+					if (body) {
+						// Schedule for 8 AM tomorrow
+						const tomorrow = new Date();
+						tomorrow.setDate(tomorrow.getDate() + 1);
+						tomorrow.setHours(8, 0, 0, 0);
+
+						const notifId = await Notifications.scheduleNotificationAsync({
+							content: {
+								title: `🔧 ${reminderLabel} Maintenance Check`,
+								body: body.trim(),
+								data: { type: 'scheduled_maintenance_reminder', groupId: group.id },
+								sound: 'default',
+							},
+							trigger: {
+								date: tomorrow,
+								channelId: 'maintenance-reminders',
+							},
+						});
+						scheduledIds[group.id] = notifId;
+					}
+				}
+
+				// Also schedule recurring reminders based on interval
+				// Weekly = every 7 days, Monthly = every 30 days, etc.
+				const nextReminderDays = Math.min(baselineDays, 7); // Cap at weekly for frequent reminders
+				const nextReminderDate = new Date();
+				nextReminderDate.setDate(nextReminderDate.getDate() + nextReminderDays);
+				nextReminderDate.setHours(8, 0, 0, 0);
+
+				const recurringId = await Notifications.scheduleNotificationAsync({
+					content: {
+						title: `📋 ${reminderLabel} Maintenance Reminder`,
+						body: `Time for your ${reminderLabel.toLowerCase()} maintenance check! Review ${items.length} items: ${items.slice(0, 3).map(i => i.name).join(', ')}${items.length > 3 ? '...' : ''}`,
+						data: { type: 'scheduled_maintenance_reminder', groupId: group.id, recurring: true },
+						sound: 'default',
+					},
+					trigger: {
+						date: nextReminderDate,
+						channelId: 'maintenance-reminders',
+					},
+				});
+				scheduledIds[`${group.id}_recurring`] = recurringId;
+			}
+
+			// Save scheduled notification IDs
+			const storageKey = tricycleId 
+				? `${SCHEDULED_NOTIFICATIONS_KEY}_${tricycleId}` 
+				: SCHEDULED_NOTIFICATIONS_KEY;
+			await AsyncStorage.setItem(storageKey, JSON.stringify(scheduledIds));
+
+			console.log('Scheduled maintenance reminders:', Object.keys(scheduledIds).length);
+		} catch (e) {
+			console.warn('Error scheduling maintenance reminders:', e);
+		}
+	};
+
+	// Re-schedule notifications when lastServiceDates changes
+	useEffect(() => {
+		if (loaded && Object.keys(lastServiceDates).length >= 0) {
+			scheduleMaintenanceReminders(lastServiceDates);
+		}
+	}, [loaded, lastServiceDates, tricycleId]);
+
 	// Check for critical items and send notifications
 	const checkAndNotifyCriticalItems = async (maintenanceData, currentOdometer) => {
 		if (!maintenanceData || currentOdometer === null) return;
@@ -136,15 +281,38 @@ const MaintenanceTracker = ({ tricycleId, serverHistory }) => {
 				const diff = Math.max(0, currentOdometer - lastKm);
 				const progress = Math.min(100, Math.round((diff / group.intervalKm) * 100));
 				
-				// Create a unique key for this notification cycle
+				// Create a unique key for this notification cycle (km-based)
 				const notifyKey = `${item.key}_${lastKm}`;
+				let isKmCritical = false;
+				let isKmWorn = false;
+				if (progress >= 80) isKmCritical = true;
+				else if (progress >= 60) isKmWorn = true;
 				
-				if (progress >= 80 && !newNotifiedItems[notifyKey]) {
-					criticalItems.push({ ...item, progress, group: group.title });
+				// Time-based checks
+				let isTimeCritical = false;
+				let isTimeWorn = false;
+				const baselineDays = group.baselineDays || null;
+				const lastDateIso = lastServiceDates[item.key];
+				let timeProgress = 0;
+				if (baselineDays && lastDateIso) {
+					const daysSince = Math.floor((Date.now() - new Date(lastDateIso)) / (1000 * 60 * 60 * 24));
+					timeProgress = Math.min(100, Math.round((daysSince / baselineDays) * 100));
+					if (timeProgress >= 100) isTimeCritical = true;
+					else if (timeProgress >= 80) isTimeWorn = true;
+				}
+				
+				// Prepare notification keys to avoid duplicates
+				const timeNotifyKey = lastDateIso ? `time_${item.key}_${lastDateIso}` : null;
+				
+				// Decide notifications: prefer critical if either km or time critical
+				if ((isKmCritical || isTimeCritical) && !newNotifiedItems[notifyKey] && !(timeNotifyKey && newNotifiedItems[timeNotifyKey])) {
+					criticalItems.push({ ...item, progress, group: group.title, reason: { km: isKmCritical, time: isTimeCritical, timeProgress } });
 					newNotifiedItems[notifyKey] = Date.now();
-				} else if (progress >= 60 && progress < 80 && !newNotifiedItems[`worn_${notifyKey}`]) {
-					wornItems.push({ ...item, progress, group: group.title });
+					if (timeNotifyKey) newNotifiedItems[timeNotifyKey] = Date.now();
+				} else if ((isKmWorn || isTimeWorn) && !newNotifiedItems[`worn_${notifyKey}`] && !(timeNotifyKey && newNotifiedItems[`worn_${timeNotifyKey}`])) {
+					wornItems.push({ ...item, progress, group: group.title, reason: { km: isKmWorn, time: isTimeWorn, timeProgress } });
 					newNotifiedItems[`worn_${notifyKey}`] = Date.now();
+					if (timeNotifyKey) newNotifiedItems[`worn_${timeNotifyKey}`] = Date.now();
 				}
 			});
 		});
@@ -237,6 +405,39 @@ const MaintenanceTracker = ({ tricycleId, serverHistory }) => {
             if (patternsStr) {
                 setWearPatterns(JSON.parse(patternsStr));
             }
+
+			// 5. Build last service dates map (prefer server, then local history)
+			const lastDates = {};
+			if (serverHistory && Array.isArray(serverHistory)) {
+				serverHistory.forEach(log => {
+					if (log.itemKey && log.completedAt) {
+						const prev = lastDates[log.itemKey];
+						const d = new Date(log.completedAt);
+						if (!prev || new Date(prev) < d) lastDates[log.itemKey] = d.toISOString();
+					}
+				});
+			}
+
+			const historyKey = tricycleId ? `${MAINTENANCE_HISTORY_KEY}_${tricycleId}` : MAINTENANCE_HISTORY_KEY;
+			const historyStr = await AsyncStorage.getItem(historyKey);
+			if (historyStr) {
+				try {
+					const historyArr = JSON.parse(historyStr);
+					historyArr.forEach(h => {
+						const k = h.itemKey || h.item;
+						const dateStr = h.date || h.completedAt || h.timestamp;
+						if (k && dateStr) {
+							const prev = lastDates[k];
+							const d = new Date(dateStr);
+							if (!prev || new Date(prev) < d) lastDates[k] = d.toISOString();
+						}
+					});
+				} catch (e) {
+					// ignore parse errors
+				}
+			}
+
+			setLastServiceDates(lastDates);
         } catch (e) {
             console.warn('MaintenanceTracker load error', e);
         } finally {
@@ -313,6 +514,14 @@ const MaintenanceTracker = ({ tricycleId, serverHistory }) => {
 
 			// Save to maintenance history for predictive analytics
 			await saveToMaintenanceHistory(itemKey, kmNum);
+
+			// Update lastServiceDates locally so time-based checks pick this up immediately
+			try {
+				const updatedDates = { ...lastServiceDates, [itemKey]: new Date().toISOString() };
+				setLastServiceDates(updatedDates);
+			} catch (e) {
+				// ignore
+			}
 			
 			// Clear the notification flag for this item so it can notify again in the next cycle
 			const notifyKey = tricycleId ? `${NOTIFIED_ITEMS_KEY}_${tricycleId}` : NOTIFIED_ITEMS_KEY;
@@ -410,15 +619,24 @@ const MaintenanceTracker = ({ tricycleId, serverHistory }) => {
 		group.items.forEach(item => {
 			const last = data[item.key] || 0;
 			const progress = progressFor(last, group.intervalKm);
+			const lastDate = lastServiceDates[item.key] || null;
+			let timeProgress = 0;
+			if (group.baselineDays && lastDate) {
+				const days = Math.floor((Date.now() - new Date(lastDate)) / (1000 * 60 * 60 * 24));
+				timeProgress = Math.min(100, Math.round((days / group.baselineDays) * 100));
+			}
 			partsStatus[item.key] = {
 				progress,
 				lastService: last,
+				lastServiceDate: lastDate,
 				nextService: last + group.intervalKm,
-				name: item.name
+				nextServiceDate: lastDate && group.baselineDays ? new Date(new Date(lastDate).getTime() + group.baselineDays * 24 * 60 * 60 * 1000).toISOString() : null,
+				name: item.name,
+				timeProgress
 			};
 			
-			if (progress >= 80) criticalCount++;
-			else if (progress >= 60) wornCount++;
+			if (progress >= 80 || timeProgress >= 100) criticalCount++;
+			else if (progress >= 60 || timeProgress >= 80) wornCount++;
 		});
 	});
 
@@ -586,26 +804,91 @@ const MaintenanceTracker = ({ tricycleId, serverHistory }) => {
 					
 					{defaultSchedule.map((group) => (
 						<View key={group.id} style={styles.group}>
-							<Text style={styles.groupTitle}>{group.title}</Text>
+							<View style={styles.groupHeader}>
+								<Text style={styles.groupTitle}>{group.title}</Text>
+								<View style={styles.reminderBadge}>
+									<Ionicons name="notifications-outline" size={12} color={colors.primary} />
+									<Text style={styles.reminderBadgeText}>{group.reminderLabel}</Text>
+								</View>
+							</View>
 							{group.items.map((it) => {
 								const last = data[it.key] || 0;
 								const progress = progressFor(last, group.intervalKm);
 								const dueKm = last + group.intervalKm;
 								const color = getWearColor(progress);
 								
+								// Calculate time-based progress
+								const lastDate = lastServiceDates[it.key];
+								let timeProgress = 0;
+								let daysRemaining = null;
+								let timeColor = '#22C55E'; // green
+								if (lastDate && group.baselineDays) {
+									const daysSince = Math.floor((Date.now() - new Date(lastDate)) / (1000 * 60 * 60 * 24));
+									timeProgress = Math.min(100, Math.round((daysSince / group.baselineDays) * 100));
+									daysRemaining = group.baselineDays - daysSince;
+									if (timeProgress >= 100) timeColor = '#DC2626'; // red
+									else if (timeProgress >= 80) timeColor = '#F59E0B'; // amber
+									else if (timeProgress >= 60) timeColor = '#FBBF24'; // yellow
+								}
+								
+								// Use the worse of km or time progress for overall status
+								const overallProgress = Math.max(progress, timeProgress);
+								const overallColor = getWearColor(overallProgress);
+								
 								return (
 									<View key={it.key} style={styles.card}>
-										<View style={[styles.statusIndicator, { backgroundColor: color }]} />
+										<View style={[styles.statusIndicator, { backgroundColor: overallColor }]} />
 										
 										<View style={styles.cardLeft}>
 											<Text style={styles.itemName}>{it.name}</Text>
 											<Text style={styles.itemNotes}>{it.notes}</Text>
-											<Text style={styles.small}>Last: {last} km · Next: {dueKm} km</Text>
+											
+											{/* KM-based info */}
+											<Text style={styles.small}>
+												<Ionicons name="speedometer-outline" size={11} color={colors.orangeShade5} /> Last: {last} km · Next: {dueKm} km
+											</Text>
+											
+											{/* Time-based info */}
+											{lastDate ? (
+												<View style={styles.timeInfoRow}>
+													<Text style={[styles.small, { color: timeColor }]}>
+														<Ionicons name="calendar-outline" size={11} color={timeColor} /> {new Date(lastDate).toLocaleDateString()} 
+														{daysRemaining !== null && (
+															daysRemaining > 0 
+																? ` · ${daysRemaining}d until due`
+																: ` · ${Math.abs(daysRemaining)}d overdue!`
+														)}
+													</Text>
+												</View>
+											) : (
+												<Text style={[styles.small, { color: '#F59E0B', marginTop: 2 }]}>
+													<Ionicons name="alert-circle-outline" size={11} color="#F59E0B" /> No service date recorded
+												</Text>
+											)}
 
-											<View style={styles.barBackground}>
-												<View style={[styles.barFill, { width: `${progress}%`, backgroundColor: color }]} />
+											{/* KM Progress Bar */}
+											<View style={styles.progressSection}>
+												<Text style={[styles.progressLabel]}>KM</Text>
+												<View style={styles.barBackgroundSmall}>
+													<View style={[styles.barFillSmall, { width: `${progress}%`, backgroundColor: color }]} />
+												</View>
+												<Text style={[styles.progressPercent, { color }]}>{progress}%</Text>
 											</View>
-											<Text style={[styles.small, { color }]}>{progress}% - {progress < 30 ? 'Good' : progress < 60 ? 'Fair' : progress < 80 ? 'Worn' : 'Critical'}</Text>
+											
+											{/* Time Progress Bar */}
+											{group.baselineDays && (
+												<View style={styles.progressSection}>
+													<Text style={[styles.progressLabel]}>Time</Text>
+													<View style={styles.barBackgroundSmall}>
+														<View style={[styles.barFillSmall, { width: `${timeProgress}%`, backgroundColor: timeColor }]} />
+													</View>
+													<Text style={[styles.progressPercent, { color: timeColor }]}>{timeProgress}%</Text>
+												</View>
+											)}
+											
+											<Text style={[styles.statusText, { color: overallColor }]}>
+												{overallProgress < 30 ? '✓ Good' : overallProgress < 60 ? '⚠ Fair' : overallProgress < 80 ? '⚠ Worn' : '⛔ Critical'}
+											</Text>
 										</View>
 
 										<View style={styles.cardRight}>
@@ -704,11 +987,31 @@ const styles = StyleSheet.create({
 	group: {
 		marginTop: spacing.medium,
 	},
+	groupHeader: {
+		flexDirection: 'row',
+		justifyContent: 'space-between',
+		alignItems: 'center',
+		marginBottom: spacing.small,
+	},
 	groupTitle: {
 		fontSize: 14,
 		fontWeight: '700',
 		color: colors.orangeShade6,
-		marginBottom: spacing.small,
+		flex: 1,
+	},
+	reminderBadge: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		backgroundColor: colors.primary + '15',
+		paddingHorizontal: 8,
+		paddingVertical: 4,
+		borderRadius: 12,
+		gap: 4,
+	},
+	reminderBadgeText: {
+		fontSize: 11,
+		fontWeight: '600',
+		color: colors.primary,
 	},
 	card: {
 		flexDirection: 'row',
@@ -737,7 +1040,43 @@ const styles = StyleSheet.create({
 	},
 	itemName: { fontWeight: '700', color: colors.orangeShade7 },
 	itemNotes: { fontSize: 12, color: colors.orangeShade5, marginBottom: 6 },
-	small: { fontSize: 12, color: colors.orangeShade5 },
+	small: { fontSize: 11, color: colors.orangeShade5 },
+	timeInfoRow: {
+		marginTop: 2,
+	},
+	progressSection: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		marginTop: 6,
+		gap: 6,
+	},
+	progressLabel: {
+		fontSize: 10,
+		fontWeight: '600',
+		color: colors.orangeShade5,
+		width: 30,
+	},
+	barBackgroundSmall: {
+		flex: 1,
+		height: 6,
+		backgroundColor: '#eee',
+		borderRadius: 4,
+		overflow: 'hidden',
+	},
+	barFillSmall: {
+		height: 6,
+	},
+	progressPercent: {
+		fontSize: 10,
+		fontWeight: '600',
+		width: 32,
+		textAlign: 'right',
+	},
+	statusText: {
+		fontSize: 11,
+		fontWeight: '700',
+		marginTop: 6,
+	},
 	barBackground: {
 		height: 8,
 		backgroundColor: '#eee',
