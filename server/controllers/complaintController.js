@@ -7,6 +7,7 @@ import cloudinary from '../utils/cloudinaryConfig.js';
 import { messaging } from '../utils/firebase.js';
 import { analyzeComplaint, analyzeSentiment } from '../utils/sentimentAnalysis.js';
 import { detectBodyNumber, formatBodyNumber } from '../utils/bodyNumberOCR.js';
+import { createViolationFromComplaint } from './violationController.js';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
@@ -1053,7 +1054,7 @@ export const adminUpdateComplaintStatus = async (req, res) => {
  */
 export const adminResolveComplaint = async (req, res) => {
   try {
-    const { action, details, isFalseComplaint } = req.body;
+    const { action, details, isFalseComplaint, createViolation = true } = req.body;
     const adminId = req.user._id;
     
     const complaint = await Complaint.findById(req.params.id);
@@ -1125,6 +1126,19 @@ export const adminResolveComplaint = async (req, res) => {
     
     await complaint.save();
     
+    // Create violation record if complaint is valid and has action taken
+    let violationCreated = null;
+    if (!isFalseComplaint && createViolation && complaint.driver) {
+      try {
+        violationCreated = await createViolationFromComplaint(complaint, adminId);
+        complaint.linkedViolation = violationCreated._id;
+        await complaint.save();
+      } catch (violationError) {
+        console.error('Error creating violation from complaint:', violationError);
+        // Continue - complaint is still resolved even if violation creation fails
+      }
+    }
+    
     // Log admin activity
     const AdminActivityLog = (await import('../models/adminActivityLogModel.js')).default;
     const admin = await User.findById(adminId);
@@ -1135,23 +1149,25 @@ export const adminResolveComplaint = async (req, res) => {
       adminEmail: admin?.email || 'unknown',
       adminName: `${admin?.firstname || ''} ${admin?.lastname || ''}`.trim() || 'Admin',
       action: isFalseComplaint ? 'COMPLAINT_MARKED_FALSE' : 'COMPLAINT_RESOLVED',
-      description: `${isFalseComplaint ? 'Dismissed' : 'Resolved'} complaint against ${driver?.firstname || 'Driver'} ${driver?.lastname || ''}. Action: ${action}. ${details || ''}`.trim(),
+      description: `${isFalseComplaint ? 'Dismissed' : 'Resolved'} complaint against ${driver?.firstname || 'Driver'} ${driver?.lastname || ''}. Action: ${action}. ${details || ''}${violationCreated ? ` Violation #${violationCreated._id} created.` : ''}`.trim(),
       targetUserId: complaint.driver,
       targetUserEmail: driver?.email,
       targetUserName: `${driver?.firstname || ''} ${driver?.lastname || ''}`.trim(),
       previousValue: { status: 'investigating' },
-      newValue: { status: complaint.status, action, isFalseComplaint },
+      newValue: { status: complaint.status, action, isFalseComplaint, violationId: violationCreated?._id },
       metadata: {
         complaintId: complaint._id,
         category: complaint.category,
+        violationId: violationCreated?._id,
       },
       ipAddress: req.ip || req.connection?.remoteAddress,
     });
     
     res.status(200).json({
       success: true,
-      message: `Complaint ${isFalseComplaint ? 'dismissed' : 'resolved'} successfully`,
+      message: `Complaint ${isFalseComplaint ? 'dismissed' : 'resolved'} successfully${violationCreated ? '. Violation recorded with penalty: ' + violationCreated.penalty.label : ''}`,
       complaint,
+      violation: violationCreated,
     });
   } catch (error) {
     console.error('Error resolving complaint:', error);

@@ -23,6 +23,7 @@ import leaderboardRoutes from '../routes/leaderboardRoute.js';
 import complaintRoutes from '../routes/complaintRoute.js';
 import boundaryRoutes from '../routes/boundaryRoute.js';
 import maintenanceScheduleRoutes from '../routes/maintenanceScheduleRoute.js';
+import violationRoutes from '../routes/violationRoute.js';
 
 
 const app = express();
@@ -81,6 +82,7 @@ app.use('/api/leaderboard', leaderboardRoutes);
 app.use('/api/complaints', complaintRoutes);
 app.use('/api/boundary', boundaryRoutes);
 app.use('/api/maintenance', maintenanceScheduleRoutes);
+app.use('/api/violations', violationRoutes);
 
 
 // Fallback for unknown routes

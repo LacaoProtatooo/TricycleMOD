@@ -192,6 +192,12 @@ const complaintSchema = new mongoose.Schema({
     appliedAt: { type: Date },
   },
   
+  // Linked violation record (when complaint leads to a violation)
+  linkedViolation: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Violation',
+  },
+  
   // IP address for tracking abuse patterns
   submittedFromIP: { type: String },
   
