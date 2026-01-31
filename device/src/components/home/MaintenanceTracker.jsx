@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, Alert, TextInput, Modal, ActivityIndicator } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import * as Notifications from 'expo-notifications';
@@ -44,6 +44,11 @@ const MaintenanceTracker = ({ tricycleId, serverHistory }) => {
 	const [activeTab, setActiveTab] = useState('schedule'); // 'schedule' | 'predictive' | 'history'
 	const [wearPatterns, setWearPatterns] = useState({});
 	const [plateNumber, setPlateNumber] = useState(null);
+	
+	// Manual odometer input state
+	const [odometerModalVisible, setOdometerModalVisible] = useState(false);
+	const [manualOdometer, setManualOdometer] = useState('');
+	const [savingOdometer, setSavingOdometer] = useState(false);
 	
 	// Dynamic maintenance configuration from server
 	const [maintenanceSchedule, setMaintenanceSchedule] = useState(FALLBACK_SCHEDULE);
@@ -511,6 +516,82 @@ const MaintenanceTracker = ({ tricycleId, serverHistory }) => {
 		setSkipModalItem(null);
 	};
 
+	// ==================== MANUAL ODOMETER UPDATE ====================
+	const openOdometerModal = () => {
+		setManualOdometer(odometerKm ? String(Math.round(odometerKm)) : '');
+		setOdometerModalVisible(true);
+	};
+
+	const handleSaveManualOdometer = async () => {
+		const newOdometer = parseFloat(manualOdometer);
+		
+		if (isNaN(newOdometer) || newOdometer < 0) {
+			Alert.alert('Invalid Input', 'Please enter a valid odometer reading.');
+			return;
+		}
+		
+		// Warn if odometer is being set lower than current
+		if (odometerKm && newOdometer < odometerKm) {
+			Alert.alert(
+				'Confirm Lower Reading',
+				`The new reading (${newOdometer} km) is lower than the current reading (${Math.round(odometerKm)} km). Are you sure this is correct?`,
+				[
+					{ text: 'Cancel', style: 'cancel' },
+					{ text: 'Yes, Update', onPress: () => saveOdometerReading(newOdometer) }
+				]
+			);
+			return;
+		}
+		
+		await saveOdometerReading(newOdometer);
+	};
+
+	const saveOdometerReading = async (newOdometer) => {
+		setSavingOdometer(true);
+		
+		try {
+			// Save to local storage first
+			await AsyncStorage.setItem(KM_KEY, String(newOdometer));
+			setOdometerKm(newOdometer);
+			setCurrentKm(String(newOdometer));
+			
+			// Sync to server if we have a tricycle ID
+			if (tricycleId) {
+				try {
+					const token = await getToken(db);
+					const response = await fetch(`${BACKEND}/api/tricycles/${tricycleId}/odometer`, {
+						method: 'PUT',
+						headers: {
+							'Content-Type': 'application/json',
+							'Authorization': `Bearer ${token}`
+						},
+						body: JSON.stringify({ odometer: newOdometer })
+					});
+					
+					const result = await response.json();
+					if (!result.success) {
+						console.warn('Server odometer update failed:', result.message);
+					}
+				} catch (serverError) {
+					console.warn('Failed to sync odometer to server:', serverError);
+					// Still successful locally, show partial success message
+				}
+			}
+			
+			setOdometerModalVisible(false);
+			Alert.alert(
+				'Success',
+				`Odometer updated to ${Math.round(newOdometer)} km`,
+				[{ text: 'OK' }]
+			);
+		} catch (error) {
+			console.error('Error saving odometer:', error);
+			Alert.alert('Error', 'Failed to save odometer reading. Please try again.');
+		} finally {
+			setSavingOdometer(false);
+		}
+	};
+
 	// Handle completing maintenance from overdue check (opens detailed modal)
 	const handleCompleteFromOverdue = (item) => {
 		setOverdueCheckModalVisible(false);
@@ -939,13 +1020,88 @@ const MaintenanceTracker = ({ tricycleId, serverHistory }) => {
 				statusOptions={completionStatusOptions}
 			/>
 
+			{/* Manual Odometer Input Modal */}
+			<Modal
+				visible={odometerModalVisible}
+				transparent
+				animationType="fade"
+				onRequestClose={() => setOdometerModalVisible(false)}
+			>
+				<View style={styles.modalOverlay}>
+					<View style={[styles.modalContainer, { maxWidth: 340 }]}>
+						<View style={styles.modalHeader}>
+							<Ionicons name="speedometer" size={24} color={colors.primary} />
+							<Text style={styles.modalTitle}>Update Odometer</Text>
+						</View>
+						
+						<Text style={styles.modalSubtitle}>
+							Enter the current odometer reading from your tricycle's dashboard.
+						</Text>
+						
+						<View style={{ marginVertical: 16 }}>
+							<Text style={{ fontSize: 12, color: colors.orangeShade5, marginBottom: 4 }}>
+								Current Reading: {odometerKm !== null ? `${Math.round(odometerKm)} km` : 'Not set'}
+							</Text>
+							<View style={styles.kmRow}>
+								<TextInput
+									style={[styles.kmInput, { fontSize: 18, fontWeight: '600' }]}
+									value={manualOdometer}
+									onChangeText={setManualOdometer}
+									keyboardType="numeric"
+									placeholder="Enter kilometers"
+									placeholderTextColor={colors.orangeShade4}
+									editable={!savingOdometer}
+								/>
+								<Text style={{ marginLeft: 8, fontSize: 16, color: colors.orangeShade6, fontWeight: '600' }}>
+									km
+								</Text>
+							</View>
+						</View>
+						
+						<View style={{ flexDirection: 'row', gap: 10 }}>
+							<TouchableOpacity
+								style={[styles.saveBtn, { flex: 1, backgroundColor: colors.orangeShade3, justifyContent: 'center' }]}
+								onPress={() => setOdometerModalVisible(false)}
+								disabled={savingOdometer}
+							>
+								<Text style={[styles.saveText, { color: colors.orangeShade7, marginLeft: 0 }]}>Cancel</Text>
+							</TouchableOpacity>
+							<TouchableOpacity
+								style={[styles.saveBtn, { flex: 1, justifyContent: 'center', opacity: savingOdometer ? 0.7 : 1 }]}
+								onPress={handleSaveManualOdometer}
+								disabled={savingOdometer}
+							>
+								{savingOdometer ? (
+									<ActivityIndicator size="small" color={colors.ivory1} />
+								) : (
+									<>
+										<Ionicons name="checkmark" size={18} color={colors.ivory1} />
+										<Text style={styles.saveText}>Save</Text>
+									</>
+								)}
+							</TouchableOpacity>
+						</View>
+					</View>
+				</View>
+			</Modal>
+
 			<Text style={styles.title}>Maintenance Tracker</Text>
 
-			{/* Realtime odometer */}
-			<View style={styles.odometerRow}>
-				<Text style={styles.odometerLabel}>Odometer</Text>
-				<Text style={styles.odometerValue}>{odometerKm !== null ? `${Math.round(odometerKm)} km` : '—'}</Text>
-			</View>
+			{/* Realtime odometer with edit button */}
+			<TouchableOpacity 
+				style={styles.odometerRow}
+				onPress={openOdometerModal}
+				activeOpacity={0.7}
+			>
+				<View style={{ flexDirection: 'row', alignItems: 'center' }}>
+					<Ionicons name="speedometer-outline" size={18} color={colors.orangeShade6} style={{ marginRight: 6 }} />
+					<Text style={styles.odometerLabel}>Odometer</Text>
+				</View>
+				<View style={{ flexDirection: 'row', alignItems: 'center' }}>
+					<Text style={styles.odometerValue}>{odometerKm !== null ? `${Math.round(odometerKm)} km` : '—'}</Text>
+					<Ionicons name="create-outline" size={18} color={colors.primary} style={{ marginLeft: 8 }} />
+				</View>
+			</TouchableOpacity>
 
 			{/* Tab Switcher */}
 			<View style={styles.tabContainer}>

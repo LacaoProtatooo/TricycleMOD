@@ -11,6 +11,7 @@ import {
   ActivityIndicator,
   RefreshControl,
   Alert,
+  TextInput,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing } from '../../../components/common/theme';
@@ -135,6 +136,11 @@ export default function TricycleDetailsModal({
   const [refreshing, setRefreshing] = useState(false);
   const [showCodingDayPicker, setShowCodingDayPicker] = useState(false);
   const [updatingCodingDay, setUpdatingCodingDay] = useState(false);
+  
+  // Manual odometer input state
+  const [showOdometerModal, setShowOdometerModal] = useState(false);
+  const [manualOdometer, setManualOdometer] = useState('');
+  const [savingOdometer, setSavingOdometer] = useState(false);
 
   // Get tricycle ID (handle both id and _id)
   const tricycleId = selectedTricycle?._id || selectedTricycle?.id;
@@ -269,6 +275,75 @@ export default function TricycleDetailsModal({
     }
   };
 
+  // ==================== MANUAL ODOMETER UPDATE ====================
+  const openOdometerModal = () => {
+    setManualOdometer(currentOdometer ? String(Math.round(currentOdometer)) : '');
+    setShowOdometerModal(true);
+  };
+
+  const handleSaveOdometer = async () => {
+    const newOdometer = parseFloat(manualOdometer);
+    
+    if (isNaN(newOdometer) || newOdometer < 0) {
+      Alert.alert('Invalid Input', 'Please enter a valid odometer reading.');
+      return;
+    }
+    
+    // Warn if odometer is being set lower than current
+    if (currentOdometer && newOdometer < currentOdometer) {
+      Alert.alert(
+        'Confirm Lower Reading',
+        `The new reading (${newOdometer} km) is lower than the current reading (${Math.round(currentOdometer)} km). Are you sure this is correct?`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Yes, Update', onPress: () => saveOdometerReading(newOdometer) }
+        ]
+      );
+      return;
+    }
+    
+    await saveOdometerReading(newOdometer);
+  };
+
+  const saveOdometerReading = async (newOdometer) => {
+    if (!currentTricycleId) {
+      Alert.alert('Error', 'No tricycle selected');
+      return;
+    }
+    
+    setSavingOdometer(true);
+    
+    try {
+      const token = await getToken(db);
+      const res = await fetch(`${BACKEND}/api/tricycles/${currentTricycleId}/odometer`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`
+        },
+        body: JSON.stringify({ odometer: newOdometer })
+      });
+      
+      const data = await res.json();
+      if (data.success) {
+        Alert.alert('Success', `Odometer updated to ${Math.round(newOdometer)} km`);
+        setShowOdometerModal(false);
+        fetchTricycleData();
+        // Notify parent to refresh
+        if (onTricycleUpdated) {
+          onTricycleUpdated();
+        }
+      } else {
+        Alert.alert('Error', data.message || 'Failed to update odometer');
+      }
+    } catch (error) {
+      console.error('Error updating odometer:', error);
+      Alert.alert('Error', 'Failed to update odometer');
+    } finally {
+      setSavingOdometer(false);
+    }
+  };
+
   const renderInfoTab = () => (
     <ScrollView 
       style={localStyles.tabContent}
@@ -290,11 +365,16 @@ export default function TricycleDetailsModal({
             <Text style={localStyles.bodyNumber}>Body #{tricycle.bodyNumber}</Text>
           )}
         </View>
-        <View style={localStyles.odometerCard}>
+        <TouchableOpacity 
+          style={localStyles.odometerCard}
+          onPress={openOdometerModal}
+          activeOpacity={0.7}
+        >
           <Ionicons name="speedometer" size={24} color={colors.primary} />
           <Text style={localStyles.odometerValue}>{Math.round(currentOdometer)}</Text>
           <Text style={localStyles.odometerUnit}>km</Text>
-        </View>
+          <Ionicons name="create-outline" size={14} color={colors.primary} style={{ position: 'absolute', top: 4, right: 4 }} />
+        </TouchableOpacity>
       </View>
 
       {/* Quick Stats */}
@@ -434,15 +514,25 @@ export default function TricycleDetailsModal({
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[colors.primary]} />
         }
       >
-        {/* Odometer Display */}
-        <View style={localStyles.odometerHeader}>
-          <Text style={localStyles.odometerLabel}>Current Odometer</Text>
+        {/* Odometer Display - Tap to Edit */}
+        <TouchableOpacity 
+          style={localStyles.odometerHeader}
+          onPress={openOdometerModal}
+          activeOpacity={0.7}
+        >
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', width: '100%' }}>
+            <Text style={localStyles.odometerLabel}>Current Odometer</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Text style={{ fontSize: 12, color: colors.primary, marginRight: 4 }}>Tap to edit</Text>
+              <Ionicons name="create-outline" size={14} color={colors.primary} />
+            </View>
+          </View>
           <View style={localStyles.odometerDisplay}>
             <Ionicons name="speedometer" size={28} color={colors.primary} />
             <Text style={localStyles.odometerBig}>{Math.round(currentOdometer)}</Text>
             <Text style={localStyles.odometerKm}>km</Text>
           </View>
-        </View>
+        </TouchableOpacity>
 
         {/* Critical Items */}
         {critical.length > 0 && (
@@ -654,6 +744,91 @@ export default function TricycleDetailsModal({
             >
               <Text style={localStyles.pickerCancelText}>Cancel</Text>
             </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
+
+      {/* Manual Odometer Input Modal */}
+      <Modal visible={showOdometerModal} animationType="fade" transparent>
+        <View style={localStyles.pickerOverlay}>
+          <View style={[localStyles.pickerContainer, { maxHeight: 320 }]}>
+            <View style={localStyles.pickerHeader}>
+              <Ionicons name="speedometer" size={24} color={colors.primary} />
+              <Text style={[localStyles.pickerTitle, { marginLeft: 8 }]}>Update Odometer</Text>
+              <View style={{ flex: 1 }} />
+              <TouchableOpacity onPress={() => setShowOdometerModal(false)}>
+                <Ionicons name="close" size={24} color={colors.orangeShade6} />
+              </TouchableOpacity>
+            </View>
+            <Text style={localStyles.pickerSubtitle}>
+              Enter the current odometer reading from the tricycle's dashboard
+            </Text>
+            
+            <View style={{ marginVertical: 16 }}>
+              <Text style={{ fontSize: 12, color: colors.orangeShade5, marginBottom: 4 }}>
+                Current Reading: {currentOdometer ? `${Math.round(currentOdometer)} km` : 'Not set'}
+              </Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <TextInput
+                  style={{
+                    flex: 1,
+                    backgroundColor: colors.white,
+                    paddingVertical: 12,
+                    paddingHorizontal: 16,
+                    borderRadius: 10,
+                    borderWidth: 1,
+                    borderColor: colors.orangeShade3,
+                    fontSize: 20,
+                    fontWeight: '700',
+                    color: colors.orangeShade7,
+                  }}
+                  value={manualOdometer}
+                  onChangeText={setManualOdometer}
+                  keyboardType="numeric"
+                  placeholder="Enter kilometers"
+                  placeholderTextColor={colors.orangeShade4}
+                  editable={!savingOdometer}
+                />
+                <Text style={{ marginLeft: 10, fontSize: 18, color: colors.orangeShade6, fontWeight: '700' }}>
+                  km
+                </Text>
+              </View>
+            </View>
+            
+            <View style={{ flexDirection: 'row', gap: 12 }}>
+              <TouchableOpacity
+                style={[localStyles.pickerCancelBtn, { flex: 1, marginTop: 0 }]}
+                onPress={() => setShowOdometerModal(false)}
+                disabled={savingOdometer}
+              >
+                <Text style={localStyles.pickerCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={{
+                  flex: 1,
+                  backgroundColor: colors.primary,
+                  paddingVertical: 14,
+                  borderRadius: 10,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  flexDirection: 'row',
+                  opacity: savingOdometer ? 0.7 : 1,
+                }}
+                onPress={handleSaveOdometer}
+                disabled={savingOdometer}
+              >
+                {savingOdometer ? (
+                  <ActivityIndicator size="small" color={colors.white} />
+                ) : (
+                  <>
+                    <Ionicons name="checkmark" size={20} color={colors.white} />
+                    <Text style={{ color: colors.white, fontWeight: '700', fontSize: 15, marginLeft: 6 }}>
+                      Save
+                    </Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
           </View>
         </View>
       </Modal>
