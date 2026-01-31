@@ -58,6 +58,7 @@ import {
   cancelBooking,
   clearBookingError,
   resetBookingState,
+  updateBookingStatus,
 } from '../../redux/actions/bookingAction';
 
 const BACKEND_URL = BASE_URL;
@@ -438,18 +439,7 @@ const BookingScreen = ({ navigation }) => {
     const { latitude, longitude } = event.nativeEvent.coordinate;
 
     if (selectingLocationType === 'pickup') {
-      // Validate pickup is within WEBTODA GPX route area
-      const pickupValidation = validatePickupLocation(latitude, longitude);
-      
-      if (!pickupValidation.valid) {
-        Alert.alert(
-          'Outside WEBTODA Service Area',
-          pickupValidation.message + '\n\nThe highlighted route shows the WEBTODA coverage area.',
-          [{ text: 'OK' }]
-        );
-        return;
-      }
-      
+      // Allow pickup anywhere - no area restriction
       setPickupLocation({ latitude, longitude });
       setSelectingLocationType(null);
     } else if (selectingLocationType === 'destination') {
@@ -494,7 +484,7 @@ const BookingScreen = ({ navigation }) => {
     setBookingStatus(BOOKING_STATUS.SELECTING_LOCATIONS);
     setSelectingLocationType('pickup');
     
-    // Set pickup to current location by default
+    // Set pickup to current location by default - allow anywhere
     if (userLocation) {
       setPickupLocation(userLocation);
     }
@@ -656,24 +646,63 @@ const BookingScreen = ({ navigation }) => {
     }
   };
 
-  const handleSubmitRating = () => {
+  const handleSubmitRating = async () => {
     if (selectedRating === 0) {
       Alert.alert('Rating Required', 'Please select a rating before submitting.');
       return;
     }
 
-    if (currentBooking) {
-      dispatch(rateDriver({
-        bookingId: currentBooking._id,
-        driverId: currentBooking.driver._id,
+    if (!currentBooking) {
+      Alert.alert('Error', 'No active booking found.');
+      setShowRatingModal(false);
+      return;
+    }
+
+    // Handle both cases: driver as object or driver as string ID
+    const driverId = typeof currentBooking.driver === 'object' 
+      ? currentBooking.driver?._id 
+      : currentBooking.driver;
+    
+    if (!driverId) {
+      Alert.alert('Error', 'Unable to find driver information for rating.');
+      setShowRatingModal(false);
+      resetBooking();
+      return;
+    }
+
+    // Store booking ID before potentially losing the reference
+    const bookingId = currentBooking._id;
+
+    try {
+      const result = await dispatch(rateDriver({
+        bookingId: bookingId,
+        driverId: driverId,
         rating: selectedRating,
         comment: ratingComment,
         db,
       }));
+      
+      console.log('Rating submitted successfully:', result);
+      
+      setShowRatingModal(false);
+      resetBooking();
+      
+      Alert.alert(
+        'Thank You!', 
+        'Your rating has been submitted successfully.',
+        [{ text: 'OK' }]
+      );
+    } catch (error) {
+      console.error('Rating submission error:', error);
+      
+      setShowRatingModal(false);
+      resetBooking();
+      
+      Alert.alert(
+        'Rating Error', 
+        error?.message || error?.response?.data?.message || 'Failed to submit rating. Please try again.'
+      );
     }
-
-    setShowRatingModal(false);
-    resetBooking();
   };
 
   const handleCancelBooking = () => {
@@ -752,9 +781,18 @@ const BookingScreen = ({ navigation }) => {
 
       if (response.data.success) {
         setShowCompletionModal(false);
+        
+        // Update the local booking state with the completed booking
+        // This preserves the driver info for rating
+        if (response.data.booking) {
+          dispatch(updateBookingStatus(response.data.booking));
+        }
+        
+        // Show rating modal directly
+        setBookingStatus(BOOKING_STATUS.TRIP_COMPLETED);
+        setShowRatingModal(true);
+        
         Alert.alert('Trip Confirmed', 'Thank you for confirming! Please rate your driver.');
-        // The polling will pick up the completed status and show rating modal
-        dispatch(getActiveBooking(db));
       }
     } catch (error) {
       console.error('Error confirming completion:', error);
@@ -1128,16 +1166,7 @@ const BookingScreen = ({ navigation }) => {
             draggable={bookingStatus === BOOKING_STATUS.SELECTING_LOCATIONS}
             onDragEnd={(e) => {
               const { latitude, longitude } = e.nativeEvent.coordinate;
-              const validation = validatePickupLocation(latitude, longitude);
-              if (!validation.valid) {
-                Alert.alert(
-                  'Outside WEBTODA Service Area',
-                  validation.message,
-                  [{ text: 'OK' }]
-                );
-                // Reset to previous location by not updating
-                return;
-              }
+              // Allow dragging pickup marker anywhere - no area restriction
               setPickupLocation({ latitude, longitude });
             }}
           >

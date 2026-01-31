@@ -1040,16 +1040,28 @@ export const rateDriver = async (req, res) => {
   try {
     const { driverId, rating, comment } = req.body;
     const userId = req.user._id;
+    
+    console.log('=== Rating Driver ===');
+    console.log('Booking ID:', req.params.id);
+    console.log('Driver ID:', driverId);
+    console.log('Rating:', rating);
+    console.log('User ID:', userId);
+    
     const booking = await Booking.findById(req.params.id);
 
     if (!booking) {
+      console.log('Booking not found');
       return res.status(404).json({
         success: false,
         message: 'Booking not found',
       });
     }
 
+    console.log('Booking status:', booking.status);
+    console.log('Booking driver:', booking.driver);
+
     if (booking.user.toString() !== userId.toString()) {
+      console.log('Not authorized - user mismatch');
       return res.status(403).json({
         success: false,
         message: 'Not authorized',
@@ -1086,6 +1098,7 @@ export const rateDriver = async (req, res) => {
     booking.rating = rating;
     booking.ratingComment = comment || '';
     await booking.save();
+    console.log('Booking updated with rating');
 
     // Create a review record
     const review = new Review({
@@ -1096,17 +1109,24 @@ export const rateDriver = async (req, res) => {
       comment: comment || '',
     });
     await review.save();
+    console.log('Review created:', review._id);
 
     // Update driver's rating
     const driver = await User.findById(driverId);
     if (driver) {
+      const previousRating = driver.rating;
+      const previousNumReviews = driver.numReviews;
       const totalRating = driver.rating * driver.numReviews + rating;
       driver.numReviews += 1;
       driver.rating = totalRating / driver.numReviews;
       driver.reviews.push(review._id);
       await driver.save();
+      console.log(`Driver rating updated: ${previousRating} (${previousNumReviews} reviews) -> ${driver.rating} (${driver.numReviews} reviews)`);
+    } else {
+      console.log('Driver not found for rating update:', driverId);
     }
 
+    console.log('Rating submitted successfully');
     res.status(200).json({
       success: true,
       message: 'Rating submitted successfully',

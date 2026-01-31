@@ -88,6 +88,20 @@ function segmentDurationMs(meters) {
   return seconds * 1000;
 }
 
+// Generate interpolated route for simulation
+function generateSimulatedRoute(start, end, numPoints = 30) {
+  const points = [];
+  for (let i = 0; i <= numPoints; i++) {
+    const ratio = i / numPoints;
+    points.push({
+      latitude: start.latitude + (end.latitude - start.latitude) * ratio,
+      longitude: start.longitude + (end.longitude - start.longitude) * ratio,
+      timestamp: Date.now() + (i * 2000),
+    });
+  }
+  return points;
+}
+
 export default function TrackingMap({ follow = true, onEnterTerminalZone, odometerSeed, codingDayRestricted = false }) {
   const mapRef = useRef(null);
   const [region, setRegion] = useState(null);

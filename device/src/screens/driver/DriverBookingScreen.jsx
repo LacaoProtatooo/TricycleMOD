@@ -46,6 +46,7 @@ import {
   FARE_CONFIG,
 } from '../../utils/routeService';
 import { API_URL as BASE_URL } from '../../utils/config';
+// TripSimulator removed - simulation logic now inline for better control
 
 const BACKEND_URL = BASE_URL;
 const API_URL = `${BACKEND_URL}/api/booking`;
@@ -118,6 +119,22 @@ const DriverBookingScreen = ({ navigation }) => {
 
   // Assigned tricycle for coding day
   const [assignedTricycle, setAssignedTricycle] = useState(null);
+
+  // Trip simulation state (for testing) - lives in parent so it persists when modal closes
+  const [showSimulator, setShowSimulator] = useState(false);
+  const [simulatedPosition, setSimulatedPosition] = useState(null);
+  const [isSimulating, setIsSimulating] = useState(false);
+  const [simulationProgress, setSimulationProgress] = useState(0);
+  const [simulationSpeed, setSimulationSpeed] = useState(1);
+  const [simulationPaused, setSimulationPaused] = useState(false);
+  const [simulatedDistance, setSimulatedDistance] = useState(0);
+  const [simulationCompleted, setSimulationCompleted] = useState(false); // Track if simulation finished
+  const simulationRef = useRef(null);
+  const simulationRouteRef = useRef([]);
+  const simulationIndexRef = useRef(0);
+  const simulationSpeedRef = useRef(1);
+  const simulationPausedRef = useRef(false);
+  const simulatedDistanceRef = useRef(0); // Ref for accessing in callbacks
 
   // Calculate coding day status
   const codingDayStatus = useMemo(() => {
@@ -796,27 +813,35 @@ const DriverBookingScreen = ({ navigation }) => {
   const handleCompleteTrip = async () => {
     if (!activeBooking || !userLocation) return;
 
-    const distance = calculateDistance(
-      userLocation.latitude,
-      userLocation.longitude,
-      activeBooking.destination.latitude,
-      activeBooking.destination.longitude
-    );
-
-    if (distance > COMPLETION_RADIUS_METERS) {
-      Alert.alert(
-        'Not at Destination',
-        `You must be within ${COMPLETION_RADIUS_METERS}m of the destination to complete the trip.\n\nCurrent distance: ${formatDistance(distance)}`
+    // If simulation was completed, bypass distance check
+    if (!simulationCompleted) {
+      const distance = calculateDistance(
+        userLocation.latitude,
+        userLocation.longitude,
+        activeBooking.destination.latitude,
+        activeBooking.destination.longitude
       );
-      return;
+
+      if (distance > COMPLETION_RADIUS_METERS) {
+        Alert.alert(
+          'Not at Destination',
+          `You must be within ${COMPLETION_RADIUS_METERS}m of the destination to complete the trip.\n\nCurrent distance: ${formatDistance(distance)}`
+        );
+        return;
+      }
     }
 
     try {
+      // Use simulated position if simulation completed, otherwise use actual location
+      const completionLat = simulationCompleted ? activeBooking.destination.latitude : userLocation.latitude;
+      const completionLon = simulationCompleted ? activeBooking.destination.longitude : userLocation.longitude;
+
       const response = await axios.post(
         `${API_URL}/${activeBooking._id}/complete`,
         {
-          driverLat: userLocation.latitude,
-          driverLon: userLocation.longitude,
+          driverLat: completionLat,
+          driverLon: completionLon,
+          simulated: simulationCompleted, // Flag for testing/debugging
         },
         getAuthHeaders()
       );
@@ -825,7 +850,7 @@ const DriverBookingScreen = ({ navigation }) => {
         const fare = activeBooking.agreedFare || activeBooking.preferredFare;
         Alert.alert(
           'Trip Completed!',
-          `Fare collected: ₱${fare}\n\nRemember to stop recording on the Maps tab.`
+          `Fare collected: ₱${fare}${simulationCompleted ? '\n\n(Simulated trip)' : ''}\n\nRemember to stop recording on the Maps tab.`
         );
         resetTripState();
       }
@@ -866,11 +891,305 @@ const DriverBookingScreen = ({ navigation }) => {
     setDistanceToDestination(null);
     setDistanceToPickup(null);
     setIsPickedUp(false);
+    setSimulatedPosition(null);
+    setSimulationCompleted(false); // Reset simulation completed flag
     stopLocationTracking();
     if (isOnline) {
       fetchNearbyBookings();
     }
   };
+
+  // Handle simulation completion - allows trip completion without being at location
+  const handleSimulationComplete = async (simulationData) => {
+    try {
+      // After simulation completes, we can complete the trip
+      // The simulation has already updated the odometer
+      Alert.alert(
+        'Simulation Complete',
+        `Distance simulated: ${(simulationData.distanceTraveled / 1000).toFixed(2)} km\n\nYou can now complete the trip even without being at the destination (for testing purposes).`,
+        [
+          { text: 'Cancel', style: 'cancel' },
+          {
+            text: 'Complete Trip Now',
+            onPress: async () => {
+              try {
+                // Use simulated final position for completion
+                const response = await axios.post(
+                  `${API_URL}/${activeBooking._id}/complete`,
+                  {
+                    driverLat: simulationData.finalPosition.latitude,
+                    driverLon: simulationData.finalPosition.longitude,
+                    simulated: true, // Flag for testing
+                  },
+                  getAuthHeaders()
+                );
+
+                if (response.data.success) {
+                  const fare = activeBooking.agreedFare || activeBooking.preferredFare;
+                  Alert.alert(
+                    '✅ Trip Completed (Simulated)',
+                    `Fare: ₱${fare}\nDistance: ${(simulationData.distanceTraveled / 1000).toFixed(2)} km\n\nOdometer has been updated.`
+                  );
+                  resetTripState();
+                }
+              } catch (error) {
+                Alert.alert('Error', error.response?.data?.message || 'Failed to complete trip');
+              }
+            },
+          },
+        ]
+      );
+    } catch (error) {
+      console.error('Error handling simulation complete:', error);
+    }
+  };
+
+  // ==================== SIMULATION FUNCTIONS ====================
+
+  // Haversine distance calculation
+  const haversineMeters = (a, b) => {
+    if (!a || !b) return 0;
+    const toRad = (v) => (v * Math.PI) / 180;
+    const R = 6371000;
+    const φ1 = toRad(a.latitude), φ2 = toRad(b.latitude);
+    const Δφ = toRad(b.latitude - a.latitude);
+    const Δλ = toRad(b.longitude - a.longitude);
+    const aa = Math.sin(Δφ/2) * Math.sin(Δφ/2) +
+               Math.cos(φ1) * Math.cos(φ2) *
+               Math.sin(Δλ/2) * Math.sin(Δλ/2);
+    const c = 2 * Math.atan2(Math.sqrt(aa), Math.sqrt(1-aa));
+    return R * c;
+  };
+
+  // Interpolate points along a route for smooth animation
+  const interpolateRoutePoints = useCallback((routeCoords, targetPoints = 100) => {
+    if (!routeCoords || routeCoords.length < 2) return routeCoords;
+    
+    // Calculate total route distance
+    let totalDistance = 0;
+    const distances = [0];
+    for (let i = 1; i < routeCoords.length; i++) {
+      const d = haversineMeters(routeCoords[i - 1], routeCoords[i]);
+      totalDistance += d;
+      distances.push(totalDistance);
+    }
+    
+    if (totalDistance === 0) return routeCoords;
+    
+    // Generate evenly spaced points along the route
+    const points = [];
+    const segmentDistance = totalDistance / (targetPoints - 1);
+    
+    for (let i = 0; i < targetPoints; i++) {
+      const targetDist = i * segmentDistance;
+      
+      // Find which segment this distance falls into
+      let segmentIndex = 0;
+      for (let j = 1; j < distances.length; j++) {
+        if (distances[j] >= targetDist) {
+          segmentIndex = j - 1;
+          break;
+        }
+        segmentIndex = j - 1;
+      }
+      
+      // Interpolate within the segment
+      const segmentStart = routeCoords[segmentIndex];
+      const segmentEnd = routeCoords[Math.min(segmentIndex + 1, routeCoords.length - 1)];
+      const segmentLength = distances[segmentIndex + 1] - distances[segmentIndex];
+      
+      let ratio = 0;
+      if (segmentLength > 0) {
+        ratio = (targetDist - distances[segmentIndex]) / segmentLength;
+      }
+      ratio = Math.max(0, Math.min(1, ratio));
+      
+      points.push({
+        latitude: segmentStart.latitude + (segmentEnd.latitude - segmentStart.latitude) * ratio,
+        longitude: segmentStart.longitude + (segmentEnd.longitude - segmentStart.longitude) * ratio,
+      });
+    }
+    
+    return points;
+  }, []);
+
+  // Start simulation - called from TripSimulator modal
+  const startSimulation = useCallback((speed = 1) => {
+    if (!activeBooking?.pickup || !activeBooking?.destination) return;
+    
+    // Prepare route points
+    let routePoints;
+    if (activeRouteCoordinates && activeRouteCoordinates.length > 2) {
+      // Use actual road route with more interpolation points for smooth movement
+      routePoints = interpolateRoutePoints(activeRouteCoordinates, 120);
+    } else {
+      // Fallback: interpolate straight line
+      const numPoints = 60;
+      routePoints = [];
+      for (let i = 0; i <= numPoints; i++) {
+        const ratio = i / numPoints;
+        routePoints.push({
+          latitude: activeBooking.pickup.latitude + (activeBooking.destination.latitude - activeBooking.pickup.latitude) * ratio,
+          longitude: activeBooking.pickup.longitude + (activeBooking.destination.longitude - activeBooking.pickup.longitude) * ratio,
+        });
+      }
+    }
+    
+    simulationRouteRef.current = routePoints;
+    simulationIndexRef.current = 0;
+    simulationSpeedRef.current = speed;
+    simulationPausedRef.current = false;
+    simulatedDistanceRef.current = 0;
+    
+    setSimulationSpeed(speed);
+    setSimulationPaused(false);
+    setSimulatedDistance(0);
+    setSimulationProgress(0);
+    setIsSimulating(true);
+    setSimulatedPosition(routePoints[0]);
+    
+    // Start the animation loop
+    runSimulationStep();
+  }, [activeBooking, activeRouteCoordinates, interpolateRoutePoints]);
+
+  // Run a single simulation step
+  const runSimulationStep = useCallback(() => {
+    if (simulationPausedRef.current) return;
+    
+    const route = simulationRouteRef.current;
+    const index = simulationIndexRef.current;
+    
+    if (!route || index >= route.length) {
+      // Simulation complete
+      finishSimulation();
+      return;
+    }
+    
+    const currentPoint = route[index];
+    const progress = index / (route.length - 1);
+    
+    // Update state
+    setSimulatedPosition(currentPoint);
+    setSimulationProgress(progress);
+    
+    // Calculate distance traveled
+    if (index > 0) {
+      const prevPoint = route[index - 1];
+      const segmentDist = haversineMeters(prevPoint, currentPoint);
+      simulatedDistanceRef.current += segmentDist;
+      setSimulatedDistance(simulatedDistanceRef.current);
+      // Update odometer
+      updateSimulatedOdometer(segmentDist);
+    }
+    
+    // Update distance to destination
+    if (activeBooking?.destination) {
+      const dist = calculateDistance(
+        currentPoint.latitude,
+        currentPoint.longitude,
+        activeBooking.destination.latitude,
+        activeBooking.destination.longitude
+      );
+      setDistanceToDestination(dist);
+    }
+    
+    // Center map on simulated position
+    if (mapRef.current) {
+      mapRef.current.animateCamera({
+        center: currentPoint,
+        zoom: 17,
+      }, { duration: 200 });
+    }
+    
+    // Schedule next step
+    simulationIndexRef.current = index + 1;
+    const baseDelay = 150; // 150ms between points for smooth animation
+    const delay = baseDelay / simulationSpeedRef.current;
+    
+    simulationRef.current = setTimeout(runSimulationStep, delay);
+  }, [activeBooking]);
+
+  // Update odometer during simulation
+  const updateSimulatedOdometer = async (distanceMeters) => {
+    try {
+      const KM_KEY = 'vehicle_current_km_v1';
+      const storedKm = await AsyncStorage.getItem(KM_KEY);
+      const currentKm = storedKm ? parseFloat(storedKm) : 0;
+      const newKm = currentKm + (distanceMeters / 1000);
+      await AsyncStorage.setItem(KM_KEY, String(Math.round(newKm * 100) / 100));
+    } catch (error) {
+      console.error('Error updating odometer:', error);
+    }
+  };
+
+  // Finish simulation
+  const finishSimulation = useCallback(() => {
+    if (simulationRef.current) {
+      clearTimeout(simulationRef.current);
+    }
+    setIsSimulating(false);
+    setSimulationProgress(1);
+    setSimulationCompleted(true); // Mark simulation as completed
+    
+    // Set final position to destination
+    if (activeBooking?.destination) {
+      setSimulatedPosition(activeBooking.destination);
+      setDistanceToDestination(0);
+    }
+    
+    const finalDistance = simulatedDistanceRef.current;
+    Alert.alert(
+      '✅ Simulation Complete!',
+      `Trip simulated successfully!\n\nDistance: ${(finalDistance / 1000).toFixed(2)} km\nOdometer updated.\n\nYou can now complete the trip.`,
+      [{ text: 'OK' }]
+    );
+  }, [activeBooking]);
+
+  // Pause simulation
+  const pauseSimulation = useCallback(() => {
+    simulationPausedRef.current = true;
+    setSimulationPaused(true);
+    if (simulationRef.current) {
+      clearTimeout(simulationRef.current);
+    }
+  }, []);
+
+  // Resume simulation
+  const resumeSimulation = useCallback(() => {
+    simulationPausedRef.current = false;
+    setSimulationPaused(false);
+    runSimulationStep();
+  }, [runSimulationStep]);
+
+  // Stop simulation
+  const stopSimulation = useCallback(() => {
+    if (simulationRef.current) {
+      clearTimeout(simulationRef.current);
+    }
+    simulationPausedRef.current = false;
+    simulatedDistanceRef.current = 0;
+    setIsSimulating(false);
+    setSimulationPaused(false);
+    setSimulatedPosition(null);
+    setSimulationProgress(0);
+    setSimulatedDistance(0);
+    simulationIndexRef.current = 0;
+  }, []);
+
+  // Change simulation speed
+  const changeSimulationSpeed = useCallback((speed) => {
+    simulationSpeedRef.current = speed;
+    setSimulationSpeed(speed);
+  }, []);
+
+  // Cleanup simulation on unmount
+  useEffect(() => {
+    return () => {
+      if (simulationRef.current) {
+        clearTimeout(simulationRef.current);
+      }
+    };
+  }, []);
 
   // ==================== UI HANDLERS ====================
 
@@ -1304,16 +1623,29 @@ const DriverBookingScreen = ({ navigation }) => {
 
           {/* Route line - Uses actual road route */}
           {activeRouteCoordinates.length > 0 ? (
-            <Polyline
-              coordinates={isPickedUp && userLocation 
-                ? [userLocation, ...activeRouteCoordinates.slice(1)] 
-                : activeRouteCoordinates
-              }
-              strokeColor="#2196F3"
-              strokeWidth={4}
-              lineCap="round"
-              lineJoin="round"
-            />
+            <>
+              {/* Main route line */}
+              <Polyline
+                coordinates={isPickedUp && userLocation && !isSimulating
+                  ? [userLocation, ...activeRouteCoordinates.slice(1)] 
+                  : activeRouteCoordinates
+                }
+                strokeColor={isSimulating ? 'rgba(33, 150, 243, 0.3)' : '#2196F3'}
+                strokeWidth={4}
+                lineCap="round"
+                lineJoin="round"
+              />
+              {/* Simulated progress line - shows traversed portion */}
+              {isSimulating && simulatedPosition && (
+                <Polyline
+                  coordinates={[activeBooking.pickup, simulatedPosition]}
+                  strokeColor="#6f42c1"
+                  strokeWidth={6}
+                  lineCap="round"
+                  lineJoin="round"
+                />
+              )}
+            </>
           ) : (
             <Polyline
               coordinates={[
@@ -1334,6 +1666,19 @@ const DriverBookingScreen = ({ navigation }) => {
             fillColor="rgba(40,167,69,0.15)"
             strokeWidth={2}
           />
+
+          {/* Simulation marker - shows tricycle icon moving along route */}
+          {isSimulating && simulatedPosition && (
+            <Marker
+              coordinate={simulatedPosition}
+              anchor={{ x: 0.5, y: 0.5 }}
+              flat={true}
+            >
+              <View style={styles.simulationMarker}>
+                <Ionicons name="bicycle" size={20} color="#fff" />
+              </View>
+            </Marker>
+          )}
         </MapView>
 
         {/* Center on user button */}
@@ -1413,27 +1758,181 @@ const DriverBookingScreen = ({ navigation }) => {
                     : `Get within ${PICKUP_RADIUS_METERS}m of passenger (currently ${formatDistance(distanceToPickup)} away)`
                 }
               </Text>
+              {/* Test Bypass - For Development Only */}
+              {__DEV__ && distanceToPickup !== null && distanceToPickup > PICKUP_RADIUS_METERS && (
+                <TouchableOpacity 
+                  style={styles.testBypassBtn}
+                  onPress={() => {
+                    Alert.alert(
+                      '🧪 Test Bypass',
+                      'Skip location requirement and start trip? (Testing only)',
+                      [
+                        { text: 'Cancel', style: 'cancel' },
+                        { 
+                          text: 'Bypass & Start Trip',
+                          onPress: handleConfirmPickup
+                        }
+                      ]
+                    );
+                  }}
+                >
+                  <Ionicons name="flask" size={16} color="#fff" />
+                  <Text style={styles.testBypassBtnText}>🧪 Bypass for Testing</Text>
+                </TouchableOpacity>
+              )}
             </>
           ) : (
             <TouchableOpacity
               style={[
                 styles.completeBtn,
-                distanceToDestination > COMPLETION_RADIUS_METERS && styles.btnDisabled,
+                (distanceToDestination > COMPLETION_RADIUS_METERS && !simulationCompleted) && styles.btnDisabled,
               ]}
               onPress={handleCompleteTrip}
-              disabled={distanceToDestination > COMPLETION_RADIUS_METERS}
+              disabled={distanceToDestination > COMPLETION_RADIUS_METERS && !simulationCompleted}
             >
               <Ionicons name="checkmark-circle" size={20} color="#fff" />
-              <Text style={styles.completeBtnText}>Complete Trip</Text>
+              <Text style={styles.completeBtnText}>
+                {simulationCompleted ? '✅ Complete Trip (Simulated)' : 'Complete Trip'}
+              </Text>
             </TouchableOpacity>
           )}
 
-          {isPickedUp && !isAwaitingConfirmation && distanceToDestination > COMPLETION_RADIUS_METERS && (
+          {isPickedUp && !isAwaitingConfirmation && distanceToDestination > COMPLETION_RADIUS_METERS && !simulationCompleted && (
             <Text style={styles.completionHint}>
               Navigate to destination to complete ({formatDistance(COMPLETION_RADIUS_METERS)} range)
             </Text>
           )}
+
+          {/* Simulation Button - For Testing Only */}
+          {isPickedUp && !isAwaitingConfirmation && __DEV__ && !isSimulating && (
+            <TouchableOpacity
+              style={styles.simulateBtn}
+              onPress={() => setShowSimulator(true)}
+            >
+              <Ionicons name="flask" size={18} color="#fff" />
+              <Text style={styles.simulateBtnText}>🧪 Simulate Trip (Testing)</Text>
+            </TouchableOpacity>
+          )}
+
+          {/* Simulation Controls - Shows when simulation is running */}
+          {isSimulating && __DEV__ && (
+            <View style={styles.simulationControlPanel}>
+              <View style={styles.simControlHeader}>
+                <Ionicons name="flask" size={16} color="#6f42c1" />
+                <Text style={styles.simControlTitle}>Simulation Running</Text>
+                <Text style={styles.simControlProgress}>{Math.round(simulationProgress * 100)}%</Text>
+              </View>
+              <View style={styles.simProgressBar}>
+                <View style={[styles.simProgressFill, { width: `${simulationProgress * 100}%` }]} />
+              </View>
+              <Text style={styles.simDistanceText}>
+                Distance: {(simulatedDistance / 1000).toFixed(2)} km
+              </Text>
+              <View style={styles.simControlButtons}>
+                {simulationPaused ? (
+                  <TouchableOpacity style={styles.simResumeBtn} onPress={resumeSimulation}>
+                    <Ionicons name="play" size={16} color="#fff" />
+                    <Text style={styles.simBtnText}>Resume</Text>
+                  </TouchableOpacity>
+                ) : (
+                  <TouchableOpacity style={styles.simPauseBtn} onPress={pauseSimulation}>
+                    <Ionicons name="pause" size={16} color="#fff" />
+                    <Text style={styles.simBtnText}>Pause</Text>
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity style={styles.simStopBtn} onPress={stopSimulation}>
+                  <Ionicons name="stop" size={16} color="#fff" />
+                  <Text style={styles.simBtnText}>Stop</Text>
+                </TouchableOpacity>
+                <View style={styles.simSpeedButtons}>
+                  {[1, 2, 4, 8].map((speed) => (
+                    <TouchableOpacity
+                      key={speed}
+                      style={[styles.simSpeedBtn, simulationSpeed === speed && styles.simSpeedBtnActive]}
+                      onPress={() => changeSimulationSpeed(speed)}
+                    >
+                      <Text style={[styles.simSpeedBtnText, simulationSpeed === speed && styles.simSpeedBtnTextActive]}>
+                        {speed}x
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+            </View>
+          )}
         </View>
+
+        {/* Trip Simulator Modal - For starting simulation */}
+        <Modal
+          visible={showSimulator}
+          animationType="slide"
+          transparent
+          onRequestClose={() => setShowSimulator(false)}
+        >
+          <View style={styles.simModalOverlay}>
+            <View style={styles.simModalContent}>
+              <View style={styles.simModalHeader}>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <Ionicons name="flask" size={24} color="#6f42c1" />
+                  <Text style={styles.simModalTitle}>Trip Simulator</Text>
+                </View>
+                <TouchableOpacity onPress={() => setShowSimulator(false)}>
+                  <Ionicons name="close" size={24} color={colors.orangeShade6} />
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.simModalInfo}>
+                <Text style={styles.simModalInfoText}>
+                  This will simulate the trip from pickup to destination.
+                </Text>
+                <Text style={styles.simModalInfoText}>
+                  • The tricycle icon will follow the actual route
+                </Text>
+                <Text style={styles.simModalInfoText}>
+                  • The odometer will be updated
+                </Text>
+                <Text style={styles.simModalInfoText}>
+                  • Close this modal to see the map
+                </Text>
+              </View>
+
+              <View style={styles.simModalSpeedSection}>
+                <Text style={styles.simModalSpeedLabel}>Simulation Speed:</Text>
+                <View style={styles.simModalSpeedButtons}>
+                  {[1, 2, 4, 8].map((speed) => (
+                    <TouchableOpacity
+                      key={speed}
+                      style={[styles.simModalSpeedBtn, simulationSpeed === speed && styles.simModalSpeedBtnActive]}
+                      onPress={() => setSimulationSpeed(speed)}
+                    >
+                      <Text style={[styles.simModalSpeedBtnText, simulationSpeed === speed && styles.simModalSpeedBtnTextActive]}>
+                        {speed}x
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
+              <TouchableOpacity
+                style={styles.simStartBtn}
+                onPress={() => {
+                  startSimulation(simulationSpeed);
+                  setShowSimulator(false); // Close modal to see the map
+                }}
+              >
+                <Ionicons name="play" size={20} color="#fff" />
+                <Text style={styles.simStartBtnText}>Start Simulation</Text>
+              </TouchableOpacity>
+
+              <View style={styles.simModalWarning}>
+                <Ionicons name="information-circle" size={18} color="#856404" />
+                <Text style={styles.simModalWarningText}>
+                  Testing feature only. Close this modal after starting to see the tricycle moving on the map.
+                </Text>
+              </View>
+            </View>
+          </View>
+        </Modal>
       </SafeAreaView>
     );
   }
@@ -2654,6 +3153,18 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: '#fff',
   },
+  simulationMarker: {
+    backgroundColor: '#6f42c1',
+    padding: 10,
+    borderRadius: 24,
+    borderWidth: 3,
+    borderColor: '#fff',
+    shadowColor: '#6f42c1',
+    shadowOpacity: 0.5,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 8,
+  },
   tripPanel: {
     backgroundColor: '#fff',
     paddingHorizontal: spacing.medium || 16,
@@ -2749,6 +3260,241 @@ const styles = StyleSheet.create({
   },
   pickupHintSuccess: {
     color: '#28a745',
+  },
+  // Simulation button (testing only)
+  simulateBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#6f42c1',
+    paddingVertical: 12,
+    borderRadius: 10,
+    marginTop: 12,
+    borderWidth: 2,
+    borderColor: '#5a32a3',
+    borderStyle: 'dashed',
+  },
+  simulateBtnText: {
+    color: '#fff',
+    fontWeight: '600',
+    fontSize: 14,
+    marginLeft: 8,
+  },
+  testBypassBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#6f42c1',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    marginTop: 8,
+    opacity: 0.8,
+  },
+  testBypassBtnText: {
+    color: '#fff',
+    fontWeight: '500',
+    fontSize: 12,
+    marginLeft: 6,
+  },
+
+  // Simulation Control Panel (inline)
+  simulationControlPanel: {
+    backgroundColor: '#f3e8ff',
+    borderRadius: 12,
+    padding: 12,
+    marginTop: 12,
+    borderWidth: 2,
+    borderColor: '#6f42c1',
+  },
+  simControlHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+  },
+  simControlTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#6f42c1',
+    marginLeft: 6,
+    flex: 1,
+  },
+  simControlProgress: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#6f42c1',
+  },
+  simProgressBar: {
+    height: 8,
+    backgroundColor: '#e0d4f7',
+    borderRadius: 4,
+    marginBottom: 8,
+  },
+  simProgressFill: {
+    height: '100%',
+    backgroundColor: '#6f42c1',
+    borderRadius: 4,
+  },
+  simDistanceText: {
+    fontSize: 12,
+    color: '#6f42c1',
+    marginBottom: 8,
+  },
+  simControlButtons: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  simPauseBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#ffc107',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+  },
+  simResumeBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#28a745',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+  },
+  simStopBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#dc3545',
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+  },
+  simBtnText: {
+    color: '#fff',
+    fontWeight: '600',
+    fontSize: 12,
+    marginLeft: 4,
+  },
+  simSpeedButtons: {
+    flexDirection: 'row',
+    marginLeft: 'auto',
+    gap: 4,
+  },
+  simSpeedBtn: {
+    paddingVertical: 4,
+    paddingHorizontal: 8,
+    borderRadius: 4,
+    backgroundColor: '#e0d4f7',
+  },
+  simSpeedBtnActive: {
+    backgroundColor: '#6f42c1',
+  },
+  simSpeedBtnText: {
+    fontSize: 11,
+    fontWeight: '600',
+    color: '#6f42c1',
+  },
+  simSpeedBtnTextActive: {
+    color: '#fff',
+  },
+
+  // Simulation Modal
+  simModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.5)',
+    justifyContent: 'flex-end',
+  },
+  simModalContent: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    padding: 20,
+    paddingBottom: Platform.OS === 'ios' ? 40 : 20,
+  },
+  simModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  simModalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#6f42c1',
+    marginLeft: 8,
+  },
+  simModalInfo: {
+    backgroundColor: '#f8f9fa',
+    borderRadius: 12,
+    padding: 16,
+    marginBottom: 16,
+  },
+  simModalInfoText: {
+    fontSize: 14,
+    color: '#495057',
+    marginBottom: 4,
+  },
+  simModalSpeedSection: {
+    marginBottom: 16,
+  },
+  simModalSpeedLabel: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#495057',
+    marginBottom: 8,
+  },
+  simModalSpeedButtons: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  simModalSpeedBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    backgroundColor: '#f3e8ff',
+    alignItems: 'center',
+  },
+  simModalSpeedBtnActive: {
+    backgroundColor: '#6f42c1',
+  },
+  simModalSpeedBtnText: {
+    fontSize: 16,
+    fontWeight: '700',
+    color: '#6f42c1',
+  },
+  simModalSpeedBtnTextActive: {
+    color: '#fff',
+  },
+  simStartBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#28a745',
+    paddingVertical: 14,
+    borderRadius: 10,
+    marginBottom: 16,
+  },
+  simStartBtnText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+    marginLeft: 8,
+  },
+  simModalWarning: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: '#fff3cd',
+    borderRadius: 8,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#ffc107',
+  },
+  simModalWarningText: {
+    flex: 1,
+    marginLeft: 8,
+    fontSize: 12,
+    color: '#856404',
+    lineHeight: 18,
   },
 
   // Modal
