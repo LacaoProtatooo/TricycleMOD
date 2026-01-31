@@ -614,6 +614,12 @@ export const fileComplaint = async (req, res) => {
         urgency: sentimentAnalysis.severity.urgency,
         descriptionQuality: sentimentAnalysis.validation.qualityScore,
         flags: sentimentAnalysis.severity.flags,
+        // Save detected Taglish indicator words for analysis
+        taglishIndicators: {
+          negativeWords: sentimentAnalysis.sentiment.taglishIndicators?.negativeWords || [],
+          positiveWords: sentimentAnalysis.sentiment.taglishIndicators?.positiveWords || [],
+          isTaglish: sentimentAnalysis.sentiment.isTaglish || false,
+        },
         analyzedAt: new Date(),
       } : null,
     });

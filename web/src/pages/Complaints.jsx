@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import { useDispatch, useSelector } from "react-redux";
 import PageMeta from "../components/common/PageMeta";
 import PageBreadcrumb from "../components/common/PageBreadCrumb";
+import SentimentQuadrantChart from "../components/charts/scatter/SentimentQuadrantChart";
 import {
   fetchAllComplaints,
   fetchComplaintDetails,
@@ -16,6 +17,7 @@ import {
 
 const Complaints = () => {
   const dispatch = useDispatch();
+  const [showQuadrantChart, setShowQuadrantChart] = useState(false);
   const {
     complaints,
     total,
@@ -310,6 +312,30 @@ const Complaints = () => {
               <p className="text-2xl font-bold text-red-700">{stats.lowCredibility}</p>
             </div>
           </div>
+
+          {/* Toggle Sentiment Quadrant Chart */}
+          <div className="flex justify-end">
+            <button
+              onClick={() => setShowQuadrantChart(!showQuadrantChart)}
+              className={`flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-sm transition-all ${
+                showQuadrantChart 
+                  ? 'bg-blue-600 text-white hover:bg-blue-700' 
+                  : 'bg-white border border-gray-300 text-gray-700 hover:bg-gray-50 dark:bg-gray-800 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700'
+              }`}
+            >
+              <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" />
+              </svg>
+              {showQuadrantChart ? 'Hide Sentiment Quadrant' : 'Show Sentiment Quadrant'}
+            </button>
+          </div>
+
+          {/* Sentiment Quadrant Scatter Plot */}
+          {showQuadrantChart && (
+            <div className="animate-in fade-in duration-300">
+              <SentimentQuadrantChart />
+            </div>
+          )}
         </div>
       )}
 

@@ -5,6 +5,120 @@ import Complaint from '../models/complaintModel.js';
 import Review from '../models/reviewModel.js';
 
 /**
+ * Get sentiment quadrant data for scatter plot visualization
+ * GET /api/dashboard/sentiment-quadrant
+ * 
+ * Returns complaint data formatted for quadrant visualization:
+ * - X-axis: Sentiment score (-1 to 1, negative to positive)
+ * - Y-axis: Confidence level (0 to 1)
+ */
+export const getSentimentQuadrantData = async (req, res) => {
+  try {
+    const { category, status, limit = 200 } = req.query;
+    
+    // Build query filter
+    const filter = {
+      'sentimentAnalysis.sentiment': { $exists: true },
+      'sentimentAnalysis.confidence': { $exists: true },
+    };
+    
+    if (category) {
+      filter.category = category;
+    }
+    
+    if (status) {
+      filter.status = status;
+    }
+    
+    // Fetch complaints with sentiment analysis
+    const complaints = await Complaint.find(filter)
+      .select('category status sentimentAnalysis description createdAt')
+      .sort({ createdAt: -1 })
+      .limit(parseInt(limit))
+      .lean();
+    
+    // Transform data for scatter plot
+    const quadrantData = complaints.map(complaint => {
+      const sentiment = complaint.sentimentAnalysis;
+      
+      // Calculate sentiment score (-1 to 1)
+      // Negative sentiment = negative score, Positive = positive score
+      let sentimentScore = 0;
+      if (sentiment.scores) {
+        const positive = sentiment.scores.POSITIVE || 0;
+        const negative = sentiment.scores.NEGATIVE || 0;
+        sentimentScore = positive - negative; // Range: -1 to 1
+      } else {
+        // Fallback based on sentiment label
+        switch (sentiment.sentiment) {
+          case 'negative':
+            sentimentScore = -0.7 * (sentiment.confidence || 0.5);
+            break;
+          case 'positive':
+            sentimentScore = 0.7 * (sentiment.confidence || 0.5);
+            break;
+          default:
+            sentimentScore = 0;
+        }
+      }
+      
+      return {
+        _id: complaint._id,
+        category: complaint.category,
+        status: complaint.status,
+        sentiment: sentiment.sentiment,
+        sentimentScore: Math.max(-1, Math.min(1, sentimentScore)), // Clamp to -1 to 1
+        confidence: sentiment.confidence || 0,
+        severityScore: sentiment.severityScore || 0,
+        urgency: sentiment.urgency || 'normal',
+        flags: sentiment.flags || {},
+        // Include detected indicator words for tooltip display
+        taglishIndicators: sentiment.taglishIndicators || { negativeWords: [], positiveWords: [], isTaglish: false },
+        descriptionPreview: complaint.description ? complaint.description.substring(0, 100) + (complaint.description.length > 100 ? '...' : '') : '',
+        createdAt: complaint.createdAt,
+      };
+    });
+    
+    // Calculate summary statistics
+    const summary = {
+      total: quadrantData.length,
+      critical: quadrantData.filter(d => d.urgency === 'critical').length,
+      high: quadrantData.filter(d => d.urgency === 'high').length,
+      medium: quadrantData.filter(d => d.urgency === 'medium').length,
+      low: quadrantData.filter(d => d.urgency === 'low').length,
+      normal: quadrantData.filter(d => d.urgency === 'normal').length,
+      avgConfidence: quadrantData.length > 0 
+        ? (quadrantData.reduce((sum, d) => sum + d.confidence, 0) / quadrantData.length).toFixed(2)
+        : 0,
+      avgSeverity: quadrantData.length > 0
+        ? (quadrantData.reduce((sum, d) => sum + d.severityScore, 0) / quadrantData.length).toFixed(2)
+        : 0,
+      byQuadrant: {
+        topLeft: quadrantData.filter(d => d.sentimentScore < 0 && d.confidence >= 0.5).length,    // High confidence negative
+        topRight: quadrantData.filter(d => d.sentimentScore >= 0 && d.confidence >= 0.5).length,  // High confidence positive
+        bottomLeft: quadrantData.filter(d => d.sentimentScore < 0 && d.confidence < 0.5).length,  // Low confidence negative
+        bottomRight: quadrantData.filter(d => d.sentimentScore >= 0 && d.confidence < 0.5).length, // Low confidence positive
+      },
+    };
+    
+    res.status(200).json({
+      success: true,
+      data: {
+        complaints: quadrantData,
+        summary,
+      },
+    });
+  } catch (error) {
+    console.error('Error fetching sentiment quadrant data:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch sentiment quadrant data',
+      error: error.message,
+    });
+  }
+};
+
+/**
  * Get admin dashboard statistics
  * GET /api/dashboard/stats
  */

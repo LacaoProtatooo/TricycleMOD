@@ -220,6 +220,12 @@ const complaintSchema = new mongoose.Schema({
       mayRequireImmediateAttention: { type: Boolean, default: false },
       emotionallyCharged: { type: Boolean, default: false },
     },
+    // Detected Taglish indicator words
+    taglishIndicators: {
+      negativeWords: [{ type: String }],
+      positiveWords: [{ type: String }],
+      isTaglish: { type: Boolean, default: false },
+    },
     analyzedAt: { type: Date },
   },
   
