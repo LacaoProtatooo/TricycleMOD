@@ -1188,6 +1188,7 @@ const MaintenanceTracker = ({ tricycleId, serverHistory }) => {
 					<PredictiveMaintenance 
 						maintenanceData={data}
 						tricycleId={tricycleId}
+						currentOdometer={odometerKm}
 						onMaintenanceNeeded={handleMaintenanceNeeded}
 					/>
 				</ScrollView>

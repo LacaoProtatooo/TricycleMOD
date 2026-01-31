@@ -101,40 +101,61 @@ const predictNextService = (itemKey, currentKm, lastServiceKm, wearHistory) => {
   const item = MAINTENANCE_ITEMS[itemKey];
   if (!item) return null;
   
+  // Ensure currentKm is a valid number
+  const validCurrentKm = typeof currentKm === 'number' && !isNaN(currentKm) ? currentKm : 0;
+  const validLastServiceKm = typeof lastServiceKm === 'number' && !isNaN(lastServiceKm) ? lastServiceKm : 0;
+  
   const baseInterval = item.interval;
   const criticalThreshold = item.criticalThreshold;
   
-  // If we have enough history, use regression
-  if (wearHistory && wearHistory.length >= 3) {
-    const regression = linearRegression(wearHistory);
+  // Calculate basic wear info first
+  const kmSinceService = Math.max(0, validCurrentKm - validLastServiceKm);
+  const basicWearPercent = Math.min(100, (kmSinceService / baseInterval) * 100);
+  
+  // If we have enough valid history data points, use regression
+  if (wearHistory && Array.isArray(wearHistory) && wearHistory.length >= 3) {
+    // Ensure all data points are valid
+    const validHistory = wearHistory.filter(point => 
+      point && 
+      typeof point.km === 'number' && !isNaN(point.km) &&
+      typeof point.wearLevel === 'number' && !isNaN(point.wearLevel)
+    );
     
-    if (regression && regression.rSquared > 0.5 && regression.slope > 0) {
-      // Predict when wear will reach critical threshold (e.g., 90%)
-      const kmToFailure = (criticalThreshold * 100 - regression.intercept) / regression.slope;
-      const predictedKmRemaining = Math.max(0, kmToFailure - currentKm);
+    if (validHistory.length >= 3) {
+      const regression = linearRegression(validHistory);
       
-      return {
-        predictedKm: Math.round(predictedKmRemaining),
-        confidence: Math.min(95, Math.round(regression.rSquared * 100)),
-        method: 'ai_regression',
-        wearRate: regression.slope,
-        isAnomalous: Math.abs(regression.slope) > (100 / baseInterval) * 1.5, // 50% faster than expected
-      };
+      if (regression && regression.rSquared > 0.3 && regression.slope > 0) {
+        // Predict when wear will reach critical threshold (e.g., 90%)
+        const kmToFailure = (criticalThreshold * 100 - regression.intercept) / regression.slope;
+        const predictedKmRemaining = Math.max(0, kmToFailure - validCurrentKm);
+        
+        // Sanity check: prediction should be reasonable (not more than 3x base interval)
+        const maxReasonable = baseInterval * 3;
+        const clampedPrediction = Math.min(maxReasonable, predictedKmRemaining);
+        
+        return {
+          predictedKm: Math.round(clampedPrediction),
+          confidence: Math.min(95, Math.max(30, Math.round(regression.rSquared * 100))),
+          method: 'ai_regression',
+          wearRate: regression.slope,
+          currentWear: basicWearPercent,
+          isAnomalous: Math.abs(regression.slope) > (100 / baseInterval) * 1.5, // 50% faster than expected
+          dataPoints: validHistory.length,
+        };
+      }
     }
   }
   
   // Fallback: simple calculation based on last service
-  const kmSinceService = currentKm - (lastServiceKm || 0);
-  const wearPercent = Math.min(100, (kmSinceService / baseInterval) * 100);
   const kmRemaining = Math.max(0, baseInterval - kmSinceService);
-  
   return {
     predictedKm: Math.round(kmRemaining),
     confidence: 60, // Lower confidence for simple calculation
     method: 'interval_based',
     wearRate: 100 / baseInterval,
-    currentWear: wearPercent,
+    currentWear: basicWearPercent,
     isAnomalous: false,
+    dataPoints: 0,
   };
 };
 
@@ -145,16 +166,27 @@ const predictNextService = (itemKey, currentKm, lastServiceKm, wearHistory) => {
 const detectAnomalies = (wearPatterns, currentKm) => {
   const anomalies = [];
   
+  if (!wearPatterns || typeof wearPatterns !== 'object') return anomalies;
+  
   Object.entries(wearPatterns).forEach(([itemKey, history]) => {
-    if (!history || history.length < 3) return;
+    if (!history || !Array.isArray(history) || history.length < 3) return;
     
     const item = MAINTENANCE_ITEMS[itemKey];
     if (!item) return;
     
-    const expectedRate = 100 / item.interval; // Expected wear per km
-    const regression = linearRegression(history);
+    // Validate history data points
+    const validHistory = history.filter(point => 
+      point && 
+      typeof point.km === 'number' && !isNaN(point.km) &&
+      typeof point.wearLevel === 'number' && !isNaN(point.wearLevel)
+    );
     
-    if (regression && regression.slope > 0) {
+    if (validHistory.length < 3) return;
+    
+    const expectedRate = 100 / item.interval; // Expected wear per km
+    const regression = linearRegression(validHistory);
+    
+    if (regression && regression.slope > 0 && regression.rSquared > 0.3) {
       const actualRate = regression.slope;
       const rateRatio = actualRate / expectedRate;
       
@@ -209,6 +241,9 @@ const calculateHealthScore = (maintenanceData, currentKm, predictions) => {
   let totalWeight = 0;
   let weightedScore = 0;
   
+  // Validate currentKm
+  const validCurrentKm = typeof currentKm === 'number' && !isNaN(currentKm) ? currentKm : 0;
+  
   // Weight categories by importance
   const categoryWeights = {
     safety: 1.5,
@@ -222,8 +257,9 @@ const calculateHealthScore = (maintenanceData, currentKm, predictions) => {
   };
   
   Object.entries(MAINTENANCE_ITEMS).forEach(([itemKey, item]) => {
-    const lastService = maintenanceData[itemKey] || 0;
-    const kmSinceService = currentKm - lastService;
+    const lastService = maintenanceData?.[itemKey] || 0;
+    const validLastService = typeof lastService === 'number' && !isNaN(lastService) ? lastService : 0;
+    const kmSinceService = Math.max(0, validCurrentKm - validLastService);
     const wearPercent = Math.min(100, (kmSinceService / item.interval) * 100);
     
     // Health is inverse of wear (100 - wear%)
@@ -242,7 +278,9 @@ const calculateHealthScore = (maintenanceData, currentKm, predictions) => {
  */
 const calculateDaysUntilService = (kmRemaining, dailyKmAverage) => {
   if (!dailyKmAverage || dailyKmAverage <= 0) return null;
-  return Math.round(kmRemaining / dailyKmAverage);
+  if (!kmRemaining || kmRemaining <= 0) return 0;
+  const days = Math.round(kmRemaining / dailyKmAverage);
+  return Math.max(0, days); // Never return negative days
 };
 
 // ============== UI COMPONENTS ==============
@@ -335,26 +373,46 @@ const HealthScoreGauge = ({ score, size = 140 }) => {
  * Prediction Card Component
  */
 const PredictionCard = ({ prediction, itemName, onPress }) => {
+  const kmValue = prediction.predictedKm || 0;
+  const daysValue = prediction.daysRemaining;
+  const confidenceValue = prediction.confidence || 60;
+  
   const getUrgencyColor = () => {
-    if (prediction.predictedKm <= 50) return '#ef4444';
-    if (prediction.predictedKm <= 200) return '#f97316';
-    if (prediction.predictedKm <= 500) return '#eab308';
+    if (kmValue <= 50) return '#ef4444';
+    if (kmValue <= 200) return '#f97316';
+    if (kmValue <= 500) return '#eab308';
     return '#22c55e';
   };
   
   const getUrgencyLabel = () => {
-    if (prediction.predictedKm <= 50) return 'Urgent';
-    if (prediction.predictedKm <= 200) return 'Soon';
-    if (prediction.predictedKm <= 500) return 'Upcoming';
+    if (kmValue <= 50) return 'Urgent';
+    if (kmValue <= 200) return 'Soon';
+    if (kmValue <= 500) return 'Upcoming';
     return 'Good';
   };
   
+  // Format km display
+  const formatKm = (km) => {
+    if (km <= 0) return 'Due now';
+    if (km >= 1000) return `${(km / 1000).toFixed(1)}k km`;
+    return `${Math.round(km)} km`;
+  };
+  
+  // Format days display
+  const formatDays = (days) => {
+    if (days == null || days === undefined) return null;
+    if (days <= 0) return 'Due now';
+    if (days === 1) return '~1 day';
+    if (days >= 30) return `~${Math.round(days / 30)} mo`;
+    return `~${Math.round(days)} days`;
+  };
+  
   return (
-    <TouchableOpacity style={styles.predictionCard} onPress={onPress}>
+    <TouchableOpacity style={styles.predictionCard} onPress={onPress} activeOpacity={0.7}>
       <View style={[styles.urgencyIndicator, { backgroundColor: getUrgencyColor() }]} />
       <View style={styles.predictionContent}>
         <View style={styles.predictionHeader}>
-          <Text style={styles.predictionItemName}>{itemName}</Text>
+          <Text style={styles.predictionItemName} numberOfLines={1}>{itemName}</Text>
           <View style={[styles.urgencyBadge, { backgroundColor: getUrgencyColor() + '20' }]}>
             <Text style={[styles.urgencyText, { color: getUrgencyColor() }]}>{getUrgencyLabel()}</Text>
           </View>
@@ -363,35 +421,35 @@ const PredictionCard = ({ prediction, itemName, onPress }) => {
         <View style={styles.predictionDetails}>
           <View style={styles.predictionStat}>
             <Ionicons name="speedometer-outline" size={14} color="#64748b" />
-            <Text style={styles.predictionStatText}>{prediction.predictedKm} km</Text>
+            <Text style={styles.predictionStatText}>{formatKm(kmValue)}</Text>
           </View>
           
-          {prediction.daysRemaining != null && prediction.daysRemaining !== undefined && (
+          {formatDays(daysValue) && (
             <View style={styles.predictionStat}>
               <Ionicons name="calendar-outline" size={14} color="#64748b" />
-              <Text style={styles.predictionStatText}>~{prediction.daysRemaining} days</Text>
+              <Text style={styles.predictionStatText}>{formatDays(daysValue)}</Text>
             </View>
           )}
           
           <View style={styles.predictionStat}>
             <Ionicons name="analytics-outline" size={14} color="#64748b" />
-            <Text style={styles.predictionStatText}>{prediction.confidence != null ? prediction.confidence : 0}% confidence</Text>
+            <Text style={styles.predictionStatText}>{confidenceValue}%</Text>
           </View>
         </View>
         
-        {prediction.method === 'ai_regression' ? (
+        {prediction.method === 'ai_regression' && (
           <View style={styles.aiTag}>
             <Ionicons name="sparkles" size={10} color="#a78bfa" />
             <Text style={styles.aiTagText}>AI Predicted</Text>
           </View>
-        ) : null}
+        )}
         
-        {prediction.isAnomalous === true ? (
+        {prediction.isAnomalous && (
           <View style={styles.anomalyWarning}>
             <Ionicons name="warning" size={12} color="#f97316" />
             <Text style={styles.anomalyText}>Faster wear detected</Text>
           </View>
-        ) : null}
+        )}
       </View>
       <Ionicons name="chevron-forward" size={16} color="#475569" />
     </TouchableOpacity>
@@ -457,7 +515,7 @@ const InsightCard = ({ icon, title, value, subtitle, color }) => (
 
 // ============== MAIN COMPONENT ==============
 
-const PredictiveMaintenance = ({ maintenanceData, tricycleId, onMaintenanceNeeded }) => {
+const PredictiveMaintenance = ({ maintenanceData, tricycleId, onMaintenanceNeeded, currentOdometer }) => {
   const [loading, setLoading] = useState(true);
   const [currentKm, setCurrentKm] = useState(0);
   const [wearPatterns, setWearPatterns] = useState({});
@@ -465,26 +523,57 @@ const PredictiveMaintenance = ({ maintenanceData, tricycleId, onMaintenanceNeede
   const [dailyKmAverage, setDailyKmAverage] = useState(30); // Default 30 km/day
   const [expandedSection, setExpandedSection] = useState('predictions');
   const [dismissedAnomalies, setDismissedAnomalies] = useState([]);
+  const [showAllPredictions, setShowAllPredictions] = useState(false);
   
   // Load data on mount
   useEffect(() => {
     loadData();
-  }, [tricycleId, maintenanceData]);
+  }, [tricycleId, maintenanceData, currentOdometer]);
   
   const loadData = async () => {
     try {
       setLoading(true);
       
-      // Load current km
-      const kmStr = await AsyncStorage.getItem(KM_KEY);
-      const km = kmStr ? parseFloat(kmStr) : 0;
+      // Use passed currentOdometer first, then fallback to AsyncStorage
+      let km = 0;
+      if (currentOdometer != null && currentOdometer > 0) {
+        km = currentOdometer;
+      } else {
+        // Load from AsyncStorage - try tricycle-specific key first
+        const tricycleKmKey = tricycleId ? `${KM_KEY}_${tricycleId}` : KM_KEY;
+        let kmStr = await AsyncStorage.getItem(tricycleKmKey);
+        
+        // Fallback to global key if tricycle-specific not found
+        if (!kmStr) {
+          kmStr = await AsyncStorage.getItem(KM_KEY);
+        }
+        km = kmStr ? parseFloat(kmStr) : 0;
+      }
       setCurrentKm(km);
       
       // Load wear patterns
       const patternsKey = tricycleId ? `${WEAR_PATTERNS_KEY}_${tricycleId}` : WEAR_PATTERNS_KEY;
       const patternsStr = await AsyncStorage.getItem(patternsKey);
       if (patternsStr) {
-        setWearPatterns(JSON.parse(patternsStr));
+        const patterns = JSON.parse(patternsStr);
+        // Validate and clean wear patterns data
+        const cleanedPatterns = {};
+        Object.entries(patterns).forEach(([key, history]) => {
+          if (Array.isArray(history)) {
+            // Filter out invalid entries and ensure numeric values
+            const validHistory = history.filter(point => 
+              point && 
+              typeof point.km === 'number' && 
+              !isNaN(point.km) && 
+              typeof point.wearLevel === 'number' && 
+              !isNaN(point.wearLevel)
+            );
+            if (validHistory.length > 0) {
+              cleanedPatterns[key] = validHistory;
+            }
+          }
+        });
+        setWearPatterns(cleanedPatterns);
       }
       
       // Load maintenance history
@@ -492,16 +581,29 @@ const PredictiveMaintenance = ({ maintenanceData, tricycleId, onMaintenanceNeede
       const historyStr = await AsyncStorage.getItem(historyKey);
       if (historyStr) {
         const history = JSON.parse(historyStr);
-        setMaintenanceHistory(history);
+        // Filter valid history entries
+        const validHistory = history.filter(entry => 
+          entry && 
+          entry.date && 
+          typeof entry.km === 'number' && 
+          !isNaN(entry.km)
+        );
+        setMaintenanceHistory(validHistory);
         
         // Calculate daily km average from history
-        if (history.length >= 2) {
-          const firstEntry = history[0];
-          const lastEntry = history[history.length - 1];
-          const daysDiff = (new Date(lastEntry.date) - new Date(firstEntry.date)) / (1000 * 60 * 60 * 24);
-          const kmDiff = lastEntry.km - firstEntry.km;
-          if (daysDiff > 0 && kmDiff > 0) {
-            setDailyKmAverage(Math.round(kmDiff / daysDiff));
+        if (validHistory.length >= 2) {
+          // Sort by date to get proper first and last
+          const sorted = [...validHistory].sort((a, b) => 
+            new Date(a.date).getTime() - new Date(b.date).getTime()
+          );
+          const firstEntry = sorted[0];
+          const lastEntry = sorted[sorted.length - 1];
+          const daysDiff = (new Date(lastEntry.date).getTime() - new Date(firstEntry.date).getTime()) / (1000 * 60 * 60 * 24);
+          const kmDiff = Math.abs(lastEntry.km - firstEntry.km);
+          if (daysDiff > 1 && kmDiff > 0) {
+            const avgKm = Math.round(kmDiff / daysDiff);
+            // Sanity check: between 5-200 km/day
+            setDailyKmAverage(Math.min(200, Math.max(5, avgKm)));
           }
         }
       }
@@ -630,21 +732,29 @@ const PredictiveMaintenance = ({ maintenanceData, tricycleId, onMaintenanceNeede
           <InsightCard
             icon="time-outline"
             title="Next Service"
-            value={stats.nextService ? `${stats.nextService.predictedKm} km` : 'N/A'}
-            subtitle={stats.nextService?.itemName || null}
-            color="#22c55e"
+            value={stats.nextService ? (
+              stats.nextService.predictedKm <= 0 ? 'Due now' :
+              stats.nextService.predictedKm >= 1000 ? `${(stats.nextService.predictedKm / 1000).toFixed(1)}k km` :
+              `${stats.nextService.predictedKm} km`
+            ) : 'N/A'}
+            subtitle={stats.nextService?.itemName?.substring(0, 15) || null}
+            color={stats.nextService?.predictedKm <= 100 ? '#ef4444' : '#22c55e'}
           />
           <InsightCard
             icon="calendar"
             title="Est. Days"
-            value={stats.nextService?.daysRemaining != null ? String(stats.nextService.daysRemaining) : 'N/A'}
-            subtitle="Until next service"
-            color="#eab308"
+            value={
+              stats.nextService?.daysRemaining != null 
+                ? (stats.nextService.daysRemaining <= 0 ? 'Now' : String(stats.nextService.daysRemaining))
+                : 'N/A'
+            }
+            subtitle="Until service"
+            color={stats.nextService?.daysRemaining <= 3 ? '#ef4444' : '#eab308'}
           />
           <InsightCard
             icon="sparkles"
             title="AI Confidence"
-            value={`${Math.round(predictions.reduce((sum, p) => sum + p.confidence, 0) / Math.max(predictions.length, 1))}%`}
+            value={`${Math.round(predictions.reduce((sum, p) => sum + (p.confidence || 60), 0) / Math.max(predictions.length, 1))}%`}
             subtitle="Avg. prediction"
             color="#a78bfa"
           />
@@ -688,7 +798,7 @@ const PredictiveMaintenance = ({ maintenanceData, tricycleId, onMaintenanceNeede
         
         {expandedSection === 'predictions' && (
           <View style={styles.predictionsContainer}>
-            {predictions.slice(0, 8).map((prediction) => (
+            {(showAllPredictions ? predictions : predictions.slice(0, 6)).map((prediction) => (
               <PredictionCard
                 key={prediction.itemKey}
                 prediction={prediction}
@@ -701,10 +811,20 @@ const PredictiveMaintenance = ({ maintenanceData, tricycleId, onMaintenanceNeede
               />
             ))}
             
-            {predictions.length > 8 && (
-              <TouchableOpacity style={styles.showMoreBtn}>
-                <Text style={styles.showMoreText}>Show {predictions.length - 8} more</Text>
-                <Ionicons name="chevron-down" size={14} color="#60a5fa" />
+            {predictions.length > 6 && (
+              <TouchableOpacity 
+                style={styles.showMoreBtn}
+                onPress={() => setShowAllPredictions(!showAllPredictions)}
+                activeOpacity={0.7}
+              >
+                <Text style={styles.showMoreText}>
+                  {showAllPredictions ? 'Show less' : `Show ${predictions.length - 6} more`}
+                </Text>
+                <Ionicons 
+                  name={showAllPredictions ? "chevron-up" : "chevron-down"} 
+                  size={14} 
+                  color="#60a5fa" 
+                />
               </TouchableOpacity>
             )}
           </View>
@@ -822,7 +942,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#1e293b',
     borderRadius: 12,
     padding: 12,
-    width: 100,
+    minWidth: 90,
+    maxWidth: 110,
+    flex: 1,
     alignItems: 'center',
   },
   insightIcon: {
@@ -911,16 +1033,19 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 6,
+    gap: 8,
   },
   predictionItemName: {
     fontSize: 14,
     fontWeight: '600',
     color: '#e2e8f0',
+    flex: 1,
   },
   urgencyBadge: {
     paddingHorizontal: 8,
     paddingVertical: 2,
     borderRadius: 8,
+    flexShrink: 0,
   },
   urgencyText: {
     fontSize: 10,
@@ -928,7 +1053,8 @@ const styles = StyleSheet.create({
   },
   predictionDetails: {
     flexDirection: 'row',
-    gap: 12,
+    flexWrap: 'wrap',
+    gap: 10,
     marginBottom: 4,
   },
   predictionStat: {
@@ -1039,13 +1165,16 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    padding: 10,
+    padding: 12,
     gap: 6,
+    backgroundColor: '#1e293b',
+    borderRadius: 10,
+    marginTop: 4,
   },
   showMoreText: {
-    fontSize: 12,
+    fontSize: 13,
     color: '#60a5fa',
-    fontWeight: '500',
+    fontWeight: '600',
   },
   
   // Methodology Note
