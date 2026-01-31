@@ -581,12 +581,13 @@ const PredictiveMaintenance = ({ maintenanceData, tricycleId, onMaintenanceNeede
       const historyStr = await AsyncStorage.getItem(historyKey);
       if (historyStr) {
         const history = JSON.parse(historyStr);
-        // Filter valid history entries
+        // Filter valid history entries - ONLY use approved or legacy (no status) records
         const validHistory = history.filter(entry => 
           entry && 
           entry.date && 
           typeof entry.km === 'number' && 
-          !isNaN(entry.km)
+          !isNaN(entry.km) &&
+          (entry.approvalStatus === 'approved' || !entry.approvalStatus) // Only approved or legacy records
         );
         setMaintenanceHistory(validHistory);
         

@@ -32,6 +32,13 @@ import {
     recordSkip,
     getPendingSkips,
     
+    // Operator approval
+    getPendingMaintenanceApprovals,
+    approveMaintenanceRecord,
+    rejectMaintenanceRecord,
+    getMaintenanceApprovalHistory,
+    getPendingApprovalCount,
+    
     // Admin reset
     resetToDefaults
 } from "../controllers/maintenanceScheduleController.js";
@@ -78,6 +85,13 @@ router.get("/admin/completion-statuses", protect, authorize('admin'), getComplet
 router.post("/admin/completion-statuses", protect, authorize('admin'), createCompletionStatus);
 router.put("/admin/completion-statuses/:id", protect, authorize('admin'), updateCompletionStatus);
 router.delete("/admin/completion-statuses/:id", protect, authorize('admin'), deleteCompletionStatus);
+
+// ==================== OPERATOR: MAINTENANCE APPROVAL ====================
+router.get("/operator/pending-approvals", authUser, getPendingMaintenanceApprovals);
+router.get("/operator/pending-count", authUser, getPendingApprovalCount);
+router.put("/operator/approve/:logId", authUser, approveMaintenanceRecord);
+router.put("/operator/reject/:logId", authUser, rejectMaintenanceRecord);
+router.get("/operator/approval-history", authUser, getMaintenanceApprovalHistory);
 
 // ==================== ADMIN: RESET TO DEFAULTS ====================
 router.post("/admin/reset", protect, authorize('admin'), resetToDefaults);

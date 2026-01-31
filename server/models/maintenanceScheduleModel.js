@@ -145,6 +145,10 @@ const maintenanceLogSchema = new mongoose.Schema({
         type: Number,
         min: 0
     },
+    proofImageUrl: {
+        type: String,
+        trim: true
+    },
     completedAt: {
         type: Date,
         default: Date.now
@@ -152,6 +156,28 @@ const maintenanceLogSchema = new mongoose.Schema({
     completedBy: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User'
+    },
+    // Approval workflow fields
+    approvalStatus: {
+        type: String,
+        enum: ['pending', 'approved', 'rejected'],
+        default: 'pending'
+    },
+    approvedBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User'
+    },
+    approvedAt: {
+        type: Date
+    },
+    rejectionReason: {
+        type: String,
+        trim: true
+    },
+    submittedByRole: {
+        type: String,
+        enum: ['driver', 'operator'],
+        default: 'driver'
     }
 }, { timestamps: true });
 

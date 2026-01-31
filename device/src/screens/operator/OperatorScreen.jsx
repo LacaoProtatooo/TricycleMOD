@@ -27,6 +27,7 @@ import DriversTab from './tabs/DriversTab';
 import SickLeaveTab from './tabs/SickLeaveTab';
 import ReceiptScannerTab from './tabs/ReceiptScannerTab';
 import DriverComplaintsTab from './tabs/DriverComplaintsTab';
+import MaintenanceApprovalTab from './tabs/MaintenanceApprovalTab';
 
 // Modal Components
 import AddTricycleModal from './modals/AddTricycleModal';
@@ -427,6 +428,17 @@ export default function OperatorScreen({ navigation }) {
           }}
         >
           {() => <DriverComplaintsTab token={token} BACKEND={BACKEND} />}
+        </Tab.Screen>
+        <Tab.Screen 
+          name="Maintenance"
+          options={{ 
+            headerShown: false,
+            tabBarIcon: ({ color, size }) => (
+              <Ionicons name="construct-outline" size={size} color={color} />
+            ),
+          }}
+        >
+          {() => <MaintenanceApprovalTab token={token} BACKEND={BACKEND} />}
         </Tab.Screen>
       </Tab.Navigator>
 

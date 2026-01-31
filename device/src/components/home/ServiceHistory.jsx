@@ -98,6 +98,22 @@ const ServiceRecordCard = ({ record, onPress }) => {
     icon: 'build' 
   };
   const categoryColor = CATEGORY_COLORS[partInfo.category] || '#64748b';
+  
+  // Approval status display
+  const getApprovalStatusInfo = (status) => {
+    switch (status) {
+      case 'pending':
+        return { color: '#f59e0b', icon: 'time', label: 'Pending Approval' };
+      case 'approved':
+        return { color: '#22c55e', icon: 'checkmark-circle', label: 'Approved' };
+      case 'rejected':
+        return { color: '#ef4444', icon: 'close-circle', label: 'Rejected' };
+      default:
+        return null;
+    }
+  };
+  
+  const approvalInfo = getApprovalStatusInfo(record.approvalStatus);
 
   return (
     <TouchableOpacity style={styles.recordCard} onPress={onPress}>
@@ -121,6 +137,15 @@ const ServiceRecordCard = ({ record, onPress }) => {
             <Text style={styles.recordDetailText}>{formatDate(record.date)}</Text>
           </View>
         </View>
+        {/* Approval Status Badge */}
+        {approvalInfo && (
+          <View style={[styles.approvalBadge, { backgroundColor: approvalInfo.color + '20' }]}>
+            <Ionicons name={approvalInfo.icon} size={12} color={approvalInfo.color} />
+            <Text style={[styles.approvalText, { color: approvalInfo.color }]}>
+              {approvalInfo.label}
+            </Text>
+          </View>
+        )}
         {record.notes ? (
           <Text style={styles.recordNotes} numberOfLines={2}>{record.notes}</Text>
         ) : null}
@@ -364,7 +389,7 @@ const RecordDetailModal = ({ visible, record, onClose }) => {
 };
 
 // Main Service History Component
-const ServiceHistory = ({ tricycleId, plateNumber, maintenanceData }) => {
+const ServiceHistory = ({ tricycleId, plateNumber, maintenanceData, serverHistory }) => {
   const [loading, setLoading] = useState(true);
   const [history, setHistory] = useState([]);
   const [filters, setFilters] = useState({ dateRange: 'all', category: 'all', sortBy: 'newest' });
@@ -376,22 +401,55 @@ const ServiceHistory = ({ tricycleId, plateNumber, maintenanceData }) => {
   // Load maintenance history
   useEffect(() => {
     loadHistory();
-  }, [tricycleId]);
+  }, [tricycleId, serverHistory]);
 
   const loadHistory = async () => {
     try {
       setLoading(true);
+      
+      // Start with server history (from MaintenanceLog collection)
+      let allRecords = [];
+      
+      if (serverHistory && Array.isArray(serverHistory)) {
+        // Map server records to the expected format
+        allRecords = serverHistory.map(log => ({
+          itemKey: log.itemKey,
+          km: log.lastServiceKm,
+          date: log.completedAt,
+          notes: log.notes,
+          status: log.status,
+          reading: log.reading,
+          cost: log.cost,
+          approvalStatus: log.approvalStatus,
+          completedBy: log.completedBy,
+          _id: log._id, // Keep server ID for deduplication
+        }));
+      }
+      
+      // Also load local history
       const historyKey = tricycleId 
         ? `${MAINTENANCE_HISTORY_KEY}_${tricycleId}` 
         : MAINTENANCE_HISTORY_KEY;
       const historyStr = await AsyncStorage.getItem(historyKey);
       
       if (historyStr) {
-        const parsed = JSON.parse(historyStr);
-        setHistory(Array.isArray(parsed) ? parsed : []);
-      } else {
-        setHistory([]);
+        const localHistory = JSON.parse(historyStr);
+        if (Array.isArray(localHistory)) {
+          // Merge local records that aren't already in server history
+          const serverIds = new Set(allRecords.map(r => r._id).filter(Boolean));
+          localHistory.forEach(record => {
+            // Only add local records not already from server
+            if (!record._id || !serverIds.has(record._id)) {
+              allRecords.push(record);
+            }
+          });
+        }
       }
+      
+      // Sort by date (newest first)
+      allRecords.sort((a, b) => new Date(b.date) - new Date(a.date));
+      
+      setHistory(allRecords);
     } catch (error) {
       console.warn('Error loading history:', error);
       setHistory([]);
@@ -998,6 +1056,20 @@ const styles = StyleSheet.create({
     fontSize: 11,
     color: '#64748b',
     fontStyle: 'italic',
+  },
+  approvalBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    alignSelf: 'flex-start',
+    marginTop: 6,
+  },
+  approvalText: {
+    fontSize: 10,
+    fontWeight: '600',
   },
 
   // Empty State

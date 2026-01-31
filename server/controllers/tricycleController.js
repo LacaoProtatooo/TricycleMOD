@@ -1,6 +1,7 @@
 import mongoose from "mongoose";
 import Tricycle from "../models/tricycleModel.js";
 import User from "../models/userModel.js";
+import { MaintenanceLog } from "../models/maintenanceScheduleModel.js";
 import cloudinary from "../utils/cloudinaryConfig.js";
 import { spawn } from "child_process";
 import path from "path";
@@ -203,10 +204,29 @@ export const getTricycles = async (req, res) => {
       .populate("driver", "firstname lastname username email phone image")
       .populate("schedules.driver", "firstname lastname username email phone image");
 
+    // Fetch maintenance history from MaintenanceLog for each tricycle
+    const tricyclesWithHistory = await Promise.all(tricycles.map(async (trike) => {
+      const trikeObj = trike.toObject();
+      
+      // Get maintenance logs from the new MaintenanceLog collection
+      const maintenanceLogs = await MaintenanceLog.find({ 
+        tricycleId: trike._id 
+      })
+        .sort({ completedAt: -1 })
+        .limit(100)
+        .populate('completedBy', 'firstName lastName')
+        .lean();
+      
+      // Attach to the tricycle object
+      trikeObj.maintenanceHistory = maintenanceLogs;
+      
+      return trikeObj;
+    }));
+
     res.status(200).json({
       success: true,
-      count: tricycles.length,
-      data: tricycles,
+      count: tricyclesWithHistory.length,
+      data: tricyclesWithHistory,
     });
   } catch (error) {
     console.error("Error fetching tricycles:", error.message);

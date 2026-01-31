@@ -1,6 +1,11 @@
 import express from 'express';
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 // Route Imports
 import authRoutes from '../routes/authRoute.js';
@@ -83,6 +88,9 @@ app.use('/api/complaints', complaintRoutes);
 app.use('/api/boundary', boundaryRoutes);
 app.use('/api/maintenance', maintenanceScheduleRoutes);
 app.use('/api/violations', violationRoutes);
+
+// Serve static files from uploads directory (for maintenance proof images, etc.)
+app.use('/uploads', express.static(path.join(__dirname, '../uploads')));
 
 
 // Fallback for unknown routes

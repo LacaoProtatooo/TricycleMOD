@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { View, Text, Modal, ScrollView, TouchableOpacity, TextInput, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, Modal, ScrollView, TouchableOpacity, TextInput, KeyboardAvoidingView, Platform, Image, Alert, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import * as ImagePicker from 'expo-image-picker';
 import { colors } from '../../common/theme';
 import { styles } from './maintenanceStyles';
 import { FALLBACK_COMPLETION_STATUS_OPTIONS } from './maintenanceConstants';
@@ -17,14 +18,73 @@ const CompletionModal = ({
 	const [reading, setReading] = useState('');
 	const [notes, setNotes] = useState('');
 	const [cost, setCost] = useState('');
+	const [proofImage, setProofImage] = useState(null);
+	const [uploading, setUploading] = useState(false);
+
+	const pickImage = async () => {
+		try {
+			const { status: permStatus } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+			if (permStatus !== 'granted') {
+				Alert.alert('Permission Required', 'Please allow access to your photo library');
+				return;
+			}
+
+			const result = await ImagePicker.launchImageLibraryAsync({
+				mediaTypes: ImagePicker.MediaTypeOptions.Images,
+				allowsEditing: true,
+				aspect: [4, 3],
+				quality: 0.7,
+				base64: true,
+			});
+
+			if (!result.canceled && result.assets && result.assets[0]) {
+				setProofImage(result.assets[0]);
+			}
+		} catch (error) {
+			Alert.alert('Error', 'Failed to pick image');
+		}
+	};
+
+	const takePhoto = async () => {
+		try {
+			const { status: permStatus } = await ImagePicker.requestCameraPermissionsAsync();
+			if (permStatus !== 'granted') {
+				Alert.alert('Permission Required', 'Please allow access to your camera');
+				return;
+			}
+
+			const result = await ImagePicker.launchCameraAsync({
+				allowsEditing: true,
+				aspect: [4, 3],
+				quality: 0.7,
+				base64: true,
+			});
+
+			if (!result.canceled && result.assets && result.assets[0]) {
+				setProofImage(result.assets[0]);
+			}
+		} catch (error) {
+			Alert.alert('Error', 'Failed to take photo');
+		}
+	};
+
+	const removeImage = () => {
+		setProofImage(null);
+	};
 
 	const handleSubmit = () => {
+		setUploading(true);
 		onSubmit({
 			status,
 			reading: reading.trim() || null,
 			notes: notes.trim() || `${status} via app`,
 			cost: cost ? parseFloat(cost) : null,
 			completedAt: new Date().toISOString(),
+			proofImage: proofImage ? {
+				uri: proofImage.uri,
+				base64: proofImage.base64,
+				type: 'image/jpeg',
+			} : null,
 		});
 		
 		// Reset state
@@ -32,6 +92,8 @@ const CompletionModal = ({
 		setReading('');
 		setNotes('');
 		setCost('');
+		setProofImage(null);
+		setUploading(false);
 	};
 
 	const handleClose = () => {
@@ -39,6 +101,7 @@ const CompletionModal = ({
 		setReading('');
 		setNotes('');
 		setCost('');
+		setProofImage(null);
 		onClose();
 	};
 
@@ -142,21 +205,57 @@ const CompletionModal = ({
 							numberOfLines={3}
 						/>
 
+						{/* Proof Photo Section */}
+						<Text style={styles.completionLabel}>Proof Photo (recommended)</Text>
+						<Text style={styles.proofHint}>Upload a photo as proof for operator verification</Text>
+						
+						{proofImage ? (
+							<View style={styles.proofImageContainer}>
+								<Image source={{ uri: proofImage.uri }} style={styles.proofImagePreview} />
+								<TouchableOpacity style={styles.removeImageBtn} onPress={removeImage}>
+									<Ionicons name="close-circle" size={28} color="#EF4444" />
+								</TouchableOpacity>
+							</View>
+						) : (
+							<View style={styles.proofButtonsRow}>
+								<TouchableOpacity style={styles.proofButton} onPress={takePhoto}>
+									<Ionicons name="camera" size={24} color={colors.primary} />
+									<Text style={styles.proofButtonText}>Take Photo</Text>
+								</TouchableOpacity>
+								<TouchableOpacity style={styles.proofButton} onPress={pickImage}>
+									<Ionicons name="images" size={24} color={colors.primary} />
+									<Text style={styles.proofButtonText}>Gallery</Text>
+								</TouchableOpacity>
+							</View>
+						)}
+
 						<View style={styles.completionModalActions}>
 							<TouchableOpacity 
 								style={styles.completionCancelBtn}
 								onPress={handleClose}
+								disabled={uploading}
 							>
 								<Text style={styles.completionCancelBtnText}>Cancel</Text>
 							</TouchableOpacity>
 							<TouchableOpacity 
-								style={styles.completionSubmitBtn}
+								style={[styles.completionSubmitBtn, uploading && { opacity: 0.7 }]}
 								onPress={handleSubmit}
+								disabled={uploading}
 							>
-								<Ionicons name="checkmark" size={18} color="#FFF" />
-								<Text style={styles.completionSubmitBtnText}>Record</Text>
+								{uploading ? (
+									<ActivityIndicator size="small" color="#FFF" />
+								) : (
+									<>
+										<Ionicons name="checkmark" size={18} color="#FFF" />
+										<Text style={styles.completionSubmitBtnText}>Submit</Text>
+									</>
+								)}
 							</TouchableOpacity>
 						</View>
+						
+						<Text style={styles.pendingApprovalNote}>
+							<Ionicons name="information-circle" size={14} color="#F59E0B" /> Your maintenance will be submitted for operator approval
+						</Text>
 					</View>
 				</ScrollView>
 			</KeyboardAvoidingView>

@@ -612,14 +612,16 @@ const MaintenanceTracker = ({ tricycleId, serverHistory }) => {
 
 	const loadData = async () => {
 		try {
-			// 1. Calculate state from serverHistory
+			// 1. Calculate state from serverHistory - ONLY use approved records
 			let serverState = {};
 			if (serverHistory && Array.isArray(serverHistory)) {
-				serverHistory.forEach(log => {
-					if (serverState[log.itemKey] === undefined || log.lastServiceKm > serverState[log.itemKey]) {
-						serverState[log.itemKey] = log.lastServiceKm;
-					}
-				});
+				serverHistory
+					.filter(log => log.approvalStatus === 'approved' || !log.approvalStatus) // Include approved or legacy records without status
+					.forEach(log => {
+						if (serverState[log.itemKey] === undefined || log.lastServiceKm > serverState[log.itemKey]) {
+							serverState[log.itemKey] = log.lastServiceKm;
+						}
+					});
 			}
 
 			// 2. Load local cache (keyed by tricycleId)
@@ -647,16 +649,18 @@ const MaintenanceTracker = ({ tricycleId, serverHistory }) => {
 				setWearPatterns(JSON.parse(patternsStr));
 			}
 
-			// 5. Build last service dates map (prefer server, then local history)
+			// 5. Build last service dates map - ONLY from approved records
 			const lastDates = {};
 			if (serverHistory && Array.isArray(serverHistory)) {
-				serverHistory.forEach(log => {
-					if (log.itemKey && log.completedAt) {
-						const prev = lastDates[log.itemKey];
-						const d = new Date(log.completedAt);
-						if (!prev || new Date(prev) < d) lastDates[log.itemKey] = d.toISOString();
-					}
-				});
+				serverHistory
+					.filter(log => log.approvalStatus === 'approved' || !log.approvalStatus) // Only approved
+					.forEach(log => {
+						if (log.itemKey && log.completedAt) {
+							const prev = lastDates[log.itemKey];
+							const d = new Date(log.completedAt);
+							if (!prev || new Date(prev) < d) lastDates[log.itemKey] = d.toISOString();
+						}
+					});
 			}
 
 			const historyKey = tricycleId ? `${MAINTENANCE_HISTORY_KEY}_${tricycleId}` : MAINTENANCE_HISTORY_KEY;
@@ -667,7 +671,8 @@ const MaintenanceTracker = ({ tricycleId, serverHistory }) => {
 					historyArr.forEach(h => {
 						const k = h.itemKey || h.item;
 						const dateStr = h.date || h.completedAt || h.timestamp;
-						if (k && dateStr) {
+						// Only use local records that are approved (or have no status - legacy)
+						if (k && dateStr && (h.approvalStatus === 'approved' || !h.approvalStatus)) {
 							const prev = lastDates[k];
 							const d = new Date(dateStr);
 							if (!prev || new Date(prev) < d) lastDates[k] = d.toISOString();
@@ -705,10 +710,10 @@ const MaintenanceTracker = ({ tricycleId, serverHistory }) => {
 
 	// Function to save to server
 	const saveToServer = async (itemKey, lastServiceKm, maintenanceDetails) => {
-		if (!tricycleId || !db) return;
+		if (!tricycleId || !db) return { approvalStatus: 'approved' }; // Local only, auto-approve
 		try {
 			const token = await getToken(db);
-			await fetch(`${BACKEND}/api/tricycles/${tricycleId}/maintenance`, {
+			const response = await fetch(`${BACKEND}/api/maintenance/tricycle/${tricycleId}/log`, {
 				method: 'POST',
 				headers: {
 					'Content-Type': 'application/json',
@@ -722,10 +727,18 @@ const MaintenanceTracker = ({ tricycleId, serverHistory }) => {
 					reading: maintenanceDetails.reading || null,
 					cost: maintenanceDetails.cost || null,
 					completedAt: maintenanceDetails.completedAt || new Date().toISOString(),
+					proofImage: maintenanceDetails.proofImage || null,
 				})
 			});
+			
+			if (response.ok) {
+				const result = await response.json();
+				return { approvalStatus: result.approvalStatus || 'pending' };
+			}
+			return { approvalStatus: 'pending' };
 		} catch (error) {
 			console.error("Failed to sync maintenance to server", error);
+			return { approvalStatus: 'pending' };
 		}
 	};
 
@@ -746,25 +759,51 @@ const MaintenanceTracker = ({ tricycleId, serverHistory }) => {
 		try {
 			const kmNum = parseInt(odometerKm || currentKm || '0', 10);
 			const previousKm = data[itemKey] || 0;
-			const next = { ...data, [itemKey]: kmNum };
 			
-			// Save to dynamic key
-			const key = tricycleId ? `maintenance_data_${tricycleId}` : 'maintenance_data_local';
-			await AsyncStorage.setItem(key, JSON.stringify(next));
-			setData(next);
-
-			// Sync to server with full details
-			await saveToServer(itemKey, kmNum, maintenanceDetails);
+			// Sync to server first to get approval status
+			const serverResult = await saveToServer(itemKey, kmNum, maintenanceDetails);
+			const approvalStatus = serverResult.approvalStatus || 'pending';
+			const isPending = approvalStatus === 'pending';
 			
-			// Track wear pattern for AI predictions
-			await trackWearPattern(itemKey, kmNum, previousKm);
+			// Only update local data if approved (operator submitted) or if offline/local
+			if (!isPending || !tricycleId) {
+				const next = { ...data, [itemKey]: kmNum };
+				
+				// Save to dynamic key
+				const key = tricycleId ? `maintenance_data_${tricycleId}` : 'maintenance_data_local';
+				await AsyncStorage.setItem(key, JSON.stringify(next));
+				setData(next);
+				
+				// Track wear pattern for AI predictions
+				await trackWearPattern(itemKey, kmNum, previousKm);
 
-			// Save to maintenance history with full details
-			await saveToMaintenanceHistory(itemKey, kmNum, maintenanceDetails);
+				// Save to maintenance history with full details
+				await saveToMaintenanceHistory(itemKey, kmNum, maintenanceDetails);
 
-			// Update lastServiceDates locally so time-based checks pick this up immediately
-			const updatedDates = { ...lastServiceDates, [itemKey]: completedAt };
-			setLastServiceDates(updatedDates);
+				// Update lastServiceDates locally so time-based checks pick this up immediately
+				const updatedDates = { ...lastServiceDates, [itemKey]: completedAt };
+				setLastServiceDates(updatedDates);
+
+				// Clear skip reason if any
+				if (skipReasons[itemKey]) {
+					const updatedSkipReasons = { ...skipReasons };
+					delete updatedSkipReasons[itemKey];
+					setSkipReasons(updatedSkipReasons);
+					const skipKey = tricycleId ? `${SKIP_REASONS_KEY}_${tricycleId}` : SKIP_REASONS_KEY;
+					await AsyncStorage.setItem(skipKey, JSON.stringify(updatedSkipReasons));
+				}
+				
+				// Clear the notification flag for this item
+				const notifyKey = tricycleId ? `${NOTIFIED_ITEMS_KEY}_${tricycleId}` : NOTIFIED_ITEMS_KEY;
+				const updatedNotified = { ...notifiedItems };
+				Object.keys(updatedNotified).forEach(k => {
+					if (k.includes(itemKey)) {
+						delete updatedNotified[k];
+					}
+				});
+				setNotifiedItems(updatedNotified);
+				await AsyncStorage.setItem(notifyKey, JSON.stringify(updatedNotified));
+			}
 
 			// Update maintenance records state for display
 			const updatedRecords = { ...maintenanceRecords };
@@ -775,6 +814,7 @@ const MaintenanceTracker = ({ tricycleId, serverHistory }) => {
 				...maintenanceDetails,
 				km: kmNum,
 				date: completedAt,
+				approvalStatus,
 			});
 			// Keep last 10 records per item
 			if (updatedRecords[itemKey].length > 10) {
@@ -782,34 +822,22 @@ const MaintenanceTracker = ({ tricycleId, serverHistory }) => {
 			}
 			setMaintenanceRecords(updatedRecords);
 
-			// Clear skip reason if any
-			if (skipReasons[itemKey]) {
-				const updatedSkipReasons = { ...skipReasons };
-				delete updatedSkipReasons[itemKey];
-				setSkipReasons(updatedSkipReasons);
-				const skipKey = tricycleId ? `${SKIP_REASONS_KEY}_${tricycleId}` : SKIP_REASONS_KEY;
-				await AsyncStorage.setItem(skipKey, JSON.stringify(updatedSkipReasons));
-			}
-			
-			// Clear the notification flag for this item
-			const notifyKey = tricycleId ? `${NOTIFIED_ITEMS_KEY}_${tricycleId}` : NOTIFIED_ITEMS_KEY;
-			const updatedNotified = { ...notifiedItems };
-			Object.keys(updatedNotified).forEach(k => {
-				if (k.includes(itemKey)) {
-					delete updatedNotified[k];
-				}
-			});
-			setNotifiedItems(updatedNotified);
-			await AsyncStorage.setItem(notifyKey, JSON.stringify(updatedNotified));
-
 			// Close modal
 			setCompletionModalVisible(false);
 			setCompletionItem(null);
 			
-			Alert.alert(
-				'Maintenance Recorded ✓',
-				`${completionItem.name}\n\nStatus: ${maintenanceDetails.status}\n${maintenanceDetails.reading ? `Reading: ${maintenanceDetails.reading}\n` : ''}Odometer: ${kmNum} km\nDate: ${now.toLocaleDateString()} ${now.toLocaleTimeString()}`
-			);
+			// Show appropriate message based on approval status
+			if (isPending && tricycleId) {
+				Alert.alert(
+					'Maintenance Submitted ⏳',
+					`${completionItem.name}\n\nYour maintenance record has been submitted and is pending operator approval.\n\nStatus: ${maintenanceDetails.status}\n${maintenanceDetails.reading ? `Reading: ${maintenanceDetails.reading}\n` : ''}Odometer: ${kmNum} km\nDate: ${now.toLocaleDateString()} ${now.toLocaleTimeString()}\n\nYou will be notified once approved.`
+				);
+			} else {
+				Alert.alert(
+					'Maintenance Recorded ✓',
+					`${completionItem.name}\n\nStatus: ${maintenanceDetails.status}\n${maintenanceDetails.reading ? `Reading: ${maintenanceDetails.reading}\n` : ''}Odometer: ${kmNum} km\nDate: ${now.toLocaleDateString()} ${now.toLocaleTimeString()}`
+				);
+			}
 		} catch (e) {
 			console.warn('handleSubmitCompletion error', e);
 			Alert.alert('Error', 'Failed to record maintenance. Please try again.');
@@ -1205,6 +1233,7 @@ const MaintenanceTracker = ({ tricycleId, serverHistory }) => {
 						tricycleId={tricycleId}
 						plateNumber={plateNumber}
 						maintenanceData={data}
+						serverHistory={serverHistory}
 					/>
 				</ScrollView>
 			)}

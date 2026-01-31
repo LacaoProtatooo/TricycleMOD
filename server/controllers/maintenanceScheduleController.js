@@ -6,6 +6,41 @@ import {
     MaintenanceSkip 
 } from "../models/maintenanceScheduleModel.js";
 import Tricycle from "../models/tricycleModel.js";
+import path from 'path';
+import fs from 'fs';
+import { fileURLToPath } from 'url';
+
+// Get __dirname equivalent in ES modules
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
+// Helper function to save base64 image
+const saveProofImage = async (base64Data, tricycleId, itemKey) => {
+    try {
+        if (!base64Data) return null;
+        
+        // Create uploads directory if it doesn't exist
+        const uploadsDir = path.join(__dirname, '..', 'uploads', 'maintenance');
+        if (!fs.existsSync(uploadsDir)) {
+            fs.mkdirSync(uploadsDir, { recursive: true });
+        }
+        
+        // Generate unique filename
+        const timestamp = Date.now();
+        const filename = `${tricycleId}_${itemKey}_${timestamp}.jpg`;
+        const filepath = path.join(uploadsDir, filename);
+        
+        // Save the image
+        const buffer = Buffer.from(base64Data, 'base64');
+        fs.writeFileSync(filepath, buffer);
+        
+        // Return the relative URL path
+        return `/uploads/maintenance/${filename}`;
+    } catch (error) {
+        console.error('Error saving proof image:', error);
+        return null;
+    }
+};
 
 // Default maintenance schedule data
 const DEFAULT_SCHEDULE = [
@@ -499,8 +534,9 @@ export const deleteCompletionStatus = async (req, res) => {
 export const recordMaintenance = async (req, res) => {
     try {
         const { tricycleId } = req.params;
-        const { itemKey, lastServiceKm, status, reading, notes, cost, completedAt } = req.body;
+        const { itemKey, lastServiceKm, status, reading, notes, cost, completedAt, proofImage } = req.body;
         const userId = req.user?._id;
+        const userRole = req.user?.role;
 
         // Verify tricycle exists
         const tricycle = await Tricycle.findById(tricycleId);
@@ -511,7 +547,19 @@ export const recordMaintenance = async (req, res) => {
             });
         }
 
-        // Create maintenance log
+        // Save proof image if provided
+        let proofImageUrl = null;
+        if (proofImage && proofImage.base64) {
+            proofImageUrl = await saveProofImage(proofImage.base64, tricycleId, itemKey);
+        }
+
+        // Determine approval status based on who submits
+        // Operators can directly approve, drivers need operator approval
+        const isOperator = userRole === 'operator';
+        const approvalStatus = isOperator ? 'approved' : 'pending';
+        const submittedByRole = isOperator ? 'operator' : 'driver';
+
+        // Create maintenance log with approval status
         const log = await MaintenanceLog.create({
             tricycleId,
             itemKey,
@@ -520,26 +568,37 @@ export const recordMaintenance = async (req, res) => {
             reading,
             notes,
             cost,
+            proofImageUrl,
             completedAt: completedAt || new Date(),
-            completedBy: userId
+            completedBy: userId,
+            approvalStatus,
+            submittedByRole,
+            // Auto-approve if submitted by operator
+            approvedBy: isOperator ? userId : undefined,
+            approvedAt: isOperator ? new Date() : undefined
         });
 
-        // Update tricycle odometer if provided km is higher
-        if (lastServiceKm > tricycle.currentOdometer) {
+        // Only update tricycle odometer if approved
+        if (approvalStatus === 'approved' && lastServiceKm > tricycle.currentOdometer) {
             tricycle.currentOdometer = lastServiceKm;
             await tricycle.save();
         }
 
-        // Resolve any pending skip records for this item
-        await MaintenanceSkip.updateMany(
-            { tricycleId, itemKey, isResolved: false },
-            { isResolved: true, resolvedAt: new Date() }
-        );
+        // Only resolve skip records if approved
+        if (approvalStatus === 'approved') {
+            await MaintenanceSkip.updateMany(
+                { tricycleId, itemKey, isResolved: false },
+                { isResolved: true, resolvedAt: new Date() }
+            );
+        }
 
         res.status(201).json({
             success: true,
-            message: 'Maintenance recorded successfully',
-            data: log
+            message: approvalStatus === 'approved' 
+                ? 'Maintenance recorded and approved' 
+                : 'Maintenance recorded and pending operator approval',
+            data: log,
+            approvalStatus
         });
     } catch (error) {
         res.status(500).json({
@@ -692,6 +751,236 @@ export const getPendingSkips = async (req, res) => {
         res.status(500).json({
             success: false,
             message: 'Failed to fetch pending skips',
+            error: error.message
+        });
+    }
+};
+
+// ==================== MAINTENANCE APPROVAL (OPERATOR) ====================
+
+// Get pending maintenance records for operator approval
+export const getPendingMaintenanceApprovals = async (req, res) => {
+    try {
+        const operatorId = req.user._id;
+
+        // Get tricycles assigned to this operator (field is 'operator', not 'operatorId')
+        const tricycles = await Tricycle.find({ operator: operatorId }).select('_id plateNumber').lean();
+        const tricycleIds = tricycles.map(t => t._id);
+        
+        // Create a map for quick plate number lookup
+        const plateMap = {};
+        tricycles.forEach(t => { plateMap[t._id.toString()] = t.plateNumber; });
+
+        // Get pending maintenance logs for these tricycles
+        const pendingLogs = await MaintenanceLog.find({
+            tricycleId: { $in: tricycleIds },
+            approvalStatus: 'pending'
+        })
+            .sort({ createdAt: -1 })
+            .populate('completedBy', 'firstName lastName')
+            .populate('tricycleId', 'plateNumber')
+            .lean();
+
+        // Enrich with item names from schedule
+        const scheduleGroups = await MaintenanceScheduleGroup.find({ isActive: true }).lean();
+        const itemNameMap = {};
+        scheduleGroups.forEach(g => {
+            g.items.forEach(i => {
+                itemNameMap[i.key] = { name: i.name, group: g.title };
+            });
+        });
+
+        const enrichedLogs = pendingLogs.map(log => ({
+            ...log,
+            itemName: itemNameMap[log.itemKey]?.name || log.itemKey.replace(/_/g, ' '),
+            groupName: itemNameMap[log.itemKey]?.group || 'Other',
+            plateNumber: log.tricycleId?.plateNumber || plateMap[log.tricycleId?.toString()] || 'Unknown'
+        }));
+
+        res.status(200).json({
+            success: true,
+            data: enrichedLogs,
+            count: enrichedLogs.length
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: 'Failed to fetch pending approvals',
+            error: error.message
+        });
+    }
+};
+
+// Approve a maintenance record
+export const approveMaintenanceRecord = async (req, res) => {
+    try {
+        const { logId } = req.params;
+        const operatorId = req.user._id;
+
+        const log = await MaintenanceLog.findById(logId);
+        if (!log) {
+            return res.status(404).json({
+                success: false,
+                message: 'Maintenance record not found'
+            });
+        }
+
+        if (log.approvalStatus !== 'pending') {
+            return res.status(400).json({
+                success: false,
+                message: `Record already ${log.approvalStatus}`
+            });
+        }
+
+        // Verify operator owns this tricycle
+        const tricycle = await Tricycle.findById(log.tricycleId);
+        if (!tricycle || tricycle.operator?.toString() !== operatorId.toString()) {
+            return res.status(403).json({
+                success: false,
+                message: 'Not authorized to approve this maintenance record'
+            });
+        }
+
+        // Approve the record
+        log.approvalStatus = 'approved';
+        log.approvedBy = operatorId;
+        log.approvedAt = new Date();
+        await log.save();
+
+        // Update tricycle odometer if needed
+        if (log.lastServiceKm > tricycle.currentOdometer) {
+            tricycle.currentOdometer = log.lastServiceKm;
+            await tricycle.save();
+        }
+
+        // Resolve any pending skip records
+        await MaintenanceSkip.updateMany(
+            { tricycleId: log.tricycleId, itemKey: log.itemKey, isResolved: false },
+            { isResolved: true, resolvedAt: new Date() }
+        );
+
+        res.status(200).json({
+            success: true,
+            message: 'Maintenance record approved',
+            data: log
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: 'Failed to approve maintenance record',
+            error: error.message
+        });
+    }
+};
+
+// Reject a maintenance record
+export const rejectMaintenanceRecord = async (req, res) => {
+    try {
+        const { logId } = req.params;
+        const { reason } = req.body;
+        const operatorId = req.user._id;
+
+        const log = await MaintenanceLog.findById(logId);
+        if (!log) {
+            return res.status(404).json({
+                success: false,
+                message: 'Maintenance record not found'
+            });
+        }
+
+        if (log.approvalStatus !== 'pending') {
+            return res.status(400).json({
+                success: false,
+                message: `Record already ${log.approvalStatus}`
+            });
+        }
+
+        // Verify operator owns this tricycle
+        const tricycle = await Tricycle.findById(log.tricycleId);
+        if (!tricycle || tricycle.operator?.toString() !== operatorId.toString()) {
+            return res.status(403).json({
+                success: false,
+                message: 'Not authorized to reject this maintenance record'
+            });
+        }
+
+        // Reject the record
+        log.approvalStatus = 'rejected';
+        log.approvedBy = operatorId;
+        log.approvedAt = new Date();
+        log.rejectionReason = reason || 'No reason provided';
+        await log.save();
+
+        res.status(200).json({
+            success: true,
+            message: 'Maintenance record rejected',
+            data: log
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: 'Failed to reject maintenance record',
+            error: error.message
+        });
+    }
+};
+
+// Get approval history for operator
+export const getMaintenanceApprovalHistory = async (req, res) => {
+    try {
+        const operatorId = req.user._id;
+        const { limit = 50 } = req.query;
+
+        // Get tricycles assigned to this operator
+        const tricycles = await Tricycle.find({ operator: operatorId }).select('_id').lean();
+        const tricycleIds = tricycles.map(t => t._id);
+
+        // Get all approved/rejected logs
+        const logs = await MaintenanceLog.find({
+            tricycleId: { $in: tricycleIds },
+            approvalStatus: { $in: ['approved', 'rejected'] }
+        })
+            .sort({ approvedAt: -1 })
+            .limit(parseInt(limit))
+            .populate('completedBy', 'firstName lastName')
+            .populate('tricycleId', 'plateNumber')
+            .lean();
+
+        res.status(200).json({
+            success: true,
+            data: logs
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: 'Failed to fetch approval history',
+            error: error.message
+        });
+    }
+};
+
+// Get pending approval count for operator (for badge)
+export const getPendingApprovalCount = async (req, res) => {
+    try {
+        const operatorId = req.user._id;
+
+        // Get tricycles assigned to this operator
+        const tricycles = await Tricycle.find({ operator: operatorId }).select('_id').lean();
+        const tricycleIds = tricycles.map(t => t._id);
+
+        const count = await MaintenanceLog.countDocuments({
+            tricycleId: { $in: tricycleIds },
+            approvalStatus: 'pending'
+        });
+
+        res.status(200).json({
+            success: true,
+            count
+        });
+    } catch (error) {
+        res.status(500).json({
+            success: false,
+            message: 'Failed to fetch pending count',
             error: error.message
         });
     }
