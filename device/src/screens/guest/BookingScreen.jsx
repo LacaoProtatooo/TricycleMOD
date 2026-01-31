@@ -171,6 +171,14 @@ const BookingScreen = ({ navigation }) => {
   const [isCalculatingRoute, setIsCalculatingRoute] = useState(false);
   const [routeError, setRouteError] = useState(null);
 
+  // Location search state
+  const [showSearchModal, setShowSearchModal] = useState(false);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const [searchType, setSearchType] = useState(null); // 'pickup' or 'destination'
+  const searchTimeoutRef = useRef(null);
+
   // Initialize region with WEBTODA service area
   const [region, setRegion] = useState(getServiceAreaRegion());
 
@@ -474,6 +482,118 @@ const BookingScreen = ({ navigation }) => {
     setPendingDestination(null);
     setShowAreaWarningModal(false);
     setDestinationWarning(null);
+  };
+
+  // Location search functions
+  const openLocationSearch = (type) => {
+    setSearchType(type);
+    setSearchQuery('');
+    setSearchResults([]);
+    setShowSearchModal(true);
+  };
+
+  const searchLocation = async (query) => {
+    if (!query || query.length < 3) {
+      setSearchResults([]);
+      return;
+    }
+
+    setIsSearching(true);
+    try {
+      // Use Nominatim OpenStreetMap API for geocoding (free, no API key required)
+      // Bias search results to Philippines/Calamba area
+      const response = await axios.get(
+        `https://nominatim.openstreetmap.org/search`,
+        {
+          params: {
+            q: query,
+            format: 'json',
+            addressdetails: 1,
+            limit: 10,
+            countrycodes: 'ph', // Limit to Philippines
+            viewbox: '121.0,14.0,121.3,14.3', // Bounding box around Calamba/Laguna area
+            bounded: 0, // Don't strictly bound, but prefer results in viewbox
+          },
+          headers: {
+            'User-Agent': 'TricycleMOD-App', // Required by Nominatim
+          },
+        }
+      );
+
+      const results = response.data.map((item) => ({
+        id: item.place_id,
+        name: item.display_name.split(',')[0],
+        address: item.display_name,
+        latitude: parseFloat(item.lat),
+        longitude: parseFloat(item.lon),
+        type: item.type,
+      }));
+
+      setSearchResults(results);
+    } catch (error) {
+      console.error('Search error:', error);
+      // Fallback: try using expo-location reverse geocoding for the query
+      setSearchResults([]);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
+  const handleSearchQueryChange = (text) => {
+    setSearchQuery(text);
+    
+    // Debounce search
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+    
+    searchTimeoutRef.current = setTimeout(() => {
+      searchLocation(text);
+    }, 500);
+  };
+
+  const handleSelectSearchResult = (result) => {
+    const location = {
+      latitude: result.latitude,
+      longitude: result.longitude,
+    };
+
+    if (searchType === 'pickup') {
+      setPickupLocation(location);
+      if (!selectingLocationType) {
+        setSelectingLocationType('destination');
+      } else {
+        setSelectingLocationType(null);
+      }
+    } else if (searchType === 'destination') {
+      // Check if destination is outside service area
+      const destValidation = validateDestinationLocation(location.latitude, location.longitude);
+      
+      if (destValidation.additionalChargeExpected) {
+        setPendingDestination(location);
+        setDestinationWarning(destValidation);
+        setShowSearchModal(false);
+        setShowAreaWarningModal(true);
+        return;
+      }
+      
+      setDestinationLocation(location);
+      setDestinationWarning(null);
+      setSelectingLocationType(null);
+    }
+
+    setShowSearchModal(false);
+    setSearchQuery('');
+    setSearchResults([]);
+
+    // Center map on selected location
+    if (mapRef.current) {
+      mapRef.current.animateToRegion({
+        ...location,
+        latitudeDelta: 0.01,
+        longitudeDelta: 0.01,
+      }, 500);
+    }
   };
 
   const handleStartBooking = () => {
@@ -1304,70 +1424,91 @@ const BookingScreen = ({ navigation }) => {
             <Text style={styles.panelTitle}>Set Trip Locations</Text>
             
             {/* Pickup Location */}
-            <TouchableOpacity
-              style={[
-                styles.locationButton,
-                selectingLocationType === 'pickup' && styles.locationButtonActive,
-                pickupLocation && styles.locationButtonSet,
-              ]}
-              onPress={() => setSelectingLocationType('pickup')}
-            >
-              <View style={[styles.locationIcon, { backgroundColor: '#28a745' }]}>
-                <Ionicons name="locate" size={16} color="#fff" />
-              </View>
-              <View style={styles.locationInfo}>
-                <Text style={styles.locationLabel}>Pickup Location</Text>
-                <Text style={styles.locationValue}>
-                  {pickupLocation 
-                    ? 'Within WEBTODA area ✓' 
-                    : 'Tap on WEBTODA route to set'}
-                </Text>
-              </View>
-              {pickupLocation && (
-                <Ionicons name="checkmark-circle" size={20} color="#28a745" />
-              )}
-            </TouchableOpacity>
+            <View style={styles.locationRow}>
+              <TouchableOpacity
+                style={[
+                  styles.locationButton,
+                  styles.locationButtonFlex,
+                  selectingLocationType === 'pickup' && styles.locationButtonActive,
+                  pickupLocation && styles.locationButtonSet,
+                ]}
+                onPress={() => setSelectingLocationType('pickup')}
+              >
+                <View style={[styles.locationIcon, { backgroundColor: '#28a745' }]}>
+                  <Ionicons name="locate" size={16} color="#fff" />
+                </View>
+                <View style={styles.locationInfo}>
+                  <Text style={styles.locationLabel}>Pickup Location</Text>
+                  <Text style={styles.locationValue}>
+                    {pickupLocation 
+                      ? 'Location set ✓' 
+                      : 'Tap map or search'}
+                  </Text>
+                </View>
+                {pickupLocation && (
+                  <Ionicons name="checkmark-circle" size={20} color="#28a745" />
+                )}
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={styles.searchLocationButton}
+                onPress={() => openLocationSearch('pickup')}
+              >
+                <Ionicons name="search" size={20} color="#fff" />
+              </TouchableOpacity>
+            </View>
 
             {/* Destination Location */}
-            <TouchableOpacity
-              style={[
-                styles.locationButton,
-                selectingLocationType === 'destination' && styles.locationButtonActive,
-                destinationLocation && styles.locationButtonSet,
-                destinationWarning && styles.locationButtonWarning,
-              ]}
-              onPress={() => setSelectingLocationType('destination')}
-            >
-              <View style={[
-                styles.locationIcon, 
-                { backgroundColor: destinationWarning ? '#dc3545' : colors.primary }
-              ]}>
-                <Ionicons 
-                  name={destinationWarning ? "warning" : "flag"} 
-                  size={16} 
-                  color="#fff" 
-                />
-              </View>
-              <View style={styles.locationInfo}>
-                <Text style={styles.locationLabel}>Destination</Text>
-                <Text style={[
-                  styles.locationValue,
-                  destinationWarning && styles.locationValueWarning
+            <View style={styles.locationRow}>
+              <TouchableOpacity
+                style={[
+                  styles.locationButton,
+                  styles.locationButtonFlex,
+                  selectingLocationType === 'destination' && styles.locationButtonActive,
+                  destinationLocation && styles.locationButtonSet,
+                  destinationWarning && styles.locationButtonWarning,
+                ]}
+                onPress={() => setSelectingLocationType('destination')}
+              >
+                <View style={[
+                  styles.locationIcon, 
+                  { backgroundColor: destinationWarning ? '#dc3545' : colors.primary }
                 ]}>
-                  {destinationLocation 
-                    ? (destinationWarning 
-                        ? 'Outside area - Extra charges apply' 
-                        : 'Location set (tap to change)')
-                    : 'Tap to set on map'}
-                </Text>
-              </View>
-              {destinationLocation && !destinationWarning && (
-                <Ionicons name="checkmark-circle" size={20} color="#28a745" />
-              )}
-              {destinationWarning && (
-                <Ionicons name="alert-circle" size={20} color="#dc3545" />
-              )}
-            </TouchableOpacity>
+                  <Ionicons 
+                    name={destinationWarning ? "warning" : "flag"} 
+                    size={16} 
+                    color="#fff" 
+                  />
+                </View>
+                <View style={styles.locationInfo}>
+                  <Text style={styles.locationLabel}>Destination</Text>
+                  <Text style={[
+                    styles.locationValue,
+                    destinationWarning && styles.locationValueWarning
+                  ]}>
+                    {destinationLocation 
+                      ? (destinationWarning 
+                          ? 'Outside area - Extra charges' 
+                          : 'Location set ✓')
+                      : 'Tap map or search'}
+                  </Text>
+                </View>
+                {destinationLocation && !destinationWarning && (
+                  <Ionicons name="checkmark-circle" size={20} color="#28a745" />
+                )}
+                {destinationWarning && (
+                  <Ionicons name="alert-circle" size={20} color="#dc3545" />
+                )}
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[
+                  styles.searchLocationButton,
+                  destinationWarning && styles.searchLocationButtonWarning
+                ]}
+                onPress={() => openLocationSearch('destination')}
+              >
+                <Ionicons name="search" size={20} color="#fff" />
+              </TouchableOpacity>
+            </View>
 
             {/* Warning banner if destination is outside area */}
             {destinationWarning && (
@@ -1820,6 +1961,124 @@ const BookingScreen = ({ navigation }) => {
             )}
           </View>
         </View>
+      </Modal>
+
+      {/* Location Search Modal */}
+      <Modal
+        visible={showSearchModal}
+        animationType="slide"
+        transparent={false}
+        onRequestClose={() => setShowSearchModal(false)}
+      >
+        <SafeAreaView style={styles.searchModalContainer} edges={['top']}>
+          <View style={styles.searchModalHeader}>
+            <TouchableOpacity 
+              style={styles.searchBackButton}
+              onPress={() => {
+                setShowSearchModal(false);
+                setSearchQuery('');
+                setSearchResults([]);
+              }}
+            >
+              <Ionicons name="arrow-back" size={24} color={colors.orangeShade5} />
+            </TouchableOpacity>
+            <Text style={styles.searchModalTitle}>
+              {searchType === 'pickup' ? 'Search Pickup Location' : 'Search Destination'}
+            </Text>
+          </View>
+
+          <View style={styles.searchInputContainer}>
+            <Ionicons name="search" size={20} color={colors.orangeShade4} style={styles.searchIcon} />
+            <TextInput
+              style={styles.searchInput}
+              placeholder={searchType === 'pickup' ? 'Enter pickup address...' : 'Enter destination address...'}
+              placeholderTextColor={colors.orangeShade4}
+              value={searchQuery}
+              onChangeText={handleSearchQueryChange}
+              autoFocus={true}
+              returnKeyType="search"
+            />
+            {searchQuery.length > 0 && (
+              <TouchableOpacity
+                onPress={() => {
+                  setSearchQuery('');
+                  setSearchResults([]);
+                }}
+                style={styles.clearSearchButton}
+              >
+                <Ionicons name="close-circle" size={20} color={colors.orangeShade4} />
+              </TouchableOpacity>
+            )}
+          </View>
+
+          {isSearching ? (
+            <View style={styles.searchLoadingContainer}>
+              <ActivityIndicator size="large" color={colors.primary} />
+              <Text style={styles.searchLoadingText}>Searching...</Text>
+            </View>
+          ) : searchResults.length > 0 ? (
+            <FlatList
+              data={searchResults}
+              keyExtractor={(item) => item.id.toString()}
+              renderItem={({ item }) => (
+                <TouchableOpacity
+                  style={styles.searchResultItem}
+                  onPress={() => handleSelectSearchResult(item)}
+                >
+                  <View style={styles.searchResultIcon}>
+                    <Ionicons 
+                      name={item.type === 'house' ? 'home' : 'location'} 
+                      size={20} 
+                      color={colors.primary} 
+                    />
+                  </View>
+                  <View style={styles.searchResultInfo}>
+                    <Text style={styles.searchResultName} numberOfLines={1}>
+                      {item.name}
+                    </Text>
+                    <Text style={styles.searchResultAddress} numberOfLines={2}>
+                      {item.address}
+                    </Text>
+                  </View>
+                </TouchableOpacity>
+              )}
+              contentContainerStyle={styles.searchResultsList}
+              showsVerticalScrollIndicator={false}
+            />
+          ) : searchQuery.length >= 3 ? (
+            <View style={styles.noResultsContainer}>
+              <Ionicons name="search-outline" size={50} color={colors.orangeShade4} />
+              <Text style={styles.noResultsText}>No locations found</Text>
+              <Text style={styles.noResultsSubtext}>Try a different search term</Text>
+            </View>
+          ) : (
+            <View style={styles.searchHintContainer}>
+              <Ionicons name="location-outline" size={50} color={colors.orangeShade4} />
+              <Text style={styles.searchHintText}>Search for a location</Text>
+              <Text style={styles.searchHintSubtext}>
+                Enter at least 3 characters to search
+              </Text>
+              
+              {/* Quick suggestions */}
+              <View style={styles.quickSuggestions}>
+                <Text style={styles.quickSuggestionsTitle}>Popular Areas</Text>
+                {['Calamba City', 'Crossing Calamba', 'Real Calamba', 'Parian Calamba'].map((place, index) => (
+                  <TouchableOpacity
+                    key={index}
+                    style={styles.quickSuggestionItem}
+                    onPress={() => {
+                      setSearchQuery(place);
+                      searchLocation(place);
+                    }}
+                  >
+                    <Ionicons name="trending-up" size={16} color={colors.orangeShade4} />
+                    <Text style={styles.quickSuggestionText}>{place}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            </View>
+          )}
+        </SafeAreaView>
       </Modal>
 
       {/* Rating Modal */}
@@ -2562,6 +2821,13 @@ const styles = StyleSheet.create({
     opacity: 0.5,
   },
 
+  // Location row with search button
+  locationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: spacing.small,
+  },
+
   // Location buttons
   locationButton: {
     flexDirection: 'row',
@@ -2573,6 +2839,12 @@ const styles = StyleSheet.create({
     borderWidth: 2,
     borderColor: 'transparent',
   },
+  locationButtonFlex: {
+    flex: 1,
+    marginBottom: 0,
+    borderTopRightRadius: 0,
+    borderBottomRightRadius: 0,
+  },
   locationButtonActive: {
     borderColor: colors.primary,
     backgroundColor: colors.ivory2,
@@ -2583,6 +2855,19 @@ const styles = StyleSheet.create({
   locationButtonWarning: {
     borderColor: '#dc3545',
     backgroundColor: '#fff5f5',
+  },
+  searchLocationButton: {
+    backgroundColor: colors.primary,
+    width: 48,
+    height: '100%',
+    minHeight: 60,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderTopRightRadius: 12,
+    borderBottomRightRadius: 12,
+  },
+  searchLocationButtonWarning: {
+    backgroundColor: '#dc3545',
   },
   locationIcon: {
     width: 36,
@@ -4021,6 +4306,150 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     marginLeft: 4,
+  },
+
+  // Location Search Modal Styles
+  searchModalContainer: {
+    flex: 1,
+    backgroundColor: colors.ivory1,
+  },
+  searchModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: spacing.medium,
+    paddingVertical: spacing.medium,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.ivory3,
+    backgroundColor: colors.ivory1,
+  },
+  searchBackButton: {
+    padding: spacing.small,
+    marginRight: spacing.small,
+  },
+  searchModalTitle: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: colors.orangeShade7,
+  },
+  searchInputContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.ivory3,
+    marginHorizontal: spacing.medium,
+    marginVertical: spacing.medium,
+    borderRadius: 12,
+    paddingHorizontal: spacing.medium,
+  },
+  searchIcon: {
+    marginRight: spacing.small,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 16,
+    color: colors.orangeShade7,
+    paddingVertical: 14,
+  },
+  clearSearchButton: {
+    padding: spacing.small,
+  },
+  searchLoadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  searchLoadingText: {
+    marginTop: spacing.medium,
+    fontSize: 14,
+    color: colors.orangeShade5,
+  },
+  searchResultsList: {
+    paddingHorizontal: spacing.medium,
+  },
+  searchResultItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: spacing.medium,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.ivory3,
+  },
+  searchResultIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.ivory3,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: spacing.medium,
+  },
+  searchResultInfo: {
+    flex: 1,
+  },
+  searchResultName: {
+    fontSize: 16,
+    fontWeight: '600',
+    color: colors.orangeShade7,
+  },
+  searchResultAddress: {
+    fontSize: 13,
+    color: colors.orangeShade5,
+    marginTop: 2,
+  },
+  noResultsContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: spacing.large,
+  },
+  noResultsText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: colors.orangeShade5,
+    marginTop: spacing.medium,
+  },
+  noResultsSubtext: {
+    fontSize: 14,
+    color: colors.orangeShade4,
+    marginTop: spacing.small,
+  },
+  searchHintContainer: {
+    flex: 1,
+    alignItems: 'center',
+    paddingTop: spacing.xlarge * 2,
+    paddingHorizontal: spacing.large,
+  },
+  searchHintText: {
+    fontSize: 18,
+    fontWeight: '600',
+    color: colors.orangeShade5,
+    marginTop: spacing.medium,
+  },
+  searchHintSubtext: {
+    fontSize: 14,
+    color: colors.orangeShade4,
+    marginTop: spacing.small,
+    textAlign: 'center',
+  },
+  quickSuggestions: {
+    marginTop: spacing.xlarge,
+    width: '100%',
+  },
+  quickSuggestionsTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.orangeShade5,
+    marginBottom: spacing.medium,
+  },
+  quickSuggestionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: spacing.medium,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.ivory3,
+  },
+  quickSuggestionText: {
+    fontSize: 15,
+    color: colors.orangeShade6,
+    marginLeft: spacing.small,
   },
 });
 
