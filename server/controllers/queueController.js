@@ -46,6 +46,42 @@ export const listQueue = async (req, res) => {
   }
 };
 
+// Public endpoint for guests to view queue (no authentication required)
+export const publicListQueue = async (req, res) => {
+  try {
+    const terminal = req.query.terminal || 'default';
+    const entries = await QueueEntry.find({ terminal, status: { $in: activeStatuses } })
+      .sort({ createdAt: 1 })
+      .populate('tricycle', 'plateNumber bodyNumber model');
+
+    // Return sanitized data for public view (no driver personal info)
+    const publicData = entries.map((entry, index) => ({
+      _id: entry._id,
+      position: index + 1,
+      bodyNumber: entry.bodyNumber,
+      plateNumber: entry.tricycle?.plateNumber || '—',
+      model: entry.tricycle?.model || '',
+      status: entry.status,
+      createdAt: entry.createdAt,
+    }));
+
+    res.status(200).json({ 
+      success: true, 
+      data: publicData,
+      count: publicData.length,
+      terminal 
+    });
+  } catch (error) {
+    console.error('Error listing public queue:', error.message);
+    res.status(500).json({ success: false, message: 'Server Error' });
+  }
+};
+
+// Public endpoint to list terminals (no authentication required)
+export const publicListTerminals = async (req, res) => {
+  res.status(200).json({ success: true, data: terminals });
+};
+
 export const joinQueue = async (req, res) => {
   try {
     const { bodyNumber, terminal: terminalId, latitude, longitude } = req.body;

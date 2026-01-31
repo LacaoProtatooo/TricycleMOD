@@ -15,6 +15,7 @@ import GuestMaps from './maps';
 import GuestTracking from './tracking';
 import BookingScreen from './BookingScreen';
 import ComplaintScreen from './ComplaintScreen';
+import GuestQueueScreen from './QueueScreen';
 
 const Tab = createBottomTabNavigator();
 
@@ -42,6 +43,15 @@ const GuestMain = () => {
           options={{
             tabBarIcon: ({ color, size }) => (
               <Ionicons name="bicycle-outline" size={size} color={color} />
+            ),
+          }}
+        />
+        <Tab.Screen
+          name="Queue"
+          component={GuestQueueScreen}
+          options={{
+            tabBarIcon: ({ color, size }) => (
+              <Ionicons name="people-outline" size={size} color={color} />
             ),
           }}
         />
