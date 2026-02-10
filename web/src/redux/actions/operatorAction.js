@@ -1,11 +1,12 @@
 import { createAsyncThunk } from '@reduxjs/toolkit';
 import axios from 'axios';
+import { getToken } from './authAction';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
 // Helper to get auth headers
 const getAuthHeaders = () => {
-  const token = localStorage.getItem('adminToken');
+  const token = getToken();
   return {
     headers: {
       Authorization: `Bearer ${token}`,

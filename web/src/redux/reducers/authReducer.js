@@ -2,9 +2,20 @@
 import { createSlice } from '@reduxjs/toolkit';
 import { loginUser, googleLogin, logoutUser, verifyUser } from '../actions/authAction';
 
+// Validate token from localStorage on init
+const getInitialToken = () => {
+  const token = localStorage.getItem('adminToken');
+  if (token && token !== 'null' && token !== 'undefined' && token.split('.').length === 3) {
+    return token;
+  }
+  // Clear bad token if present
+  if (token) localStorage.removeItem('adminToken');
+  return null;
+};
+
 const initialState = {
   user: null,
-  token: localStorage.getItem('adminToken') || null,
+  token: getInitialToken(),
   loading: false,
   error: null,
   isAuthenticated: false,

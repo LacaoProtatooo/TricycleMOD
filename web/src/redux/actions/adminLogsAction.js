@@ -1,4 +1,5 @@
 import { createAsyncThunk } from '@reduxjs/toolkit';
+import { getToken } from './authAction';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
 
@@ -9,7 +10,7 @@ export const fetchAdminLogs = createAsyncThunk(
   'adminLogs/fetchAdminLogs',
   async ({ page = 1, limit = 20, adminId, action, startDate, endDate, search, sortBy, sortOrder } = {}, { rejectWithValue }) => {
     try {
-      const token = localStorage.getItem('adminToken');
+      const token = getToken();
       if (!token) {
         return rejectWithValue('No authentication token found');
       }
@@ -53,7 +54,7 @@ export const fetchAdminLogDetails = createAsyncThunk(
   'adminLogs/fetchAdminLogDetails',
   async (logId, { rejectWithValue }) => {
     try {
-      const token = localStorage.getItem('adminToken');
+      const token = getToken();
       if (!token) {
         return rejectWithValue('No authentication token found');
       }
@@ -86,7 +87,7 @@ export const fetchAdminLogStats = createAsyncThunk(
   'adminLogs/fetchAdminLogStats',
   async ({ startDate, endDate } = {}, { rejectWithValue }) => {
     try {
-      const token = localStorage.getItem('adminToken');
+      const token = getToken();
       if (!token) {
         return rejectWithValue('No authentication token found');
       }

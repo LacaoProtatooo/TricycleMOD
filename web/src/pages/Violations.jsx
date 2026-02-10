@@ -4,6 +4,8 @@ import { useModal } from "../hooks/useModal";
 import PageMeta from "../components/common/PageMeta";
 import PageBreadcrumb from "../components/common/PageBreadCrumb";
 import axios from "axios";
+import { getToken } from "../redux/actions/authAction";
+import DriverRankingPanel from "../components/DriverRankingPanel";
 
 const API_URL = import.meta.env.VITE_API_URL || "http://localhost:5000/api";
 
@@ -81,7 +83,7 @@ const Violations = () => {
   const fetchViolations = useCallback(async () => {
     setLoading(true);
     try {
-      const token = localStorage.getItem("token");
+      const token = getToken();
       const params = new URLSearchParams({
         page: currentPage,
         limit: 20,
@@ -109,7 +111,7 @@ const Violations = () => {
   const fetchStats = async () => {
     setStatsLoading(true);
     try {
-      const token = localStorage.getItem("token");
+      const token = getToken();
       const response = await axios.get(`${API_URL}/violations/stats`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -124,7 +126,7 @@ const Violations = () => {
   // Fetch rules reference
   const fetchRules = async () => {
     try {
-      const token = localStorage.getItem("token");
+      const token = getToken();
       const response = await axios.get(`${API_URL}/violations/rules`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -138,7 +140,7 @@ const Violations = () => {
   const fetchViolationDetails = async (id) => {
     setDetailsLoading(true);
     try {
-      const token = localStorage.getItem("token");
+      const token = getToken();
       const response = await axios.get(`${API_URL}/violations/${id}`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -160,7 +162,7 @@ const Violations = () => {
     
     setSearchingDrivers(true);
     try {
-      const token = localStorage.getItem("token");
+      const token = getToken();
       const response = await axios.get(`${API_URL}/admin/drivers?search=${query}&limit=10`, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -178,7 +180,7 @@ const Violations = () => {
     setCreateLoading(true);
     
     try {
-      const token = localStorage.getItem("token");
+      const token = getToken();
       await axios.post(`${API_URL}/violations`, createForm, {
         headers: { Authorization: `Bearer ${token}` },
       });
@@ -208,7 +210,7 @@ const Violations = () => {
     
     setAppealLoading(true);
     try {
-      const token = localStorage.getItem("token");
+      const token = getToken();
       await axios.put(
         `${API_URL}/violations/${selectedViolation.violation._id}/appeal`,
         appealForm,
@@ -353,6 +355,9 @@ const Violations = () => {
             </div>
           </div>
         </div>
+
+        {/* Driver Violation Ranking */}
+        <DriverRankingPanel type="violations" limit={10} />
 
         {/* Actions Bar */}
         <div className="flex flex-wrap items-center justify-between gap-4">

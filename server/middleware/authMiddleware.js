@@ -2,18 +2,37 @@ import jwt from 'jsonwebtoken';
 import User from '../models/userModel.js';
 import License from '../models/licenseModel.js';
 
-export const authUser = async (req, res, next) => {
+// Helper: extract and validate token from request
+const extractToken = (req) => {
   let token;
-
-  // Check for token in Authorization header or cookie
   if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
     token = req.headers.authorization.split(' ')[1];
   } else if (req.cookies && req.cookies.token) {
     token = req.cookies.token;
   }
+  // Treat "null", "undefined", or empty strings as missing
+  if (!token || token === 'null' || token === 'undefined') {
+    return null;
+  }
+  return token;
+};
+
+// Helper: check token looks like a JWT (3 base64 segments separated by dots)
+const isValidJwtFormat = (token) => {
+  if (typeof token !== 'string') return false;
+  const parts = token.split('.');
+  return parts.length === 3 && parts.every((p) => p.length > 0);
+};
+
+export const authUser = async (req, res, next) => {
+  const token = extractToken(req);
 
   if (!token) {
     return res.status(401).json({ success: false, message: 'Not authorized, no token' });
+  }
+
+  if (!isValidJwtFormat(token)) {
+    return res.status(401).json({ success: false, message: 'Not authorized, malformed token' });
   }
 
   try {
@@ -54,17 +73,14 @@ export const authorize = (...roles) => {
 };
 
 export const adminOnly = async (req, res, next) => {
-  let token;
-
-  // Check for token in Authorization header or cookie
-  if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
-    token = req.headers.authorization.split(' ')[1];
-  } else if (req.cookies && req.cookies.token) {
-    token = req.cookies.token;
-  }
+  const token = extractToken(req);
 
   if (!token) {
     return res.status(401).json({ success: false, message: 'Not authorized, no token' });
+  }
+
+  if (!isValidJwtFormat(token)) {
+    return res.status(401).json({ success: false, message: 'Not authorized, malformed token' });
   }
 
   try {
@@ -87,17 +103,14 @@ export const adminOnly = async (req, res, next) => {
 };
 
 export const operatorAndAdmin = async (req, res, next) => {
-  let token;
-
-  // Check for token in Authorization header or cookie
-  if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
-    token = req.headers.authorization.split(' ')[1];
-  } else if (req.cookies && req.cookies.token) {
-    token = req.cookies.token;
-  }
+  const token = extractToken(req);
 
   if (!token) {
     return res.status(401).json({ success: false, message: 'Not authorized, no token' });
+  }
+
+  if (!isValidJwtFormat(token)) {
+    return res.status(401).json({ success: false, message: 'Not authorized, malformed token' });
   }
 
   try {
@@ -124,16 +137,9 @@ export const operatorAndAdmin = async (req, res, next) => {
  * Useful for endpoints that work for both guests and authenticated users
  */
 export const optionalAuth = async (req, res, next) => {
-  let token;
+  const token = extractToken(req);
 
-  // Accept token from header or cookie
-  if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
-    token = req.headers.authorization.split(' ')[1];
-  } else if (req.cookies && req.cookies.token) {
-    token = req.cookies.token;
-  }
-
-  if (token) {
+  if (token && isValidJwtFormat(token)) {
     try {
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
       req.user = await User.findById(decoded.id).select('-password');
@@ -179,16 +185,9 @@ export const requireVerified = (req, res, next) => {
  * Guests (no token) can still proceed but are marked
  */
 export const optionalVerified = async (req, res, next) => {
-  let token;
+  const token = extractToken(req);
 
-  // Accept token from header or cookie
-  if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
-    token = req.headers.authorization.split(' ')[1];
-  } else if (req.cookies && req.cookies.token) {
-    token = req.cookies.token;
-  }
-
-  if (token) {
+  if (token && isValidJwtFormat(token)) {
     try {
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
       req.user = await User.findById(decoded.id).select('-password');

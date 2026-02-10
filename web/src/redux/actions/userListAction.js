@@ -1,4 +1,5 @@
 import { createAsyncThunk } from '@reduxjs/toolkit';
+import { getToken } from './authAction';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
 
@@ -9,7 +10,7 @@ export const fetchUsersWithActivity = createAsyncThunk(
   'userList/fetchUsersWithActivity',
   async ({ page = 1, limit = 20, role, status, search, sortBy, sortOrder } = {}, { rejectWithValue }) => {
     try {
-      const token = localStorage.getItem('adminToken');
+      const token = getToken();
       if (!token) {
         return rejectWithValue('No authentication token found');
       }
@@ -51,7 +52,7 @@ export const fetchUserDetails = createAsyncThunk(
   'userList/fetchUserDetails',
   async (userId, { rejectWithValue }) => {
     try {
-      const token = localStorage.getItem('adminToken');
+      const token = getToken();
       if (!token) {
         return rejectWithValue('No authentication token found');
       }
@@ -84,7 +85,7 @@ export const changeUserRole = createAsyncThunk(
   'userList/changeUserRole',
   async ({ userId, newRole, confirmationCode }, { rejectWithValue }) => {
     try {
-      const token = localStorage.getItem('adminToken');
+      const token = getToken();
       if (!token) {
         return rejectWithValue('No authentication token found');
       }

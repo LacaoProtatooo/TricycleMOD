@@ -26,6 +26,8 @@ const getNextPenalty = (ruleNumber, offenseCount) => {
   return rule.penalties[penaltyIndex];
 };
 
+// Export default at end to avoid referencing functions before initialization
+
 /**
  * Apply suspension to driver
  */
@@ -1011,6 +1013,78 @@ export const submitAppeal = async (req, res) => {
   }
 };
 
+/**
+ * Get driver ranking by violation count
+ * GET /api/violations/ranking
+ */
+export const getDriverViolationRanking = async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 10;
+
+    const ranking = await Violation.aggregate([
+      { $match: { status: { $ne: 'overturned' } } },
+      {
+        $group: {
+          _id: '$driver',
+          totalViolations: { $sum: 1 },
+          suspensions: {
+            $sum: { $cond: [{ $eq: ['$penalty.action', 'suspension'] }, 1, 0] },
+          },
+          warnings: {
+            $sum: { $cond: [{ $eq: ['$penalty.action', 'warning'] }, 1, 0] },
+          },
+          dismissals: {
+            $sum: { $cond: [{ $eq: ['$penalty.action', 'dismissal'] }, 1, 0] },
+          },
+          totalSuspensionDays: {
+            $sum: { $cond: [{ $eq: ['$penalty.action', 'suspension'] }, '$penalty.days', 0] },
+          },
+          latestViolation: { $max: '$incidentDate' },
+        },
+      },
+      { $sort: { totalViolations: -1 } },
+      { $limit: limit },
+      {
+        $lookup: {
+          from: 'users',
+          localField: '_id',
+          foreignField: '_id',
+          as: 'driver',
+        },
+      },
+      { $unwind: '$driver' },
+      {
+        $project: {
+          _id: 1,
+          totalViolations: 1,
+          suspensions: 1,
+          warnings: 1,
+          dismissals: 1,
+          totalSuspensionDays: 1,
+          latestViolation: 1,
+          'driver._id': 1,
+          'driver.firstname': 1,
+          'driver.lastname': 1,
+          'driver.email': 1,
+          'driver.image': 1,
+        },
+      },
+    ]);
+
+    res.status(200).json({
+      success: true,
+      ranking,
+    });
+  } catch (error) {
+    console.error('Error fetching violation ranking:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch violation ranking',
+      error: error.message,
+    });
+  }
+};
+
 export default {
   createViolation,
   createViolationFromComplaint,
@@ -1023,4 +1097,5 @@ export default {
   getViolationStats,
   getMyViolations,
   submitAppeal,
+  getDriverViolationRanking,
 };

@@ -1,4 +1,5 @@
 import { createAsyncThunk } from '@reduxjs/toolkit';
+import { getToken } from './authAction';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5000';
 
@@ -10,7 +11,7 @@ export const fetchActiveDrivers = createAsyncThunk(
   'liveTracking/fetchActiveDrivers',
   async (_, { rejectWithValue }) => {
     try {
-      const token = localStorage.getItem('adminToken');
+      const token = getToken();
       if (!token) {
         return rejectWithValue('No authentication token found');
       }

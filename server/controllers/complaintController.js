@@ -1707,3 +1707,73 @@ export const lookupByBodyNumber = async (req, res) => {
     });
   }
 };
+
+/**
+ * Get driver ranking by complaint count
+ * GET /api/complaints/admin/ranking
+ */
+export const getDriverComplaintRanking = async (req, res) => {
+  try {
+    const limit = parseInt(req.query.limit) || 10;
+
+    const ranking = await Complaint.aggregate([
+      { $match: { driver: { $ne: null } } },
+      {
+        $group: {
+          _id: '$driver',
+          totalComplaints: { $sum: 1 },
+          pending: {
+            $sum: { $cond: [{ $eq: ['$status', 'pending'] }, 1, 0] },
+          },
+          resolved: {
+            $sum: { $cond: [{ $eq: ['$status', 'resolved'] }, 1, 0] },
+          },
+          dismissed: {
+            $sum: { $cond: [{ $eq: ['$status', 'dismissed'] }, 1, 0] },
+          },
+          categories: { $addToSet: '$category' },
+          latestComplaint: { $max: '$createdAt' },
+        },
+      },
+      { $sort: { totalComplaints: -1 } },
+      { $limit: limit },
+      {
+        $lookup: {
+          from: 'users',
+          localField: '_id',
+          foreignField: '_id',
+          as: 'driver',
+        },
+      },
+      { $unwind: '$driver' },
+      {
+        $project: {
+          _id: 1,
+          totalComplaints: 1,
+          pending: 1,
+          resolved: 1,
+          dismissed: 1,
+          categories: 1,
+          latestComplaint: 1,
+          'driver._id': 1,
+          'driver.firstname': 1,
+          'driver.lastname': 1,
+          'driver.email': 1,
+          'driver.image': 1,
+        },
+      },
+    ]);
+
+    res.status(200).json({
+      success: true,
+      ranking,
+    });
+  } catch (error) {
+    console.error('Error fetching complaint ranking:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to fetch complaint ranking',
+      error: error.message,
+    });
+  }
+};

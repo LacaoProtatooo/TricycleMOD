@@ -7,7 +7,9 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:5000/api';
 
 // Token storage helpers - exported for use in userAction.js
 export const storeToken = (token) => {
-  localStorage.setItem('adminToken', token);
+  if (token && typeof token === 'string' && token.split('.').length === 3) {
+    localStorage.setItem('adminToken', token);
+  }
 };
 
 export const removeToken = () => {
@@ -15,7 +17,14 @@ export const removeToken = () => {
 };
 
 export const getToken = () => {
-  return localStorage.getItem('adminToken');
+  const token = localStorage.getItem('adminToken');
+  // Return null for missing, corrupted, or non-JWT values
+  if (!token || token === 'null' || token === 'undefined' || token.split('.').length !== 3) {
+    // Clean up bad value if present
+    if (token) localStorage.removeItem('adminToken');
+    return null;
+  }
+  return token;
 };
 
 // Store user data - exported for use in userAction.js

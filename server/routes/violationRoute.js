@@ -10,6 +10,7 @@ import {
   getViolationStats,
   getMyViolations,
   submitAppeal,
+  getDriverViolationRanking,
 } from '../controllers/violationController.js';
 import { authUser, adminOnly } from '../middleware/authMiddleware.js';
 
@@ -36,6 +37,9 @@ router.post('/:id/submit-appeal', authUser, submitAppeal);
 
 // Get violation statistics for dashboard
 router.get('/stats', adminOnly, getViolationStats);
+
+// Get driver violation ranking
+router.get('/ranking', adminOnly, getDriverViolationRanking);
 
 // Get all violations with filters
 router.get('/', adminOnly, getAllViolations);

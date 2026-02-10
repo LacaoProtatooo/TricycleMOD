@@ -20,6 +20,7 @@ import {
   analyzeComplaintSentiment,
   detectBodyNumberFromImage,
   lookupByBodyNumber,
+  getDriverComplaintRanking,
 } from '../controllers/complaintController.js';
 import { protect, authorize } from '../middleware/authMiddleware.js';
 import multer from 'multer';
@@ -74,6 +75,7 @@ router.get('/driver-summary/:driverId', protect, authorize('admin', 'operator'),
 
 // Admin routes (requires admin role)
 router.get('/admin/all', protect, authorize('admin'), adminGetAllComplaints);
+router.get('/admin/ranking', protect, authorize('admin'), getDriverComplaintRanking);
 router.get('/admin/driver/:driverId', protect, authorize('admin'), adminGetDriverComplaints);
 router.put('/admin/:id/status', protect, authorize('admin'), adminUpdateComplaintStatus);
 router.put('/admin/:id/resolve', protect, authorize('admin'), adminResolveComplaint);

@@ -3,6 +3,7 @@ import { useDispatch, useSelector } from "react-redux";
 import PageMeta from "../components/common/PageMeta";
 import PageBreadcrumb from "../components/common/PageBreadCrumb";
 import SentimentQuadrantChart from "../components/charts/scatter/SentimentQuadrantChart";
+import DriverRankingPanel from "../components/DriverRankingPanel";
 import {
   fetchAllComplaints,
   fetchComplaintDetails,
@@ -338,6 +339,9 @@ const Complaints = () => {
           )}
         </div>
       )}
+
+      {/* Driver Complaint Ranking */}
+      <DriverRankingPanel type="complaints" limit={10} />
 
       {/* Filters */}
       <div className="rounded-xl border border-gray-200 bg-white p-4 mb-6 dark:border-gray-800 dark:bg-white/[0.03]">
