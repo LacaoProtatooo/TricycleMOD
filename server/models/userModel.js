@@ -128,6 +128,14 @@ const userSchema = new mongoose.Schema({
         ruleViolated: { type: String },
         offenseNumber: { type: Number }, // 1st, 2nd, 3rd, 4th offense
     }],
+  // Refresh tokens for sessions (rotate and revoke as needed)
+  refreshTokens: [
+    {
+      token: { type: String },
+      createdAt: { type: Date, default: Date.now },
+      expiresAt: { type: Date },
+    },
+  ],
 }, 
   { timestamps: true }
 );

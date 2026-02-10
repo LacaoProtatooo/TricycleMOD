@@ -6,7 +6,22 @@ import { generateTokenAndSetCookie } from "../utils/generateTokenAndSetCookie.js
 // Logout
 export const logout = async (req, res) => {
   try {
-    res.clearCookie("token");
+    // Remove refresh token from user record if present
+    try {
+      const refreshToken = req.cookies?.refreshToken;
+      if (refreshToken && req.user) {
+        const user = await User.findById(req.user.id);
+        if (user) {
+          user.refreshTokens = (user.refreshTokens || []).filter(r => r.token !== refreshToken);
+          await user.save();
+        }
+      }
+    } catch (e) {
+      console.error('Error clearing refresh token on logout:', e);
+    }
+
+    res.clearCookie('token');
+    res.clearCookie('refreshToken');
     res.status(200).json({
       success: true,
       message: "Logged out successfully",

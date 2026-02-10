@@ -1,6 +1,7 @@
 // Login Controller
 import crypto from "crypto";
 import User from "../models/userModel.js";
+import jwt from 'jsonwebtoken';
 import { generateTokenAndSetCookie } from "../utils/generateTokenAndSetCookie.js";
 import { auth } from "../utils/firebase.js";
 import cloudinary from "../utils/cloudinaryConfig.js";
@@ -79,7 +80,7 @@ export const signup = async (req, res) => {
     await user.save();
 
     // Generate JWT & set cookie
-    const token = generateTokenAndSetCookie(res, user);
+    const token = await generateTokenAndSetCookie(res, user);
 
     res.status(201).json({
       success: true,
@@ -158,7 +159,7 @@ export const login = async (req, res) => {
 
     // Generate JWT and set cookie
     try {
-      const token = generateTokenAndSetCookie(res, user);
+      const token = await generateTokenAndSetCookie(res, user);
       console.log(`Token generated successfully for user: ${user.email}`);
 
       // Update last login date
@@ -223,7 +224,7 @@ export const googlelogin = async (req, res) => {
       await user.save();
     }
 
-    const token = generateTokenAndSetCookie(res, user);
+    const token = await generateTokenAndSetCookie(res, user);
 
     res.status(200).json({
       success: true,
@@ -239,5 +240,41 @@ export const googlelogin = async (req, res) => {
     res
       .status(400)
       .json({ success: false, message: "Invalid Google ID token" });
+  }
+};
+
+// Refresh access token using refresh token cookie
+export const refreshToken = async (req, res) => {
+  try {
+    const refreshToken = req.cookies?.refreshToken;
+    if (!refreshToken) return res.status(401).json({ success: false, message: 'No refresh token provided' });
+
+    const refreshSecret = process.env.JWT_REFRESH_SECRET || process.env.JWT_SECRET;
+    let decoded;
+    try {
+      decoded = jwt.verify(refreshToken, refreshSecret);
+    } catch (err) {
+      console.error('Refresh token verify failed', err);
+      return res.status(401).json({ success: false, message: 'Invalid or expired refresh token' });
+    }
+
+    const user = await User.findById(decoded.id);
+    if (!user) return res.status(401).json({ success: false, message: 'User not found' });
+
+    // Ensure refresh token exists on user record
+    const stored = (user.refreshTokens || []).find(r => r.token === refreshToken);
+    if (!stored) return res.status(401).json({ success: false, message: 'Refresh token not recognised' });
+
+    // Remove the used refresh token (rotation)
+    user.refreshTokens = (user.refreshTokens || []).filter(r => r.token !== refreshToken);
+    await user.save();
+
+    // Issue a new access + refresh token pair
+    const accessToken = await generateTokenAndSetCookie(res, user);
+
+    return res.status(200).json({ success: true, token: accessToken });
+  } catch (error) {
+    console.error('refreshToken error', error);
+    return res.status(500).json({ success: false, message: 'Could not refresh token' });
   }
 };

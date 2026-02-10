@@ -5,21 +5,27 @@ import License from '../models/licenseModel.js';
 export const authUser = async (req, res, next) => {
   let token;
 
-  // Check if token exists in the Authorization header
+  // Check for token in Authorization header or cookie
   if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
-    try {
-      // Get token from header
-      token = req.headers.authorization.split(' ')[1];
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      req.user = await User.findById(decoded.id).select('-password');
+    token = req.headers.authorization.split(' ')[1];
+  } else if (req.cookies && req.cookies.token) {
+    token = req.cookies.token;
+  }
 
-      next();
-    } catch (error) {
-      console.error(error);
-      return res.status(401).json({ success: false, message: 'Not authorized, token failed' });
-    }
-  } else {
+  if (!token) {
     return res.status(401).json({ success: false, message: 'Not authorized, no token' });
+  }
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    req.user = await User.findById(decoded.id).select('-password');
+    next();
+  } catch (error) {
+    console.error(error);
+    if (error && error.name === 'TokenExpiredError') {
+      return res.status(401).json({ success: false, message: 'Token expired', expiredAt: error.expiredAt });
+    }
+    return res.status(401).json({ success: false, message: 'Not authorized, token failed' });
   }
 };
 
@@ -50,51 +56,65 @@ export const authorize = (...roles) => {
 export const adminOnly = async (req, res, next) => {
   let token;
 
-  // Check if token exists in the Authorization header
+  // Check for token in Authorization header or cookie
   if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
-    try {
-      // Get token from header
-      token = req.headers.authorization.split(' ')[1];
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      req.user = await User.findById(decoded.id).select('-password');
+    token = req.headers.authorization.split(' ')[1];
+  } else if (req.cookies && req.cookies.token) {
+    token = req.cookies.token;
+  }
 
-      // Check if user is an operator (admin) based on role
-      if (req.user && (req.user.role === 'operator' || req.user.role === 'admin')) {
-        return next();
-      } else {
-        return res.status(403).json({ success: false, message: 'Not authorized as an admin' });
-      }
-    } catch (error) {
-      console.error(error);
-      return res.status(401).json({ success: false, message: 'Not authorized, token failed' });
-    }
-  } else {
+  if (!token) {
     return res.status(401).json({ success: false, message: 'Not authorized, no token' });
+  }
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    req.user = await User.findById(decoded.id).select('-password');
+
+    // Check if user is an operator (admin) based on role
+    if (req.user && (req.user.role === 'operator' || req.user.role === 'admin')) {
+      return next();
+    } else {
+      return res.status(403).json({ success: false, message: 'Not authorized as an admin' });
+    }
+  } catch (error) {
+    console.error(error);
+    if (error && error.name === 'TokenExpiredError') {
+      return res.status(401).json({ success: false, message: 'Token expired', expiredAt: error.expiredAt });
+    }
+    return res.status(401).json({ success: false, message: 'Not authorized, token failed' });
   }
 };
 
 export const operatorAndAdmin = async (req, res, next) => {
   let token;
 
-  // Check if token exists in the Authorization header
+  // Check for token in Authorization header or cookie
   if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
-    try {
-      // Get token from header
-      token = req.headers.authorization.split(' ')[1];
-      const decoded = jwt.verify(token, process.env.JWT_SECRET);
-      req.user = await User.findById(decoded.id).select('-password');
-      // Check if user is an operator or admin based on role
-      if (req.user && (req.user.role === 'operator' || req.user.role === 'admin')) {
-        return next();
-      } else {
-        return res.status(403).json({ success: false, message: 'Not authorized as an operator or admin' });
-      }
-    } catch (error) {
-      console.error(error);
-      return res.status(401).json({ success: false, message: 'Not authorized, token failed' });
-    }
-  } else {
+    token = req.headers.authorization.split(' ')[1];
+  } else if (req.cookies && req.cookies.token) {
+    token = req.cookies.token;
+  }
+
+  if (!token) {
     return res.status(401).json({ success: false, message: 'Not authorized, no token' });
+  }
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET);
+    req.user = await User.findById(decoded.id).select('-password');
+    // Check if user is an operator or admin based on role
+    if (req.user && (req.user.role === 'operator' || req.user.role === 'admin')) {
+      return next();
+    } else {
+      return res.status(403).json({ success: false, message: 'Not authorized as an operator or admin' });
+    }
+  } catch (error) {
+    console.error(error);
+    if (error && error.name === 'TokenExpiredError') {
+      return res.status(401).json({ success: false, message: 'Token expired', expiredAt: error.expiredAt });
+    }
+    return res.status(401).json({ success: false, message: 'Not authorized, token failed' });
   }
 };
 
@@ -106,9 +126,15 @@ export const operatorAndAdmin = async (req, res, next) => {
 export const optionalAuth = async (req, res, next) => {
   let token;
 
+  // Accept token from header or cookie
   if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
+    token = req.headers.authorization.split(' ')[1];
+  } else if (req.cookies && req.cookies.token) {
+    token = req.cookies.token;
+  }
+
+  if (token) {
     try {
-      token = req.headers.authorization.split(' ')[1];
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
       req.user = await User.findById(decoded.id).select('-password');
     } catch (error) {
@@ -155,9 +181,15 @@ export const requireVerified = (req, res, next) => {
 export const optionalVerified = async (req, res, next) => {
   let token;
 
+  // Accept token from header or cookie
   if (req.headers.authorization && req.headers.authorization.startsWith('Bearer')) {
+    token = req.headers.authorization.split(' ')[1];
+  } else if (req.cookies && req.cookies.token) {
+    token = req.cookies.token;
+  }
+
+  if (token) {
     try {
-      token = req.headers.authorization.split(' ')[1];
       const decoded = jwt.verify(token, process.env.JWT_SECRET);
       req.user = await User.findById(decoded.id).select('-password');
       

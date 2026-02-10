@@ -8,6 +8,7 @@ import {
   getCurrentUser,
   storeFCM,
 } from '../controllers/authController.js';
+import { refreshToken } from '../controllers/loginController.js';
 import { authUser, adminOnly } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
@@ -18,5 +19,6 @@ router.get('/users', authUser, adminOnly, getUsers);
 router.get('/users/:id', getUserById);
 router.get('/current-user', authUser, getCurrentUser);
 router.post('/store-fcm', storeFCM);
+router.post('/refresh', refreshToken);
 
 export default router;
