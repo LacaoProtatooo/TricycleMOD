@@ -16,6 +16,8 @@ import NotificationHandler from './src/components/common/NotificationHandler';
 import ActivityTracker from './src/components/common/ActivityTracker';
 import { fetchUnreadAnnouncements, markAnnouncementsAsRead } from './src/redux/actions/announcementAction';
 import AnnouncementModal from './src/components/common/announcementModal';
+import ComplaintNotificationModal from './src/components/common/ComplaintNotificationModal';
+import complaintNotifEmitter from './src/utils/complaintNotificationEvent';
 
 // Suppress known react-native-maps warning about topUserLocationChange event
 // This is a known issue with react-native-maps and newer React Native versions
@@ -33,9 +35,34 @@ GoogleSignin.configure({
 // Create a separate component that uses Redux hooks and DB context
 const AppContent = () => {
   const [showAnnouncementModal, setShowAnnouncementModal] = useState(false);
+  const [complaintModal, setComplaintModal] = useState({
+    visible: false,
+    type: null,
+    title: '',
+    body: '',
+    data: {},
+  });
   const dispatch = useDispatch();
   const db = useAsyncSQLiteContext(); // Get db from context
   const { unreadAnnouncements } = useSelector((state) => state.announcements);
+
+  // Listen for complaint notification events from NotificationHandler
+  useEffect(() => {
+    const handleComplaintNotif = ({ type, title, body, data }) => {
+      setComplaintModal({
+        visible: true,
+        type,
+        title: title || '',
+        body: body || '',
+        data: data || {},
+      });
+    };
+
+    complaintNotifEmitter.on('show', handleComplaintNotif);
+    return () => {
+      complaintNotifEmitter.off('show', handleComplaintNotif);
+    };
+  }, []);
 
   useEffect(() => {
     if (!db) return; // Wait for db to be initialized
@@ -60,6 +87,10 @@ const AppContent = () => {
     dispatch(markAnnouncementsAsRead());
   };
 
+  const handleCloseComplaintModal = () => {
+    setComplaintModal((prev) => ({ ...prev, visible: false }));
+  };
+
   return (
     <>
       <PersistentLogin />
@@ -71,6 +102,14 @@ const AppContent = () => {
         visible={showAnnouncementModal}
         announcements={unreadAnnouncements}
         onClose={handleCloseAnnouncements}
+      />
+      <ComplaintNotificationModal
+        visible={complaintModal.visible}
+        onClose={handleCloseComplaintModal}
+        notificationType={complaintModal.type}
+        notificationTitle={complaintModal.title}
+        notificationBody={complaintModal.body}
+        notificationData={complaintModal.data}
       />
     </>
   );

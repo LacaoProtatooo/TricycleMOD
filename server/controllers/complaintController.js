@@ -1032,6 +1032,93 @@ export const adminUpdateComplaintStatus = async (req, res) => {
     }
     
     await complaint.save();
+
+    // Notify the complainant (guest/user) about status update
+    try {
+      const complainant = await User.findById(complaint.complainant);
+      if (complainant?.FCMToken && messaging) {
+        const statusLabels = {
+          under_review: 'Under Review',
+          investigating: 'Being Investigated',
+          resolved: 'Resolved',
+          dismissed: 'Dismissed',
+        };
+        await messaging.send({
+          notification: {
+            title: '📋 Complaint Status Update',
+            body: `Your complaint is now ${statusLabels[status] || status}.${note ? ' Note: ' + note.substring(0, 100) : ''}`,
+          },
+          data: {
+            type: 'complaint_status_update',
+            complaintId: complaint._id.toString(),
+            category: complaint.category,
+            previousStatus,
+            newStatus: status,
+            note: note || '',
+          },
+          token: complainant.FCMToken,
+        });
+        console.log(`📱 Complainant ${complainant.firstname} notified about status update`);
+      }
+    } catch (notifError) {
+      console.error('Error notifying complainant about status update:', notifError);
+    }
+
+    // Notify the driver about the status change on their complaint
+    try {
+      const driverUser = await User.findById(complaint.driver);
+      if (driverUser?.FCMToken && messaging) {
+        const statusLabels = {
+          under_review: 'Under Review',
+          investigating: 'Being Investigated',
+          resolved: 'Resolved',
+          dismissed: 'Dismissed',
+        };
+        await messaging.send({
+          notification: {
+            title: '📋 Complaint Update',
+            body: `The complaint against you is now ${statusLabels[status] || status}.`,
+          },
+          data: {
+            type: 'complaint_status_update_driver',
+            complaintId: complaint._id.toString(),
+            category: complaint.category,
+            previousStatus,
+            newStatus: status,
+            note: note || '',
+          },
+          token: driverUser.FCMToken,
+        });
+        console.log(`📱 Driver ${driverUser.firstname} notified about complaint status update`);
+      }
+    } catch (notifError) {
+      console.error('Error notifying driver about status update:', notifError);
+    }
+
+    // Notify the operator about the status change
+    try {
+      const tricycle = await Tricycle.findOne({ driver: complaint.driver })
+        .populate('operator', 'FCMToken firstname lastname');
+      if (tricycle?.operator?.FCMToken && messaging) {
+        await messaging.send({
+          notification: {
+            title: '📋 Driver Complaint Update',
+            body: `Complaint against your driver is now ${status}.`,
+          },
+          data: {
+            type: 'complaint_status_update_operator',
+            complaintId: complaint._id.toString(),
+            category: complaint.category,
+            newStatus: status,
+            driverId: complaint.driver.toString(),
+          },
+          token: tricycle.operator.FCMToken,
+        });
+        console.log(`📱 Operator ${tricycle.operator.firstname} notified about complaint status update`);
+      }
+    } catch (notifError) {
+      console.error('Error notifying operator about status update:', notifError);
+    }
     
     res.status(200).json({
       success: true,
@@ -1162,6 +1249,104 @@ export const adminResolveComplaint = async (req, res) => {
       },
       ipAddress: req.ip || req.connection?.remoteAddress,
     });
+
+    // Notify the complainant (guest/user) about resolution
+    try {
+      const complainant = await User.findById(complaint.complainant);
+      if (complainant?.FCMToken && messaging) {
+        const resolutionTitle = isFalseComplaint
+          ? '📋 Complaint Dismissed'
+          : '✅ Complaint Resolved';
+        const resolutionBody = isFalseComplaint
+          ? `Your complaint has been reviewed and dismissed. ${details ? 'Details: ' + details.substring(0, 100) : ''}`
+          : `Your complaint has been resolved. Action taken: ${action || 'Appropriate measures applied'}.${details ? ' ' + details.substring(0, 80) : ''}`;
+        
+        await messaging.send({
+          notification: {
+            title: resolutionTitle,
+            body: resolutionBody,
+          },
+          data: {
+            type: 'complaint_resolved',
+            complaintId: complaint._id.toString(),
+            category: complaint.category,
+            resolution: isFalseComplaint ? 'dismissed' : 'resolved',
+            action: action || '',
+            details: details || '',
+            isFalseComplaint: isFalseComplaint ? 'true' : 'false',
+          },
+          token: complainant.FCMToken,
+        });
+        console.log(`📱 Complainant ${complainant.firstname} notified about complaint resolution`);
+      }
+    } catch (notifError) {
+      console.error('Error notifying complainant about resolution:', notifError);
+    }
+
+    // Notify the driver about the resolution
+    try {
+      if (driver?.FCMToken && messaging) {
+        const driverTitle = isFalseComplaint
+          ? '✅ Complaint Against You Dismissed'
+          : '📋 Complaint Against You Resolved';
+        const driverBody = isFalseComplaint
+          ? 'A complaint filed against you has been reviewed and dismissed. No action will be taken.'
+          : `A complaint against you has been resolved. Action taken: ${action || 'Appropriate measures applied'}.`;
+        
+        await messaging.send({
+          notification: {
+            title: driverTitle,
+            body: driverBody,
+          },
+          data: {
+            type: 'complaint_resolved_driver',
+            complaintId: complaint._id.toString(),
+            category: complaint.category,
+            resolution: isFalseComplaint ? 'dismissed' : 'resolved',
+            action: action || '',
+            details: details || '',
+          },
+          token: driver.FCMToken,
+        });
+        console.log(`📱 Driver ${driver.firstname} notified about complaint resolution`);
+      }
+    } catch (notifError) {
+      console.error('Error notifying driver about resolution:', notifError);
+    }
+
+    // Notify the operator about the resolution
+    try {
+      const tricycle = await Tricycle.findOne({ driver: complaint.driver })
+        .populate('operator', 'FCMToken firstname lastname');
+      if (tricycle?.operator?.FCMToken && messaging) {
+        const opTitle = isFalseComplaint
+          ? '📋 Driver Complaint Dismissed'
+          : '✅ Driver Complaint Resolved';
+        const opBody = isFalseComplaint
+          ? `Complaint against your driver ${driver?.firstname || ''} has been dismissed.`
+          : `Complaint against your driver ${driver?.firstname || ''} has been resolved. Action: ${action || 'N/A'}.`;
+        
+        await messaging.send({
+          notification: {
+            title: opTitle,
+            body: opBody,
+          },
+          data: {
+            type: 'complaint_resolved_operator',
+            complaintId: complaint._id.toString(),
+            category: complaint.category,
+            resolution: isFalseComplaint ? 'dismissed' : 'resolved',
+            action: action || '',
+            driverId: complaint.driver.toString(),
+            driverName: `${driver?.firstname || ''} ${driver?.lastname || ''}`.trim(),
+          },
+          token: tricycle.operator.FCMToken,
+        });
+        console.log(`📱 Operator ${tricycle.operator.firstname} notified about complaint resolution`);
+      }
+    } catch (notifError) {
+      console.error('Error notifying operator about resolution:', notifError);
+    }
     
     res.status(200).json({
       success: true,

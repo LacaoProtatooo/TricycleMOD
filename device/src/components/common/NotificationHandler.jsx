@@ -12,6 +12,7 @@ import {
 } from '../../redux/actions/bookingAction';
 import { logoutUser } from '../../redux/actions/authAction';
 import { useAsyncSQLiteContext } from '../../utils/asyncSQliteProvider';
+import complaintNotifEmitter from '../../utils/complaintNotificationEvent';
 
 export default function NotificationHandler() {
   const [expoPushToken, setExpoPushToken] = useState('');
@@ -173,6 +174,24 @@ export default function NotificationHandler() {
             { cancelable: false }
           );
         }
+      } else if (
+        type === 'driver_complaint' ||
+        type === 'complaint_received' ||
+        type === 'complaint_status_update' ||
+        type === 'complaint_resolved' ||
+        type === 'complaint_status_update_operator' ||
+        type === 'complaint_resolved_operator' ||
+        type === 'complaint_status_update_driver' ||
+        type === 'complaint_resolved_driver'
+      ) {
+        // Complaint-related notifications — show the pop-up modal
+        console.log(`📋 Complaint notification received: ${type}`);
+        complaintNotifEmitter.emit('show', {
+          type,
+          title: notification.request.content.title,
+          body: notification.request.content.body,
+          data: notification.request.content.data || {},
+        });
       }
     });
 
@@ -216,6 +235,24 @@ export default function NotificationHandler() {
           // Navigate to booking screen for booking-related notifications
           console.log('🚀 Navigating to booking screen for:', data.type);
           navigationRef.navigate('Booking');
+        } else if ([
+          'driver_complaint',
+          'complaint_received',
+          'complaint_status_update',
+          'complaint_resolved',
+          'complaint_status_update_operator',
+          'complaint_resolved_operator',
+          'complaint_status_update_driver',
+          'complaint_resolved_driver',
+        ].includes(data?.type)) {
+          // Tapped a complaint notification — show the modal
+          console.log('📋 Complaint notification tapped:', data.type);
+          complaintNotifEmitter.emit('show', {
+            type: data.type,
+            title: content.title,
+            body: content.body,
+            data: data || {},
+          });
         }
       } else {
         console.warn('Navigation not ready yet');
