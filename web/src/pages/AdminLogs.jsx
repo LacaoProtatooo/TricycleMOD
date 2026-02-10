@@ -287,7 +287,7 @@ const getActionIcon = (action) => {
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M18.364 18.364A9 9 0 005.636 5.636m12.728 12.728A9 9 0 015.636 5.636m12.728 12.728L5.636 5.636" />
         </svg>
       );
-    case 'DRIVER_UNSUSPENDED':
+    case 'DRIVER_REINSTATED':
       return (
         <svg className="w-5 h-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z" />
@@ -376,7 +376,7 @@ const getActionBadgeColor = (action) => {
       return 'bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-400';
     case 'DRIVER_SUSPENDED':
       return 'bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-400';
-    case 'DRIVER_UNSUSPENDED':
+    case 'DRIVER_REINSTATED':
       return 'bg-emerald-100 text-emerald-800 dark:bg-emerald-900/30 dark:text-emerald-400';
     case 'DRIVER_WARNING':
       return 'bg-yellow-100 text-yellow-800 dark:bg-yellow-900/30 dark:text-yellow-400';

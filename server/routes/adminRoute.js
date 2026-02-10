@@ -5,7 +5,7 @@ import {
   getAdminActivityLogDetails,
   getAdminActivityStats,
   suspendDriver,
-  unsuspendDriver,
+  reinstateDriver,
 } from '../controllers/adminController.js';
 import { protect, authorize } from '../middleware/authMiddleware.js';
 
@@ -19,7 +19,7 @@ router.put('/users/:userId/role', changeUserRole);
 
 // Driver suspension routes
 router.post('/drivers/:userId/suspend', suspendDriver);
-router.post('/drivers/:userId/unsuspend', unsuspendDriver);
+router.post('/drivers/:userId/reinstate', reinstateDriver);
 
 // Admin activity log routes
 router.get('/logs', getAdminActivityLogs);

@@ -218,15 +218,15 @@ export const suspendDriver = createAsyncThunk(
 );
 
 /**
- * Unsuspend a driver
+ * Reinstate a driver
  */
-export const unsuspendDriver = createAsyncThunk(
-  'driver/unsuspendDriver',
+export const reinstateDriver = createAsyncThunk(
+  'driver/reinstateDriver',
   async (driverId, thunkAPI) => {
     try {
       const token = getToken();
 
-      const res = await fetch(`${API_URL}/admin/drivers/${driverId}/unsuspend`, {
+      const res = await fetch(`${API_URL}/admin/drivers/${driverId}/reinstate`, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${token}`,

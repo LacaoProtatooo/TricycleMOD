@@ -25,7 +25,7 @@ const adminActivityLogSchema = new mongoose.Schema({
       'USER_UPDATE',
       // Driver management
       'DRIVER_SUSPENDED',
-      'DRIVER_UNSUSPENDED',
+      'DRIVER_REINSTATED',
       'DRIVER_VERIFIED',
       'DRIVER_WARNING',
       'DRIVER_TERMINATED',

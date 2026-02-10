@@ -8,7 +8,7 @@ import {
   deleteDriverLicense,
   fetchLicenseStats,
   suspendDriver,
-  unsuspendDriver,
+  reinstateDriver,
 } from '../actions/driverAction';
 
 const initialState = {
@@ -40,9 +40,9 @@ const initialState = {
   suspendLoading: false,
   suspendSuccess: false,
   suspendError: null,
-  unsuspendLoading: false,
-  unsuspendSuccess: false,
-  unsuspendError: null,
+  reinstateLoading: false,
+  reinstateSuccess: false,
+  reinstateError: null,
 
   // Statistics
   stats: null,
@@ -62,7 +62,7 @@ const driverSlice = createSlice({
       state.deleteError = null;
       state.statsError = null;
       state.suspendError = null;
-      state.unsuspendError = null;
+      state.reinstateError = null;
     },
     clearVerifyStatus: (state) => {
       state.verifySuccess = false;
@@ -84,9 +84,9 @@ const driverSlice = createSlice({
       state.suspendSuccess = false;
       state.suspendError = null;
     },
-    clearUnsuspendStatus: (state) => {
-      state.unsuspendSuccess = false;
-      state.unsuspendError = null;
+    clearReinstateStatus: (state) => {
+      state.reinstateSuccess = false;
+      state.reinstateError = null;
     },
   },
   extraReducers: (builder) => {
@@ -259,15 +259,15 @@ const driverSlice = createSlice({
         state.suspendError = action.payload;
       });
 
-    // Unsuspend Driver
+    // Reinstate Driver
     builder
-      .addCase(unsuspendDriver.pending, (state) => {
-        state.unsuspendLoading = true;
-        state.unsuspendError = null;
+      .addCase(reinstateDriver.pending, (state) => {
+        state.reinstateLoading = true;
+        state.reinstateError = null;
       })
-      .addCase(unsuspendDriver.fulfilled, (state, action) => {
-        state.unsuspendLoading = false;
-        state.unsuspendSuccess = true;
+      .addCase(reinstateDriver.fulfilled, (state, action) => {
+        state.reinstateLoading = false;
+        state.reinstateSuccess = true;
         // Update driver in list
         const driverId = action.payload._id;
         const idx = state.drivers.findIndex((d) => d._id === driverId);
@@ -286,9 +286,9 @@ const driverSlice = createSlice({
           state.selectedDriver.suspensionReason = null;
         }
       })
-      .addCase(unsuspendDriver.rejected, (state, action) => {
-        state.unsuspendLoading = false;
-        state.unsuspendError = action.payload;
+      .addCase(reinstateDriver.rejected, (state, action) => {
+        state.reinstateLoading = false;
+        state.reinstateError = action.payload;
       });
   },
 });
@@ -300,7 +300,7 @@ export const {
   clearDeleteStatus,
   clearSelectedDriver,
   clearSuspendStatus,
-  clearUnsuspendStatus,
+  clearReinstateStatus,
 } = driverSlice.actions;
 
 export default driverSlice.reducer;

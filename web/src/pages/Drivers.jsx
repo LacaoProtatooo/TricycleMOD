@@ -12,7 +12,7 @@ import {
   deleteDriverLicense,
   fetchLicenseStats,
   suspendDriver,
-  unsuspendDriver,
+  reinstateDriver,
 } from "../redux/actions/driverAction";
 import {
   clearVerifyStatus,
@@ -20,7 +20,7 @@ import {
   clearDeleteStatus,
   clearSelectedDriver,
   clearSuspendStatus,
-  clearUnsuspendStatus,
+  clearReinstateStatus,
 } from "../redux/reducers/driverReducer";
 
 // WEBTTODA Suspension Rules Reference
@@ -89,8 +89,8 @@ const Drivers = () => {
     deleteSuccess,
     suspendLoading,
     suspendSuccess,
-    unsuspendLoading,
-    unsuspendSuccess,
+    reinstateLoading,
+    reinstateSuccess,
     stats,
     statsLoading,
   } = useSelector((state) => state.driver);
@@ -118,7 +118,7 @@ const Drivers = () => {
   const { isOpen: isDeleteOpen, openModal: openDeleteModal, closeModal: closeDeleteModal } = useModal();
   const { isOpen: isImageOpen, openModal: openImageModal, closeModal: closeImageModal } = useModal();
   const { isOpen: isSuspendOpen, openModal: openSuspendModal, closeModal: closeSuspendModal } = useModal();
-  const { isOpen: isUnsuspendOpen, openModal: openUnsuspendModal, closeModal: closeUnsuspendModal } = useModal();
+  const { isOpen: isReinstateOpen, openModal: openReinstateModal, closeModal: closeReinstateModal } = useModal();
 
   // License statuses
   const licenseStatuses = {
@@ -180,12 +180,12 @@ const Drivers = () => {
   }, [suspendSuccess, dispatch]);
 
   useEffect(() => {
-    if (unsuspendSuccess) {
-      closeUnsuspendModal();
-      dispatch(clearUnsuspendStatus());
+    if (reinstateSuccess) {
+      closeReinstateModal();
+      dispatch(clearReinstateStatus());
       dispatch(fetchAllDrivers({ page: currentPage, search: searchQuery, licenseStatus: statusFilter }));
     }
-  }, [unsuspendSuccess, dispatch]);
+  }, [reinstateSuccess, dispatch]);
 
   // Close dropdown when clicking outside
   useEffect(() => {
@@ -279,9 +279,9 @@ const Drivers = () => {
     }
   };
 
-  const handleUnsuspend = () => {
+  const handleReinstate = () => {
     if (selectedDriver?._id) {
-      dispatch(unsuspendDriver(selectedDriver._id));
+      dispatch(reinstateDriver(selectedDriver._id));
     }
   };
 
@@ -773,13 +773,13 @@ const Drivers = () => {
               {/* Suspension Actions */}
               {selectedDriver.isSuspended ? (
                 <button
-                  onClick={openUnsuspendModal}
+                  onClick={openReinstateModal}
                   className="flex items-center gap-2 px-4 py-2.5 text-sm font-medium text-green-700 bg-green-100 rounded-lg hover:bg-green-200 dark:text-green-400 dark:bg-green-900/20 dark:hover:bg-green-900/40"
                 >
                   <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
                   </svg>
-                  Unsuspend Driver
+                  Reinstate Driver
                 </button>
               ) : (
                 <button
@@ -1197,8 +1197,8 @@ const Drivers = () => {
         </div>
       </Modal>
 
-      {/* Unsuspend Driver Modal */}
-      <Modal isOpen={isUnsuspendOpen} onClose={closeUnsuspendModal} className="max-w-[400px] p-6">
+      {/* Reinstate Driver Modal */}
+      <Modal isOpen={isReinstateOpen} onClose={closeReinstateModal} className="max-w-[400px] p-6">
         <div className="text-center">
           <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-green-100 dark:bg-green-900/20">
             <svg className="h-6 w-6 text-green-600 dark:text-green-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
@@ -1206,10 +1206,10 @@ const Drivers = () => {
             </svg>
           </div>
           <h3 className="mt-4 text-lg font-semibold text-gray-800 dark:text-white">
-            Unsuspend Driver
+            Reinstate Driver
           </h3>
           <p className="mt-2 text-sm text-gray-500 dark:text-gray-400">
-            Are you sure you want to lift the suspension for{" "}
+            Are you sure you want to reinstate{" "}
             <strong>{selectedDriver?.firstname} {selectedDriver?.lastname}</strong>?
           </p>
           {selectedDriver?.suspensionReason && (
@@ -1219,17 +1219,17 @@ const Drivers = () => {
           )}
           <div className="mt-6 flex gap-3 justify-center">
             <button
-              onClick={closeUnsuspendModal}
+              onClick={closeReinstateModal}
               className="px-4 py-2.5 text-sm font-medium text-gray-700 bg-gray-100 rounded-lg hover:bg-gray-200 dark:text-gray-400 dark:bg-gray-800 dark:hover:bg-gray-700"
             >
               Cancel
             </button>
             <button
-              onClick={handleUnsuspend}
-              disabled={unsuspendLoading}
+              onClick={handleReinstate}
+              disabled={reinstateLoading}
               className="px-4 py-2.5 text-sm font-medium text-white bg-green-600 rounded-lg hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              {unsuspendLoading ? "Processing..." : "Unsuspend"}
+              {reinstateLoading ? "Processing..." : "Reinstate"}
             </button>
           </div>
         </div>

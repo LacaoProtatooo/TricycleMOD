@@ -150,15 +150,15 @@ export default function NotificationHandler() {
           status: 'completed',
           completedAt: new Date().toISOString(),
         }));
-      } else if (type === 'suspension' || type === 'unsuspension') {
-        // Handle suspension/unsuspension - force logout to refresh user status
+      } else if (type === 'suspension' || type === 'reinstatement') {
+        // Handle suspension/reinstatement - force logout to refresh user status
         const { action } = notification.request.content.data || {};
         if (action === 'force_logout') {
-          console.log(`🔒 ${type === 'suspension' ? 'Suspended' : 'Unsuspended'} - forcing logout to refresh status`);
-          const alertTitle = type === 'suspension' ? '⚠️ Account Suspended' : '✅ Suspension Lifted';
+          console.log(`🔒 ${type === 'suspension' ? 'Suspended' : 'Reinstated'} - forcing logout to refresh status`);
+          const alertTitle = type === 'suspension' ? '⚠️ Account Suspended' : '✅ Driver Reinstated';
           const alertMessage = type === 'suspension' 
             ? 'Your account has been suspended. You will be logged out. Please log in again to see your suspension details.'
-            : 'Your suspension has been lifted! You will be logged out. Please log in again to continue operating.';
+            : 'You have been reinstated! You will be logged out. Please log in again to continue operating.';
           
           Alert.alert(
             alertTitle,

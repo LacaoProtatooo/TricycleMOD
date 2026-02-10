@@ -120,10 +120,10 @@ export const suspendDriver = async (req, res) => {
 };
 
 /**
- * Unsuspend a driver (admin only)
- * POST /api/admin/drivers/:userId/unsuspend
+ * Reinstate a driver (admin only)
+ * POST /api/admin/drivers/:userId/reinstate
  */
-export const unsuspendDriver = async (req, res) => {
+export const reinstateDriver = async (req, res) => {
   try {
     const { userId } = req.params;
     const adminUser = req.user;
@@ -162,8 +162,8 @@ export const unsuspendDriver = async (req, res) => {
       adminId: adminUser._id,
       adminEmail: adminUser.email,
       adminName: `${adminUser.firstname} ${adminUser.lastname}`,
-      action: 'DRIVER_UNSUSPENDED',
-      description: `Unsuspended driver ${targetUser.email}`,
+      action: 'DRIVER_REINSTATED',
+      description: `Reinstated driver ${targetUser.email}`,
       targetUserId: targetUser._id,
       targetUserEmail: targetUser.email,
       targetUserName: `${targetUser.firstname} ${targetUser.lastname}`,
@@ -177,10 +177,10 @@ export const unsuspendDriver = async (req, res) => {
     if (targetUser.FCMToken) {
       await sendNotification(
         targetUser.FCMToken,
-        '✅ Suspension Lifted',
-        'Your account suspension has been lifted. You can now continue operating.',
+        '✅ Driver Reinstated',
+        'Your account has been reinstated. You can now continue operating.',
         {
-          type: 'unsuspension',
+          type: 'reinstatement',
           action: 'force_logout',
         }
       );
@@ -188,7 +188,7 @@ export const unsuspendDriver = async (req, res) => {
 
     res.status(200).json({
       success: true,
-      message: 'Driver suspension lifted',
+      message: 'Driver reinstated successfully',
       user: {
         _id: targetUser._id,
         email: targetUser.email,
@@ -198,10 +198,10 @@ export const unsuspendDriver = async (req, res) => {
       },
     });
   } catch (error) {
-    console.error('Error unsuspending driver:', error);
+    console.error('Error reinstating driver:', error);
     res.status(500).json({
       success: false,
-      message: 'Failed to unsuspend driver',
+      message: 'Failed to reinstate driver',
       error: error.message,
     });
   }
