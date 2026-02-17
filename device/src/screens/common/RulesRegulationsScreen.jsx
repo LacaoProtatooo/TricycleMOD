@@ -14,12 +14,22 @@ import { colors, spacing, globalStyles } from '../../components/common/theme';
 
 const windowWidth = Dimensions.get('window').width;
 
-// Rules and Regulations Data
-const rulesData = {
+// ====== ENGLISH Rules and Regulations Data ======
+const rulesDataEN = {
   intro: {
     title: "WEBTTODA RULES AND REGULATIONS",
     description: "The following infraction and their corresponding penalties are prescribed to maintain the members highest work efficiency, smooth and successful operation of the association and help the WEBTTODA contribute its effectiveness in our community.",
     note: "The officers and trustees believes that the list of infraction and offenses constitutes just cause for disciplinary action and corresponding penalties imposed range from warning and reprimand to suspension and dismissal.",
+  },
+  labels: {
+    headerTitle: "Rules & Regulations",
+    sections: "Sections",
+    rules: "Rules",
+    established: "Established",
+    penalties: "Penalties",
+    rulesCount: "rules",
+    approvedFor: "APPROVED FOR DISSEMINATION",
+    offensePrefix: "Offense",
   },
   sections: [
     {
@@ -245,7 +255,7 @@ const rulesData = {
         },
         {
           number: 36,
-          offense: "Transfer of rights for non-members is ₱10,000, whereas a current member is ₱3,000.",
+          offense: "Transfer of rights for non-members is \u20B110,000, whereas a current member is \u20B13,000.",
           penalties: []
         },
         {
@@ -258,17 +268,274 @@ const rulesData = {
   ]
 };
 
+// ====== TAGALOG (Filipino) Rules and Regulations Data ======
+const rulesDataTL = {
+  intro: {
+    title: "MGA PATAKARAN AT REGULASYON NG WEBTTODA",
+    description: "Ang mga sumusunod na paglabag at kaukulang parusa ay itinakda upang mapanatili ang pinakamataas na kahusayan sa trabaho ng mga miyembro, maayos at matagumpay na operasyon ng samahan at matulungan ang WEBTTODA na makapag-ambag ng epektibong serbisyo sa ating komunidad.",
+    note: "Ang mga opisyal at trustees ay naniniwala na ang listahan ng mga paglabag at pagkakasala ay sapat na dahilan para sa aksyong pandisiplina at ang kaukulang parusa ay mula sa babala at pagsaway hanggang sa suspensyon at pagtitiwalag.",
+  },
+  labels: {
+    headerTitle: "Mga Patakaran",
+    sections: "Seksyon",
+    rules: "Patakaran",
+    established: "Itinatag",
+    penalties: "Mga Parusa",
+    rulesCount: "patakaran",
+    approvedFor: "PINAGTIBAY PARA SA PAGPAPAKALAT",
+    offensePrefix: "Pagkakasala",
+  },
+  sections: [
+    {
+      id: 1,
+      title: "I. KAHUSAYAN SA TRABAHO AT PAGMAMANEHO",
+      icon: "car-sport",
+      color: colors.orangeShade4,
+      rules: [
+        {
+          number: 1,
+          offense: "Anumang gawa ng pagsuway (insubordination)",
+          penalties: ["Suspensyon 3 araw", "Suspensyon 1 linggo", "Suspensyon 1 buwan o pagtitiwalag", "Pagtitiwalag"]
+        },
+        {
+          number: 2,
+          offense: "Iligal na pagpila maliban sa itinalagang punto",
+          penalties: ["Suspensyon 3 araw", "Suspensyon 1 linggo", "Suspensyon 1 buwan o pagtitiwalag", "Pagtitiwalag"]
+        },
+        {
+          number: 3,
+          offense: "Iligal na pagsakay ng mga pasahero",
+          penalties: ["Suspensyon 3 araw", "Suspensyon 1 linggo", "Suspensyon 1 buwan o pagtitiwalag", "Pagtitiwalag"]
+        },
+        {
+          number: 4,
+          offense: "Pagsusuot ng sando, short pants at tsinelas mula Lunes hanggang Biyernes (maliban kung umuulan na idineklara ng Pangulo)",
+          penalties: ["Suspensyon 3 araw", "Suspensyon 1 linggo", "Suspensyon 1 buwan o pagtitiwalag", "Pagtitiwalag"]
+        },
+        {
+          number: 5,
+          offense: "Pagsusuot ng sando tuwing Sabado, Linggo at Holiday",
+          penalties: ["Suspensyon 3 araw", "Suspensyon 1 linggo", "Suspensyon 1 buwan o pagtitiwalag", "Pagtitiwalag"]
+        },
+        {
+          number: 6,
+          offense: "Pagsusuot ng tsinelas at short pants tuwing weekdays",
+          penalties: ["Suspensyon 3 araw", "Suspensyon 1 linggo", "Suspensyon 1 buwan o pagtitiwalag", "Pagtitiwalag"]
+        },
+      ]
+    },
+    {
+      id: 2,
+      title: "II. GAWA NG KAWALANG-KATAPATAN",
+      icon: "alert-circle",
+      color: colors.orangeShade6,
+      rules: [
+        {
+          number: 7,
+          offense: "Pagkabigo at/o pagtanggi na magbayad ng araw-araw na dues",
+          penalties: ["Suspensyon 1 araw", "Suspensyon 3 araw", "Suspensyon 1 buwan o pagtitiwalag", "Pagtitiwalag"]
+        },
+        {
+          number: 8,
+          offense: "MALING PAHAYAG – Sinumang aplikante na tinanggap bilang miyembro at kalaunan ay natuklasang may mapanlinlang na mga entry upang 'maimpluwensyahan' ang pag-apruba",
+          penalties: ["Pagtitiwalag"]
+        },
+      ]
+    },
+    {
+      id: 3,
+      title: "III. GAWA LABAN SA PAMPUBLIKONG PATAKARAN",
+      icon: "warning",
+      color: colors.orangeShade2,
+      rules: [
+        {
+          number: 9,
+          offense: "Pagmamaneho sa ilalim ng impluwensya ng alak, droga at/o pagsali sa anumang inuman sa loob ng WEBTTODA premises o anumang uri ng iligal na sugal sa ruta",
+          penalties: ["Suspensyon 1 linggo", "Pagtitiwalag"]
+        },
+        {
+          number: 10,
+          offense: "Pagpunit at/o pagbura ng mga poster ng samahan mula sa bulletin board, o pagdagdag ng nakakainsultong salita at/o larawan o marka",
+          penalties: ["Suspensyon 1 linggo", "Suspensyon 1 buwan", "Pagtitiwalag"]
+        },
+        {
+          number: 11,
+          offense: "Pag-aaway sa loob ng samahan anuman ang dahilan",
+          penalties: ["Suspensyon 1 linggo", "Pagtitiwalag"]
+        },
+        {
+          number: 12,
+          offense: "Pag-atake sa kapwa miyembro nang walang probokasyon na nagdudulot ng pinsala sa katawan",
+          penalties: ["Suspensyon 1 linggo", "Pagtitiwalag"]
+        },
+        {
+          number: 13,
+          offense: "Paghamon sa sinumang miyembro na makipag-away",
+          penalties: ["Suspensyon 2 linggo", "Pagtitiwalag"]
+        },
+        {
+          number: 14,
+          offense: "Paghamon sa mga Opisyal at Trustees",
+          penalties: ["Suspensyon 2 linggo o pagtitiwalag", "Pagtitiwalag"]
+        },
+        {
+          number: 15,
+          offense: "Bastos na gawa laban sa mga pasahero sa loob ng ruta ng samahan",
+          penalties: ["Suspensyon 3 araw", "Suspensyon 1 linggo", "Pagtitiwalag"]
+        },
+        {
+          number: 16,
+          offense: "Pabaya/mapusok na pagmamaneho sa loob ng mga ruta ng WEBTTODA",
+          penalties: ["Suspensyon 1 linggo o pagtitiwalag", "Suspensyon 1 linggo"]
+        },
+        {
+          number: 17,
+          offense: "Pagdudulot ng sama ng loob at pagkakahati-hati o paggawa ng mga grupo at/o intriga sa mga opisyal, trustees at miyembro",
+          penalties: ["Suspensyon 1 linggo", "Suspensyon 1 buwan o pagtitiwalag", "Pagtitiwalag"]
+        },
+        {
+          number: 18,
+          offense: "Pagbabanta, pamimilit at intimidasyon sa mga miyembro",
+          penalties: ["Suspensyon 1 linggo", "Suspensyon 1 buwan", "Pagtitiwalag"]
+        },
+      ]
+    },
+    {
+      id: 4,
+      title: "IV. MABIBIGAT NA PAGKAKASALA",
+      icon: "ban",
+      color: "#DC2626",
+      rules: [
+        {
+          number: 19,
+          offense: "Pagkahatol sa anumang krimen kung saan ang parusa ay isang (1) buwan o higit pa",
+          penalties: ["Pagtitiwalag"]
+        },
+        {
+          number: 20,
+          offense: "Paggawa ng malisyosong maling paratang at pahayag tungkol sa magandang pangalan ng samahan",
+          penalties: ["Pagtitiwalag"]
+        },
+        {
+          number: 21,
+          offense: "Pagpapalit ng mga lumang parte para sa pag-aari ng operator at pag-angkin nito",
+          penalties: ["Pagtitiwalag"]
+        },
+        {
+          number: 22,
+          offense: "Maling paggamit, pagwasak, pagpunit at/o pagkasira ng ari-arian ng samahan",
+          penalties: ["Suspensyon 1 linggo o Pagtitiwalag"]
+        },
+        {
+          number: 23,
+          offense: "Gawa ng kawalang-galang o kabastusan sa mga executive ng samahan",
+          penalties: ["Suspensyon 1 buwan", "Pagtitiwalag"]
+        },
+        {
+          number: 24,
+          offense: "Pang-iinsulto at/o hindi naaangkop na pag-uugali at/o pananalita sa mga opisyal at trustees ng samahan",
+          penalties: ["Suspensyon 2 linggo", "Pagtitiwalag"]
+        },
+        {
+          number: 25,
+          offense: "Pagsuway sa mga legal na utos ng Marshall",
+          penalties: ["Suspensyon 2 linggo o pagtitiwalag", "Pagtitiwalag"]
+        },
+        {
+          number: 26,
+          offense: "Pagkabigong dumalo sa pangkalahatang pulong sa itinakdang oras at lugar lalo na ang mga driver na walang makatwirang dahilan",
+          penalties: ["Suspensyon 1 araw", "Suspensyon 3 araw", "Pagtitiwalag"]
+        },
+        {
+          number: 27,
+          offense: "Pagkabigong magpanatili ng personal na kalinisan, hindi naaangkop na pananamit",
+          penalties: ["Babala", "Suspensyon 3 araw", "Suspensyon 1 linggo", "Pagtitiwalag"]
+        },
+      ]
+    },
+    {
+      id: 5,
+      title: "V. PAULIT-ULIT NA PAGLABAG",
+      icon: "repeat",
+      color: "#7C3AED",
+      rules: [
+        {
+          number: 28,
+          offense: "Tatlong babala sa loob ng isang (1) taon mula sa huling paglabag",
+          penalties: ["Suspensyon 1 linggo"]
+        },
+        {
+          number: 29,
+          offense: "Tatlong suspensyon sa loob ng isang (1) taon mula sa huling paglabag",
+          penalties: ["Pagtitiwalag"]
+        },
+        {
+          number: 30,
+          offense: "Kung ang pagkakasala ay nangangailangan lamang ng magaan na parusa tulad ng babala at/o suspensyon, ngunit ang pagkakasala mismo ay nagresulta sa malubha at/o kabuuang pinsala sa sinuman, ang pamunuan ay mag-uutos ng agarang pagtitiwalag ng nagkasalang miyembro.",
+          penalties: ["Agarang Pagtitiwalag"]
+        },
+      ]
+    },
+    {
+      id: 6,
+      title: "VI. PAGIGING MIYEMBRO / PAGKAALIS SA SAMAHAN",
+      icon: "people",
+      color: "#059669",
+      rules: [
+        {
+          number: 31,
+          offense: "Ang mga operator na may tricycle unit at mga aktibong driver ay ang mga tunay na miyembro ng WEBTTODA Association.",
+          penalties: []
+        },
+        {
+          number: 32,
+          offense: "Ang mga operator bilang hindi driver na nagsuko ng karapatan na mag-operate sa WEBTTODA line o nagbenta ng kanilang tricycle unit ay awtomatikong tatanggalin sa samahan.",
+          penalties: []
+        },
+        {
+          number: 33,
+          offense: "Ang mga operator bilang driver na nagsuko ng karapatan o nagbenta ng kanilang mga unit ay mananatiling miyembro bilang driver, basta't siya ay magmamaneho kahit isang beses sa loob ng tatlong (3) buwan.",
+          penalties: []
+        },
+        {
+          number: 34,
+          offense: "Ang aktibong driver ay mananatiling miyembro basta't siya ay magmamaneho kahit isang beses sa loob ng tatlong (3) buwan sa WEBTTODA line.",
+          penalties: []
+        },
+        {
+          number: 35,
+          offense: "Ang dating miyembrong tinanggal na nag-apply muli ay kailangang kumpletuhin ang mga rekwayrment bilang bagong aplikante at magbayad ng membership fee na 50% ng kasalukuyang membership fee ng driver.",
+          penalties: []
+        },
+        {
+          number: 36,
+          offense: "Ang transfer of rights para sa hindi miyembro ay \u20B110,000, samantalang para sa kasalukuyang miyembro ay \u20B13,000.",
+          penalties: []
+        },
+        {
+          number: 37,
+          offense: "Ang lumang miyembro na nagpapadali ng pagbebenta ng tricycle unit nang walang kaalaman ng samahan upang makaiwas sa membership fee ng bagong may-ari ay sasailalim sa board hearing at pangkalahatang miyembro para sa pagtitiwalag.",
+          penalties: []
+        },
+      ]
+    },
+  ]
+};
+
 const RulesRegulationsScreen = ({ navigation }) => {
   const [expandedSection, setExpandedSection] = useState(null);
+  const [language, setLanguage] = useState('tl'); // 'tl' = Tagalog (default), 'en' = English
+
+  const rulesData = language === 'tl' ? rulesDataTL : rulesDataEN;
 
   const toggleSection = (sectionId) => {
     setExpandedSection(expandedSection === sectionId ? null : sectionId);
   };
 
   const renderPenaltyBadge = (penalty, index) => {
-    const isWarning = penalty.toLowerCase().includes('warning');
-    const isDismissal = penalty.toLowerCase().includes('dismissal');
-    const isSuspension = penalty.toLowerCase().includes('suspension');
+    const isWarning = penalty.toLowerCase().includes('warning') || penalty.toLowerCase().includes('babala');
+    const isDismissal = penalty.toLowerCase().includes('dismissal') || penalty.toLowerCase().includes('pagtitiwalag');
+    const isSuspension = penalty.toLowerCase().includes('suspension') || penalty.toLowerCase().includes('suspensyon');
 
     let bgColor = colors.ivory3;
     let textColor = colors.orangeShade8;
@@ -292,7 +559,7 @@ const RulesRegulationsScreen = ({ navigation }) => {
       <View key={index} style={[styles.penaltyBadge, { backgroundColor: bgColor }]}>
         <Ionicons name={iconName} size={14} color={textColor} style={styles.penaltyIcon} />
         <Text style={[styles.penaltyText, { color: textColor }]}>
-          {index + 1}{getOrdinalSuffix(index + 1)} Offense: {penalty}
+          {index + 1}{getOrdinalSuffix(index + 1)} {rulesData.labels.offensePrefix}: {penalty}
         </Text>
       </View>
     );
@@ -322,10 +589,15 @@ const RulesRegulationsScreen = ({ navigation }) => {
         >
           <Ionicons name="arrow-back" size={24} color={colors.ivory1} />
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Rules & Regulations</Text>
-        <View style={styles.headerRight}>
-          <Ionicons name="document-text" size={22} color={colors.ivory1} />
-        </View>
+        <Text style={styles.headerTitle}>{rulesData.labels.headerTitle}</Text>
+        <TouchableOpacity
+          style={styles.langToggleButton}
+          onPress={() => setLanguage(language === 'tl' ? 'en' : 'tl')}
+          activeOpacity={0.7}
+        >
+          <Ionicons name="language" size={16} color={colors.ivory1} style={{ marginRight: 4 }} />
+          <Text style={styles.langToggleText}>{language === 'tl' ? 'EN' : 'TL'}</Text>
+        </TouchableOpacity>
       </LinearGradient>
 
       <ScrollView 
@@ -366,17 +638,17 @@ const RulesRegulationsScreen = ({ navigation }) => {
         <View style={styles.statsContainer}>
           <View style={styles.statItem}>
             <Text style={styles.statNumber}>6</Text>
-            <Text style={styles.statLabel}>Sections</Text>
+            <Text style={styles.statLabel}>{rulesData.labels.sections}</Text>
           </View>
           <View style={styles.statDivider} />
           <View style={styles.statItem}>
             <Text style={styles.statNumber}>37</Text>
-            <Text style={styles.statLabel}>Rules</Text>
+            <Text style={styles.statLabel}>{rulesData.labels.rules}</Text>
           </View>
           <View style={styles.statDivider} />
           <View style={styles.statItem}>
             <Text style={styles.statNumber}>2004</Text>
-            <Text style={styles.statLabel}>Established</Text>
+            <Text style={styles.statLabel}>{rulesData.labels.established}</Text>
           </View>
         </View>
 
@@ -396,7 +668,7 @@ const RulesRegulationsScreen = ({ navigation }) => {
               </LinearGradient>
               <View style={styles.sectionTitleContainer}>
                 <Text style={styles.sectionTitle}>{section.title}</Text>
-                <Text style={styles.sectionCount}>{section.rules.length} rules</Text>
+                <Text style={styles.sectionCount}>{section.rules.length} {rulesData.labels.rulesCount}</Text>
               </View>
               <View style={[styles.expandIcon, { backgroundColor: expandedSection === section.id ? colors.primary + '20' : colors.ivory3 }]}>
                 <Ionicons 
@@ -424,7 +696,7 @@ const RulesRegulationsScreen = ({ navigation }) => {
                       <View style={styles.penaltiesContainer}>
                         <View style={styles.penaltiesHeader}>
                           <Ionicons name="warning-outline" size={14} color={colors.orangeShade6} />
-                          <Text style={styles.penaltiesLabel}>Penalties</Text>
+                          <Text style={styles.penaltiesLabel}>{rulesData.labels.penalties}</Text>
                         </View>
                         {rule.penalties.map((penalty, pIndex) => renderPenaltyBadge(penalty, pIndex))}
                       </View>
@@ -444,7 +716,7 @@ const RulesRegulationsScreen = ({ navigation }) => {
           <View style={styles.footerBadge}>
             <Ionicons name="checkmark-circle" size={24} color={colors.primary} />
           </View>
-          <Text style={styles.footerTitle}>APPROVED FOR DISSEMINATION</Text>
+          <Text style={styles.footerTitle}>{rulesData.labels.approvedFor}</Text>
           <View style={styles.signatureContainer}>
             <Text style={styles.footerText}>ERNESTO B. OCCIANO</Text>
             <View style={styles.signatureLine} />
@@ -501,13 +773,19 @@ const styles = StyleSheet.create({
     color: colors.ivory1,
     letterSpacing: 0.5,
   },
-  headerRight: {
-    width: 40,
-    height: 40,
-    borderRadius: 20,
-    backgroundColor: 'rgba(255,255,255,0.15)',
-    justifyContent: 'center',
+  langToggleButton: {
+    flexDirection: 'row',
     alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.2)',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 20,
+  },
+  langToggleText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.ivory1,
+    letterSpacing: 0.5,
   },
   container: {
     padding: spacing.medium,

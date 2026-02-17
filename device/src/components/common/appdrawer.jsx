@@ -95,10 +95,10 @@ const AppDrawer = ({ closeDrawer, navigation }) => {
                   style={styles.avatar}
                 />
                 <View style={styles.userTextContainer}>
-                  <Text variant="titleMedium" style={styles.title}>
+                  <Text variant="titleMedium" style={styles.title} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
                     {user?.firstname || 'Guest'}
                   </Text>
-                  <Text variant="bodySmall" style={styles.caption}>
+                  <Text variant="bodySmall" style={styles.caption} numberOfLines={1} adjustsFontSizeToFit minimumFontScale={0.7}>
                     @{user?.username || 'guest_user'}
                   </Text>
                   {/* Suspended Badge */}
@@ -418,17 +418,23 @@ const styles = StyleSheet.create({
   },
   userTextContainer: {
     alignItems: 'center',
+    width: '100%',
+    paddingHorizontal: spacing.small,
   },
   title: {
     fontSize: 18,
     fontWeight: 'bold',
     color: colors.orangeShade7,
     fontFamily: fonts.medium,
+    textAlign: 'center',
+    flexShrink: 1,
   },
   caption: {
     fontSize: 14,
     color: colors.orangeShade5,
     fontFamily: fonts.regular,
+    textAlign: 'center',
+    flexShrink: 1,
   },
   suspendedBadge: {
     flexDirection: 'row',
@@ -457,9 +463,11 @@ const styles = StyleSheet.create({
     marginTop: spacing.small,
   },
   drawerLabel: {
-    fontSize: 16,
+    fontSize: 14,
     fontFamily: fonts.regular,
     fontWeight: '500',
+    flexShrink: 1,
+    flexWrap: 'wrap',
   },
   iconContainer: {
     width: 40,
