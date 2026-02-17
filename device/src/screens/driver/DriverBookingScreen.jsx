@@ -1589,6 +1589,7 @@ const DriverBookingScreen = ({ navigation }) => {
         <MapView
           ref={mapRef}
           provider={PROVIDER_GOOGLE}
+          mapType="mutedStandard"
           style={styles.fullMap}
           region={{
             latitude: userLocation?.latitude || activeBooking.pickup.latitude,
@@ -2147,6 +2148,7 @@ const DriverBookingScreen = ({ navigation }) => {
               <MapView
                 ref={mapRef}
                 provider={PROVIDER_GOOGLE}
+                mapType="mutedStandard"
                 style={styles.fullMap}
                 region={mapRegion}
                 showsUserLocation={true}
@@ -2297,6 +2299,7 @@ const DriverBookingScreen = ({ navigation }) => {
                 <View style={styles.routeMapContainer}>
                   <MapView
                     provider={PROVIDER_GOOGLE}
+                    mapType="mutedStandard"
                     style={styles.routePreviewMap}
                     initialRegion={{
                       latitude: (previewBooking.pickup.latitude + previewBooking.destination.latitude) / 2,

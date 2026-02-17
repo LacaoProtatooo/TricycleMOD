@@ -114,6 +114,7 @@ const GuestMaps = () => {
         <MapView
           ref={mapRef}
           provider={PROVIDER_GOOGLE}
+          mapType="mutedStandard"
           style={styles.map}
           initialRegion={region}
           showsUserLocation={hasPermission}

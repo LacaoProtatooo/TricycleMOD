@@ -1243,6 +1243,7 @@ const BookingScreen = ({ navigation }) => {
         <MapView
           ref={mapRef}
           provider={PROVIDER_GOOGLE}
+          mapType="mutedStandard"
           style={styles.map}
           region={region}
           onRegionChangeComplete={setRegion}

@@ -292,6 +292,7 @@ const BookingHistoryDetail = ({ navigation, route }) => {
           <MapView
             ref={mapRef}
             provider={PROVIDER_GOOGLE}
+            mapType="mutedStandard"
             style={styles.map}
             initialRegion={{
               latitude: booking.pickup?.latitude || 14.5176,

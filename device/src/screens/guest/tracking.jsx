@@ -266,7 +266,7 @@ const GuestTracking = () => {
   const [isImporting, setIsImporting] = useState(false);
 
   // Map type state
-  const [mapType, setMapType] = useState('hybrid');
+  const [mapType, setMapType] = useState('mutedStandard');
 
   // Refs for current values in callbacks
   const recordedPosRef = useRef([]);
