@@ -122,6 +122,7 @@ export default function TrackingMap({ follow = true, onEnterTerminalZone, odomet
   const relivePausedRef = useRef(false);
   const reliveSpeedRef = useRef(1);
   const [scrubTooltip, setScrubTooltip] = useState(null);
+  const [reliveTraversedPath, setReliveTraversedPath] = useState([]);
   const [mapType, setMapType] = useState('mutedStandard');
   const progressBarRef = useRef(null);
   const progressBarWidth = useRef(0);
@@ -936,6 +937,7 @@ ${trackPoints}
     setReliveProgress(0);
     setReliveTimestamp(null);
     setReliveSpeed(1);
+    setReliveTraversedPath([]);
     reliveSpeedRef.current = 1;
     reliveIndexRef.current = 0;
     if (restoreCamera && positions.length) {
@@ -984,6 +986,7 @@ ${trackPoints}
       reliveIndexRef.current += 1;
       const totalSegments = Math.max(path.length - 1, 1);
       setReliveProgress(reliveIndexRef.current / totalSegments);
+      setReliveTraversedPath(path.slice(0, reliveIndexRef.current + 1));
       requestAnimationFrame(animateReliveSegment);
     });
 
@@ -1020,6 +1023,7 @@ ${trackPoints}
     relivePausedRef.current = false;
     reliveActiveRef.current = true;
     setReliveActive(true);
+    setReliveTraversedPath([snapshot[0]]);
     setReliveTimestamp(snapshot[0]?.timestamp ? new Date(snapshot[0].timestamp) : new Date());
 
     mapRef.current?.animateCamera(
@@ -1062,6 +1066,7 @@ ${trackPoints}
 
     const totalSegments = Math.max(path.length - 1, 1);
     setReliveProgress(newIdx / totalSegments);
+    setReliveTraversedPath(path.slice(0, newIdx + 1));
 
     if (pos.timestamp) {
       setReliveTimestamp(new Date(pos.timestamp));
@@ -1100,6 +1105,7 @@ ${trackPoints}
 
     const totalSegments = Math.max(path.length - 1, 1);
     setReliveProgress(newIdx / totalSegments);
+    setReliveTraversedPath(path.slice(0, newIdx + 1));
 
     // Update timestamp
     if (pos.timestamp) {
@@ -1240,11 +1246,11 @@ ${trackPoints}
                 </Marker>
               )}
 
-              {/* Relive mode polyline */}
-              {reliveActive && relivePathRef.current.length > 0 && (
+              {/* Relive mode polyline - trail behind the icon showing traversed path */}
+              {reliveActive && reliveTraversedPath.length > 1 && (
                 <Polyline
                   key="relive-polyline"
-                  coordinates={relivePathRef.current}
+                  coordinates={reliveTraversedPath}
                   strokeColor="#0d6efd"
                   strokeWidth={5}
                 />
