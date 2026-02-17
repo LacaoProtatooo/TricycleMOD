@@ -341,7 +341,7 @@ const AppDrawer = ({ closeDrawer, navigation }) => {
             {/* APP VERSION FOOTER */}
             <View style={styles.footer}>
               <Text variant="bodySmall" style={styles.versionText}>
-                Tricycle MOD
+                WEBT-TRaC
               </Text>
               <Text variant="bodySmall" style={styles.versionText}>
                 App Version 0.0.1

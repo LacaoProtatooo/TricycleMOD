@@ -361,7 +361,7 @@ const BookingHistoryDetail = ({ navigation, route }) => {
                 {otherParty.phone && (
                   <Text style={styles.partyPhone}>{otherParty.phone}</Text>
                 )}
-                {otherParty.rating && (
+                {otherParty.rating != null && otherParty.rating > 0 && (
                   <View style={styles.ratingRow}>
                     <Ionicons name="star" size={14} color="#ffc107" />
                     <Text style={styles.ratingValue}>{otherParty.rating.toFixed(1)}</Text>
@@ -434,28 +434,28 @@ const BookingHistoryDetail = ({ navigation, route }) => {
         </View>
 
         {/* Distance Info */}
-        {(booking.estimatedDistance || booking.actualDistance) && (
+        {(!!booking.estimatedDistance || !!booking.actualDistance) ? (
           <View style={styles.card}>
             <View style={styles.cardHeader}>
               <Ionicons name="speedometer" size={20} color={colors.primary} />
               <Text style={styles.cardTitle}>Distance</Text>
             </View>
             
-            {booking.estimatedDistance && (
+            {booking.estimatedDistance ? (
               <View style={styles.fareRow}>
                 <Text style={styles.fareLabel}>Estimated Distance</Text>
                 <Text style={styles.fareValue}>{formatDistance(booking.estimatedDistance)}</Text>
               </View>
-            )}
+            ) : null}
 
-            {booking.actualDistance && (
+            {booking.actualDistance ? (
               <View style={styles.fareRow}>
                 <Text style={styles.fareLabel}>Actual Distance</Text>
                 <Text style={styles.fareValue}>{formatDistance(booking.actualDistance)}</Text>
               </View>
-            )}
+            ) : null}
           </View>
-        )}
+        ) : null}
 
         {/* Timeline */}
         <View style={styles.card}>

@@ -30,7 +30,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import axios from 'axios';
-import { useNavigation } from '@react-navigation/native';
+import { useNavigation, useIsFocused } from '@react-navigation/native';
 
 import { colors, spacing } from '../../components/common/theme';
 import { getUserCredentials } from '../../utils/userStorage';
@@ -218,6 +218,7 @@ function parseGPX(gpxContent) {
 
 const GuestTracking = () => {
   const navigation = useNavigation();
+  const isFocused = useIsFocused();
   const mapRef = useRef(null);
   const watchRef = useRef(null);
   const syncIntervalRef = useRef(null);
@@ -1140,8 +1141,8 @@ const GuestTracking = () => {
         </View>
       </View>
 
-      {/* Map */}
-      {region ? (
+      {/* Map - only render when tab is focused to prevent multiple MapView crashes */}
+      {region && isFocused ? (
         <MapView
           ref={mapRef}
           provider={PROVIDER_GOOGLE}

@@ -2518,7 +2518,7 @@ const DriverBookingScreen = ({ navigation }) => {
       >
         <SafeAreaView style={styles.kodingModalContainer} edges={['top', 'bottom']}>
           <View style={styles.kodingModalHeader}>
-            <Text style={styles.kodingModalTitle}>Koding (Boundary)</Text>
+            <Text style={styles.kodingModalTitle}>Boundary</Text>
             <TouchableOpacity onPress={() => setShowKodingModal(false)}>
               <Ionicons name="close" size={24} color="#666" />
             </TouchableOpacity>

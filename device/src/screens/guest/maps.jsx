@@ -5,11 +5,12 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
-import { View, StyleSheet, Text, TouchableOpacity, Alert } from 'react-native';
+import { View, StyleSheet, Text, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
 import MapView, { Marker, Circle, PROVIDER_GOOGLE } from 'react-native-maps';
 import * as Location from 'expo-location';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useIsFocused } from '@react-navigation/native';
 
 import { colors, spacing } from '../../components/common/theme';
 
@@ -25,6 +26,7 @@ const TERMINALS = [
 ];
 
 const GuestMaps = () => {
+  const isFocused = useIsFocused();
   const mapRef = useRef(null);
   const [region, setRegion] = useState({
     latitude: TAGUIG_CENTER.latitude,
@@ -107,50 +109,56 @@ const GuestMaps = () => {
         </View>
       </View>
 
-      {/* Map */}
-      <MapView
-        ref={mapRef}
-        provider={PROVIDER_GOOGLE}
-        style={styles.map}
-        initialRegion={region}
-        showsUserLocation={hasPermission}
-        showsMyLocationButton={false}
-        showsCompass={true}
-        showsScale={true}
-      >
-        {/* Terminal markers and geofence circles */}
-        {TERMINALS.map((terminal) => (
-          <React.Fragment key={terminal.id}>
-            <Circle
-              center={{ latitude: terminal.latitude, longitude: terminal.longitude }}
-              radius={terminal.radiusMeters}
-              strokeColor="rgba(255,102,0,0.6)"
-              fillColor="rgba(255,102,0,0.15)"
-            />
+      {/* Map - only render when tab is focused to prevent multiple MapView crashes */}
+      {isFocused ? (
+        <MapView
+          ref={mapRef}
+          provider={PROVIDER_GOOGLE}
+          style={styles.map}
+          initialRegion={region}
+          showsUserLocation={hasPermission}
+          showsMyLocationButton={false}
+          showsCompass={true}
+          showsScale={true}
+        >
+          {/* Terminal markers and geofence circles */}
+          {TERMINALS.map((terminal) => (
+            <React.Fragment key={terminal.id}>
+              <Circle
+                center={{ latitude: terminal.latitude, longitude: terminal.longitude }}
+                radius={terminal.radiusMeters}
+                strokeColor="rgba(255,102,0,0.6)"
+                fillColor="rgba(255,102,0,0.15)"
+              />
+              <Marker
+                coordinate={{ latitude: terminal.latitude, longitude: terminal.longitude }}
+                title={terminal.name}
+                description={`Radius: ${terminal.radiusMeters}m`}
+              >
+                <View style={styles.terminalMarker}>
+                  <Ionicons name="flag" size={20} color="#fff" />
+                </View>
+              </Marker>
+            </React.Fragment>
+          ))}
+
+          {/* User location marker (if available) */}
+          {userLocation && (
             <Marker
-              coordinate={{ latitude: terminal.latitude, longitude: terminal.longitude }}
-              title={terminal.name}
-              description={`Radius: ${terminal.radiusMeters}m`}
+              coordinate={userLocation}
+              title="Your Location"
             >
-              <View style={styles.terminalMarker}>
-                <Ionicons name="flag" size={20} color="#fff" />
+              <View style={styles.userMarker}>
+                <Ionicons name="person" size={18} color="#fff" />
               </View>
             </Marker>
-          </React.Fragment>
-        ))}
-
-        {/* User location marker (if available) */}
-        {userLocation && (
-          <Marker
-            coordinate={userLocation}
-            title="Your Location"
-          >
-            <View style={styles.userMarker}>
-              <Ionicons name="person" size={18} color="#fff" />
-            </View>
-          </Marker>
-        )}
-      </MapView>
+          )}
+        </MapView>
+      ) : (
+        <View style={[styles.map, { justifyContent: 'center', alignItems: 'center' }]}>
+          <ActivityIndicator size="large" color={colors.primary} />
+        </View>
+      )}
 
       {/* Map Controls */}
       <View style={styles.controls}>

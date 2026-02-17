@@ -45,6 +45,7 @@ const AppContent = () => {
   const dispatch = useDispatch();
   const db = useAsyncSQLiteContext(); // Get db from context
   const { unreadAnnouncements } = useSelector((state) => state.announcements);
+  const { user } = useSelector((state) => state.auth);
 
   // Listen for complaint notification events from NotificationHandler
   useEffect(() => {
@@ -65,7 +66,7 @@ const AppContent = () => {
   }, []);
 
   useEffect(() => {
-    if (!db) return; // Wait for db to be initialized
+    if (!db || !user) return; // Wait for db and user to be authenticated
     
     // Fetch announcements when app opens
     const checkAnnouncements = async () => {
@@ -80,7 +81,7 @@ const AppContent = () => {
     };
 
     checkAnnouncements();
-  }, [db, dispatch]);
+  }, [db, user, dispatch]);
 
   const handleCloseAnnouncements = () => {
     setShowAnnouncementModal(false);

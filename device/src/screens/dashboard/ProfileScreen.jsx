@@ -58,7 +58,7 @@ export default function ProfileScreen() {
         </View>
 
         <View style={styles.versionContainer}>
-          <Text style={styles.versionText}>Tricycle MOD</Text>
+          <Text style={styles.versionText}>WEBT-TRaC</Text>
           <Text style={styles.versionText}>Version 1.0.0</Text>
         </View>
       </ScrollView>

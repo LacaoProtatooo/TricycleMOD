@@ -506,8 +506,8 @@ const Account = () => {
           </View>
         </View>
 
-        {/* Rating Section - Display Only */}
-        {!isEditing && (
+        {/* Rating Section - Display Only for drivers */}
+        {!isEditing && role === 'driver' && (
           <Card style={styles.ratingCard}>
             <Card.Content>
               <View style={styles.ratingContainer}>

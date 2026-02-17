@@ -31,6 +31,7 @@ import { useSelector, useDispatch } from 'react-redux';
 import axios from 'axios';
 
 import { colors, spacing } from '../../components/common/theme';
+import { useIsFocused } from '@react-navigation/native';
 import { useAsyncSQLiteContext } from '../../utils/asyncSQliteProvider';
 import { getToken } from '../../utils/jwtStorage';
 import { getUserCredentials } from '../../utils/userStorage';
@@ -94,6 +95,7 @@ const BOOKING_STATUS = {
 
 const BookingScreen = ({ navigation }) => {
   const dispatch = useDispatch();
+  const isFocused = useIsFocused();
   const mapRef = useRef(null);
   const db = useAsyncSQLiteContext();
   
@@ -1236,17 +1238,18 @@ const BookingScreen = ({ navigation }) => {
         </View>
       </View>
 
-      {/* Map */}
-      <MapView
-        ref={mapRef}
-        provider={PROVIDER_GOOGLE}
-        style={styles.map}
-        region={region}
-        onRegionChangeComplete={setRegion}
-        onPress={handleMapPress}
-        showsUserLocation={true}
-        showsMyLocationButton={false}
-      >
+      {/* Map - only render when tab is focused to prevent multiple MapView crashes */}
+      {isFocused ? (
+        <MapView
+          ref={mapRef}
+          provider={PROVIDER_GOOGLE}
+          style={styles.map}
+          region={region}
+          onRegionChangeComplete={setRegion}
+          onPress={handleMapPress}
+          showsUserLocation={true}
+          showsMyLocationButton={false}
+        >
         {/* WEBTODA Service Area Polygon Boundary */}
         <Polygon
           coordinates={getServiceAreaPolygon()}
@@ -1357,6 +1360,11 @@ const BookingScreen = ({ navigation }) => {
           />
         )}
       </MapView>
+      ) : (
+        <View style={[styles.map, { justifyContent: 'center', alignItems: 'center' }]}>
+          <ActivityIndicator size="large" color={colors.primary} />
+        </View>
+      )}
 
       {/* Location selection hint */}
       {selectingLocationType && (
