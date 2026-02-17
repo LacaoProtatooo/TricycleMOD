@@ -129,6 +129,7 @@ const DriverBookingScreen = ({ navigation }) => {
   const [simulationPaused, setSimulationPaused] = useState(false);
   const [simulatedDistance, setSimulatedDistance] = useState(0);
   const [simulationCompleted, setSimulationCompleted] = useState(false); // Track if simulation finished
+  const [simulatedPath, setSimulatedPath] = useState([]); // Traversed route points
   const simulationRef = useRef(null);
   const simulationRouteRef = useRef([]);
   const simulationIndexRef = useRef(0);
@@ -1047,6 +1048,7 @@ const DriverBookingScreen = ({ navigation }) => {
     setSimulationProgress(0);
     setIsSimulating(true);
     setSimulatedPosition(routePoints[0]);
+    setSimulatedPath([routePoints[0]]);
     
     // Start the animation loop
     runSimulationStep();
@@ -1071,6 +1073,7 @@ const DriverBookingScreen = ({ navigation }) => {
     // Update state
     setSimulatedPosition(currentPoint);
     setSimulationProgress(progress);
+    setSimulatedPath(route.slice(0, index + 1));
     
     // Calculate distance traveled
     if (index > 0) {
@@ -1173,6 +1176,7 @@ const DriverBookingScreen = ({ navigation }) => {
     setSimulatedPosition(null);
     setSimulationProgress(0);
     setSimulatedDistance(0);
+    setSimulatedPath([]);
     simulationIndexRef.current = 0;
   }, []);
 
@@ -1636,10 +1640,10 @@ const DriverBookingScreen = ({ navigation }) => {
                 lineCap="round"
                 lineJoin="round"
               />
-              {/* Simulated progress line - shows traversed portion */}
-              {isSimulating && simulatedPosition && (
+              {/* Simulated progress line - shows traversed route path */}
+              {isSimulating && simulatedPath.length > 1 && (
                 <Polyline
-                  coordinates={[activeBooking.pickup, simulatedPosition]}
+                  coordinates={simulatedPath}
                   strokeColor="#6f42c1"
                   strokeWidth={6}
                   lineCap="round"
