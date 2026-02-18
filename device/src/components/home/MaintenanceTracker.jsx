@@ -530,15 +530,11 @@ const MaintenanceTracker = ({ tricycleId, serverHistory }) => {
 			return;
 		}
 		
-		// Warn if odometer is being set lower than current
+		// Prevent setting odometer lower than current reading
 		if (odometerKm && newOdometer < odometerKm) {
 			Alert.alert(
-				'Confirm Lower Reading',
-				`The new reading (${newOdometer} km) is lower than the current reading (${Math.round(odometerKm)} km). Are you sure this is correct?`,
-				[
-					{ text: 'Cancel', style: 'cancel' },
-					{ text: 'Yes, Update', onPress: () => saveOdometerReading(newOdometer) }
-				]
+				'Invalid Reading',
+				`The new reading (${Math.round(newOdometer)} km) cannot be lower than the current reading (${Math.round(odometerKm)} km). Odometer values can only increase.`
 			);
 			return;
 		}
@@ -1051,28 +1047,99 @@ const MaintenanceTracker = ({ tricycleId, serverHistory }) => {
 			{/* Manual Odometer Input Modal */}
 			<Modal
 				visible={odometerModalVisible}
-				transparent
-				animationType="fade"
+				transparent={false}
+				animationType="slide"
 				onRequestClose={() => setOdometerModalVisible(false)}
 			>
-				<View style={styles.modalOverlay}>
-					<View style={[styles.modalContainer, { maxWidth: 340 }]}>
-						<View style={styles.modalHeader}>
-							<Ionicons name="speedometer" size={24} color={colors.primary} />
-							<Text style={styles.modalTitle}>Update Odometer</Text>
-						</View>
-						
-						<Text style={styles.modalSubtitle}>
-							Enter the current odometer reading from your tricycle's dashboard.
+				<View style={{
+					flex: 1,
+					backgroundColor: colors.ivory1,
+				}}>
+					{/* Header */}
+					<View style={{
+						flexDirection: 'row',
+						alignItems: 'center',
+						justifyContent: 'space-between',
+						paddingHorizontal: 16,
+						paddingVertical: 14,
+						borderBottomWidth: 1,
+						borderBottomColor: colors.ivory3,
+						backgroundColor: colors.ivory1,
+					}}>
+						<TouchableOpacity
+							onPress={() => setOdometerModalVisible(false)}
+							style={{
+								width: 36,
+								height: 36,
+								alignItems: 'center',
+								justifyContent: 'center',
+								borderRadius: 18,
+								backgroundColor: colors.ivory2,
+							}}
+						>
+							<Ionicons name="close" size={22} color={colors.orangeShade7} />
+						</TouchableOpacity>
+						<Text style={{ fontSize: 18, fontWeight: '700', color: colors.orangeShade7 }}>
+							Update Odometer
 						</Text>
-						
-						<View style={{ marginVertical: 16 }}>
-							<Text style={{ fontSize: 12, color: colors.orangeShade5, marginBottom: 4 }}>
-								Current Reading: {odometerKm !== null ? `${Math.round(odometerKm)} km` : 'Not set'}
+						<View style={{ width: 36 }} />
+					</View>
+
+					{/* Body */}
+					<View style={{ flex: 1, padding: 20 }}>
+						{/* Current Reading Card */}
+						<View style={{
+							alignItems: 'center',
+							backgroundColor: colors.ivory4 || '#f8f8f8',
+							borderRadius: 16,
+							paddingVertical: 28,
+							marginBottom: 24,
+							borderWidth: 1,
+							borderColor: colors.ivory3,
+						}}>
+							<Ionicons name="speedometer" size={48} color={colors.primary} />
+							<Text style={{
+								fontSize: 44,
+								fontWeight: '800',
+								color: colors.orangeShade7,
+								marginTop: 10,
+							}}>
+								{odometerKm !== null ? Math.round(odometerKm).toLocaleString() : '—'}
 							</Text>
-							<View style={styles.kmRow}>
+							<Text style={{ fontSize: 16, color: colors.orangeShade5, marginTop: 4 }}>
+								kilometers
+							</Text>
+						</View>
+
+						{/* Input Section */}
+						<View style={{
+							backgroundColor: colors.ivory4 || '#f8f8f8',
+							borderRadius: 12,
+							padding: 16,
+							marginBottom: 16,
+							borderWidth: 1,
+							borderColor: colors.ivory3,
+						}}>
+							<Text style={{ fontSize: 16, fontWeight: '700', color: colors.orangeShade7, marginBottom: 6 }}>
+								Set New Reading
+							</Text>
+							<Text style={{ fontSize: 13, color: colors.orangeShade5, lineHeight: 18, marginBottom: 14 }}>
+								Enter the current odometer reading from your tricycle's dashboard.
+							</Text>
+							<View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
 								<TextInput
-									style={[styles.kmInput, { fontSize: 18, fontWeight: '600' }]}
+									style={{
+										flex: 1,
+										backgroundColor: colors.ivory1,
+										borderRadius: 10,
+										paddingHorizontal: 14,
+										paddingVertical: 12,
+										fontSize: 18,
+										fontWeight: '600',
+										color: colors.orangeShade7,
+										borderWidth: 1,
+										borderColor: colors.ivory3,
+									}}
 									value={manualOdometer}
 									onChangeText={setManualOdometer}
 									keyboardType="numeric"
@@ -1080,35 +1147,56 @@ const MaintenanceTracker = ({ tricycleId, serverHistory }) => {
 									placeholderTextColor={colors.orangeShade4}
 									editable={!savingOdometer}
 								/>
-								<Text style={{ marginLeft: 8, fontSize: 16, color: colors.orangeShade6, fontWeight: '600' }}>
+								<Text style={{ marginLeft: 10, fontSize: 16, fontWeight: '600', color: colors.orangeShade5 }}>
 									km
 								</Text>
 							</View>
+
+							{/* Action Buttons */}
+							<View style={{ flexDirection: 'row', gap: 10 }}>
+								<TouchableOpacity
+									style={{
+										flex: 1,
+										flexDirection: 'row',
+										alignItems: 'center',
+										justifyContent: 'center',
+										backgroundColor: colors.ivory2 || '#eee',
+										paddingVertical: 12,
+										borderRadius: 10,
+										borderWidth: 1,
+										borderColor: colors.ivory3,
+									}}
+									onPress={() => setOdometerModalVisible(false)}
+									disabled={savingOdometer}
+								>
+									<Text style={{ fontSize: 15, fontWeight: '600', color: colors.orangeShade7 }}>Cancel</Text>
+								</TouchableOpacity>
+								<TouchableOpacity
+									style={{
+										flex: 1,
+										flexDirection: 'row',
+										alignItems: 'center',
+										justifyContent: 'center',
+										backgroundColor: colors.primary,
+										paddingVertical: 12,
+										borderRadius: 10,
+										opacity: savingOdometer ? 0.7 : 1,
+									}}
+									onPress={handleSaveManualOdometer}
+									disabled={savingOdometer}
+								>
+									{savingOdometer ? (
+										<ActivityIndicator size="small" color="#fff" />
+									) : (
+										<>
+											<Ionicons name="checkmark-circle" size={20} color="#fff" />
+											<Text style={{ color: '#fff', fontSize: 15, fontWeight: '700', marginLeft: 8 }}>Save</Text>
+										</>
+									)}
+								</TouchableOpacity>
+							</View>
 						</View>
-						
-						<View style={{ flexDirection: 'row', gap: 10 }}>
-							<TouchableOpacity
-								style={[styles.saveBtn, { flex: 1, backgroundColor: colors.orangeShade3, justifyContent: 'center' }]}
-								onPress={() => setOdometerModalVisible(false)}
-								disabled={savingOdometer}
-							>
-								<Text style={[styles.saveText, { color: colors.orangeShade7, marginLeft: 0 }]}>Cancel</Text>
-							</TouchableOpacity>
-							<TouchableOpacity
-								style={[styles.saveBtn, { flex: 1, justifyContent: 'center', opacity: savingOdometer ? 0.7 : 1 }]}
-								onPress={handleSaveManualOdometer}
-								disabled={savingOdometer}
-							>
-								{savingOdometer ? (
-									<ActivityIndicator size="small" color={colors.ivory1} />
-								) : (
-									<>
-										<Ionicons name="checkmark" size={18} color={colors.ivory1} />
-										<Text style={styles.saveText}>Save</Text>
-									</>
-								)}
-							</TouchableOpacity>
-						</View>
+
 					</View>
 				</View>
 			</Modal>
