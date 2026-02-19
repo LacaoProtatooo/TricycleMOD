@@ -9,6 +9,7 @@ import { useAsyncSQLiteContext } from '../../utils/asyncSQliteProvider';
 import VehicleDiagnostic, { getWearColor } from './VehicleDiagnostic';
 import PredictiveMaintenance from './PredictiveMaintenance';
 import ServiceHistory from './ServiceHistory';
+import RideExperienceSurvey from './RideExperienceSurvey';
 import { API_URL } from '../../utils/config';
 
 // Import from maintenance module
@@ -41,7 +42,7 @@ const MaintenanceTracker = ({ tricycleId, serverHistory }) => {
 	const [notifiedItems, setNotifiedItems] = useState({}); // Track which items have been notified
 	const [lastServiceDates, setLastServiceDates] = useState({}); // { itemKey: ISODate }
 	const hasCheckedNotifications = useRef(false);
-	const [activeTab, setActiveTab] = useState('schedule'); // 'schedule' | 'predictive' | 'history'
+	const [activeTab, setActiveTab] = useState('schedule'); // 'schedule' | 'predictive' | 'history' | 'checkup'
 	const [wearPatterns, setWearPatterns] = useState({});
 	const [plateNumber, setPlateNumber] = useState(null);
 	
@@ -1235,6 +1236,19 @@ const MaintenanceTracker = ({ tricycleId, serverHistory }) => {
 					</Text>
 				</TouchableOpacity>
 				<TouchableOpacity 
+					style={[styles.tab, activeTab === 'checkup' && styles.tabActive]}
+					onPress={() => setActiveTab('checkup')}
+				>
+					<Ionicons 
+						name="medkit-outline" 
+						size={16} 
+						color={activeTab === 'checkup' ? colors.primary : colors.orangeShade5} 
+					/>
+					<Text style={[styles.tabText, activeTab === 'checkup' && styles.tabTextActive]}>
+						Checkup
+					</Text>
+				</TouchableOpacity>
+				<TouchableOpacity 
 					style={[styles.tab, activeTab === 'history' && styles.tabActive]}
 					onPress={() => setActiveTab('history')}
 				>
@@ -1292,6 +1306,24 @@ const MaintenanceTracker = ({ tricycleId, serverHistory }) => {
 				<Text style={{color: 'red', marginBottom: 10, fontSize: 12}}>
 					No tricycle assigned. Data will be saved locally only.
 				</Text>
+			)}
+
+			{/* Ride Checkup Tab Content */}
+			{activeTab === 'checkup' && (
+				<ScrollView
+					nestedScrollEnabled={true}
+					contentContainerStyle={{ paddingBottom: 20 }}
+					showsVerticalScrollIndicator={false}
+				>
+					<RideExperienceSurvey 
+						tricycleId={tricycleId}
+						onDiagnosticsComplete={(issues) => {
+							if (issues && issues.length > 0) {
+								console.log(`Ride diagnostic found ${issues.length} issue(s)`);
+							}
+						}}
+					/>
+				</ScrollView>
 			)}
 
 			{/* Predictive AI Tab Content */}

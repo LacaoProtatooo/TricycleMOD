@@ -43,6 +43,13 @@ import {
     resetToDefaults
 } from "../controllers/maintenanceScheduleController.js";
 import { authUser, protect, authorize } from "../middleware/authMiddleware.js";
+import {
+    submitRideDiagnostic,
+    getRideDiagnosticHistory,
+    getLatestRideDiagnostic,
+    getRideDiagnosticStats,
+    getAdaptiveInsights,
+} from "../controllers/rideDiagnosticController.js";
 
 const router = express.Router();
 
@@ -95,5 +102,21 @@ router.get("/operator/approval-history", authUser, getMaintenanceApprovalHistory
 
 // ==================== ADMIN: RESET TO DEFAULTS ====================
 router.post("/admin/reset", protect, authorize('admin'), resetToDefaults);
+
+// ==================== RIDE EXPERIENCE DIAGNOSTICS ====================
+// Submit ride diagnostic survey
+router.post("/tricycle/:tricycleId/ride-diagnostic", authUser, submitRideDiagnostic);
+
+// Get ride diagnostic history for a tricycle
+router.get("/tricycle/:tricycleId/ride-diagnostics", authUser, getRideDiagnosticHistory);
+
+// Get latest ride diagnostic for a tricycle
+router.get("/tricycle/:tricycleId/ride-diagnostic/latest", authUser, getLatestRideDiagnostic);
+
+// Get ride diagnostic statistics for a tricycle
+router.get("/tricycle/:tricycleId/ride-diagnostic/stats", authUser, getRideDiagnosticStats);
+
+// Get adaptive learning insights for a tricycle
+router.get("/tricycle/:tricycleId/ride-diagnostic/insights", authUser, getAdaptiveInsights);
 
 export default router;
