@@ -63,6 +63,17 @@ const AppDrawer = ({ closeDrawer, navigation }) => {
     );
   };
 
+  const renderLabel = (text, customStyle) => (
+    <Text
+      numberOfLines={1}
+      adjustsFontSizeToFit
+      minimumFontScale={0.7}
+      style={[styles.drawerLabel, customStyle]}
+    >
+      {text}
+    </Text>
+  );
+
   return (
     <View style={styles.overlay}>
       {/* Drawer container on the LEFT - takes half screen */}
@@ -120,8 +131,7 @@ const AppDrawer = ({ closeDrawer, navigation }) => {
               {user?.role !== 'operator' && !isDriverSuspended && (
                 <DrawerItem
                   icon={({ focused }) => renderIcon('home', focused)}
-                  label="Home"
-                  labelStyle={styles.drawerLabel}
+                  label={() => renderLabel('Home')}
                   activeBackgroundColor={`${colors.ivory4}CC`}
                   activeTintColor={colors.primary}
                   inactiveTintColor={colors.orangeShade8}
@@ -144,8 +154,7 @@ const AppDrawer = ({ closeDrawer, navigation }) => {
                       />
                     </View>
                   )}
-                  label="Suspension Status"
-                  labelStyle={[styles.drawerLabel, { color: colors.error }]}
+                  label={() => renderLabel('Suspension Status', { color: colors.error })}
                   activeBackgroundColor={`${colors.ivory4}CC`}
                   activeTintColor={colors.error}
                   inactiveTintColor={colors.error}
@@ -161,8 +170,7 @@ const AppDrawer = ({ closeDrawer, navigation }) => {
                 <>
                   <DrawerItem
                     icon={({ focused }) => renderIcon('log-in-outline', focused)}
-                    label="Login"
-                    labelStyle={styles.drawerLabel}
+                    label={() => renderLabel('Login')}
                     activeBackgroundColor={`${colors.ivory4}CC`}
                     activeTintColor={colors.primary}
                     inactiveTintColor={colors.orangeShade8}
@@ -173,8 +181,7 @@ const AppDrawer = ({ closeDrawer, navigation }) => {
                   />
                   <DrawerItem
                     icon={({ focused }) => renderIcon('person-add-outline', focused)}
-                    label="Signup"
-                    labelStyle={styles.drawerLabel}
+                    label={() => renderLabel('Signup')}
                     activeBackgroundColor={`${colors.ivory4}CC`}
                     activeTintColor={colors.primary}
                     inactiveTintColor={colors.orangeShade8}
@@ -185,8 +192,7 @@ const AppDrawer = ({ closeDrawer, navigation }) => {
                   />
                   <DrawerItem
                     icon={({ focused }) => renderIcon('alert-circle-outline', focused)}
-                    label="About"
-                    labelStyle={styles.drawerLabel}
+                    label={() => renderLabel('About')}
                     activeBackgroundColor={`${colors.ivory4}CC`}
                     activeTintColor={colors.primary}
                     inactiveTintColor={colors.orangeShade8}
@@ -203,8 +209,7 @@ const AppDrawer = ({ closeDrawer, navigation }) => {
                 <>
                   <DrawerItem
                     icon={({ focused }) => renderIcon('person-outline', focused)}
-                    label="Account"
-                    labelStyle={styles.drawerLabel}
+                    label={() => renderLabel('Account')}
                     activeBackgroundColor={`${colors.ivory4}CC`}
                     activeTintColor={colors.primary}
                     inactiveTintColor={colors.orangeShade8}
@@ -218,8 +223,7 @@ const AppDrawer = ({ closeDrawer, navigation }) => {
                   {!isDriverSuspended && (
                     <DrawerItem
                       icon={({ focused }) => renderIcon('people-circle-outline', focused)}
-                      label="Forum"
-                      labelStyle={styles.drawerLabel}
+                      label={() => renderLabel('Forum')}
                       activeBackgroundColor={`${colors.ivory4}CC`}
                       activeTintColor={colors.primary}
                       inactiveTintColor={colors.orangeShade8}
@@ -232,8 +236,7 @@ const AppDrawer = ({ closeDrawer, navigation }) => {
 
                   <DrawerItem
                     icon={({ focused }) => renderIcon('chatbubble-ellipses-outline', focused)}
-                    label="Notifications"
-                    labelStyle={styles.drawerLabel}
+                    label={() => renderLabel('Notifications')}
                     activeBackgroundColor={`${colors.ivory4}CC`}
                     activeTintColor={colors.primary}
                     inactiveTintColor={colors.orangeShade8}
@@ -248,8 +251,7 @@ const AppDrawer = ({ closeDrawer, navigation }) => {
                     <>
                       <DrawerItem
                         icon={({ focused }) => renderIcon('settings-outline', focused)}
-                        label="Operator"
-                        labelStyle={styles.drawerLabel}
+                        label={() => renderLabel('Operator')}
                         activeBackgroundColor={`${colors.ivory4}CC`}
                         activeTintColor={colors.primary}
                         inactiveTintColor={colors.orangeShade8}
@@ -260,8 +262,7 @@ const AppDrawer = ({ closeDrawer, navigation }) => {
                       />
                       <DrawerItem
                         icon={({ focused }) => renderIcon('cash-outline', focused)}
-                        label="Boundary Settlements"
-                        labelStyle={styles.drawerLabel}
+                        label={() => renderLabel('Boundary Settlements')}
                         activeBackgroundColor={`${colors.ivory4}CC`}
                         activeTintColor={colors.primary}
                         inactiveTintColor={colors.orangeShade8}
@@ -277,8 +278,7 @@ const AppDrawer = ({ closeDrawer, navigation }) => {
                   {user.role === 'driver' && !isDriverSuspended && (
                     <DrawerItem
                       icon={({ focused }) => renderIcon('medical-outline', focused)}
-                      label="Sick Leave"
-                      labelStyle={styles.drawerLabel}
+                      label={() => renderLabel('Sick Leave')}
                       activeBackgroundColor={`${colors.ivory4}CC`}
                       activeTintColor={colors.primary}
                       inactiveTintColor={colors.orangeShade8}
@@ -291,8 +291,7 @@ const AppDrawer = ({ closeDrawer, navigation }) => {
 
                   <DrawerItem
                     icon={({ focused }) => renderIcon('alert-circle-outline', focused)}
-                    label="About"
-                    labelStyle={styles.drawerLabel}
+                    label={() => renderLabel('About')}
                     activeBackgroundColor={`${colors.ivory4}CC`}
                     activeTintColor={colors.primary}
                     inactiveTintColor={colors.orangeShade8}
@@ -306,8 +305,7 @@ const AppDrawer = ({ closeDrawer, navigation }) => {
                   {!isDriverSuspended && (
                     <DrawerItem
                       icon={({ focused }) => renderIcon('cube-outline', focused)}
-                      label="Lost & Found"
-                      labelStyle={styles.drawerLabel}
+                      label={() => renderLabel('Lost & Found')}
                       activeBackgroundColor={`${colors.ivory4}CC`}
                       activeTintColor={colors.primary}
                       inactiveTintColor={colors.orangeShade8}
@@ -322,8 +320,7 @@ const AppDrawer = ({ closeDrawer, navigation }) => {
                   {(user.role === 'driver' || user.role === 'operator') && (
                     <DrawerItem
                       icon={({ focused }) => renderIcon('document-text-outline', focused)}
-                      label="Rules & Regulations"
-                      labelStyle={styles.drawerLabel}
+                      label={() => renderLabel('Rules & Regulations')}
                       activeBackgroundColor={`${colors.ivory4}CC`}
                       activeTintColor={colors.primary}
                       inactiveTintColor={colors.orangeShade8}
@@ -463,11 +460,10 @@ const styles = StyleSheet.create({
     marginTop: spacing.small,
   },
   drawerLabel: {
-    fontSize: 14,
+    fontSize: 16,
     fontFamily: fonts.regular,
-    fontWeight: '500',
-    flexShrink: 1,
-    flexWrap: 'wrap',
+    fontWeight: '600',
+    color: colors.orangeShade8,
   },
   iconContainer: {
     width: 40,
