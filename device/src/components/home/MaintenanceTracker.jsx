@@ -43,6 +43,7 @@ const MaintenanceTracker = ({ tricycleId, serverHistory }) => {
 	const [lastServiceDates, setLastServiceDates] = useState({}); // { itemKey: ISODate }
 	const hasCheckedNotifications = useRef(false);
 	const [activeTab, setActiveTab] = useState('schedule'); // 'schedule' | 'predictive' | 'history' | 'checkup'
+	const [scheduleFilter, setScheduleFilter] = useState('all'); // 'all' | 'critical' | 'attention'
 	const [wearPatterns, setWearPatterns] = useState({});
 	const [plateNumber, setPlateNumber] = useState(null);
 	
@@ -1278,10 +1279,17 @@ const MaintenanceTracker = ({ tricycleId, serverHistory }) => {
 
 			{/* Critical/Worn Summary Banner */}
 			{(criticalCount > 0 || wornCount > 0) && (
-				<View style={[
-					styles.alertBanner, 
-					criticalCount > 0 ? styles.criticalBanner : styles.wornBanner
-				]}>
+				<TouchableOpacity 
+					activeOpacity={0.8}
+					onPress={() => {
+						setActiveTab('schedule');
+						setScheduleFilter(criticalCount > 0 ? 'critical' : 'attention');
+					}}
+					style={[
+						styles.alertBanner, 
+						criticalCount > 0 ? styles.criticalBanner : styles.wornBanner
+					]}
+				>
 					<Ionicons 
 						name={criticalCount > 0 ? "warning" : "alert-circle"} 
 						size={20} 
@@ -1293,13 +1301,10 @@ const MaintenanceTracker = ({ tricycleId, serverHistory }) => {
 							: `${wornCount} item(s) approaching maintenance due`
 						}
 					</Text>
-					<TouchableOpacity 
-						style={styles.alertButton}
-						onPress={handleCheckCritical}
-					>
-						<Ionicons name="notifications" size={16} color="#FFF" />
-					</TouchableOpacity>
-				</View>
+					<View style={styles.alertButton}>
+						<Ionicons name="funnel" size={16} color="#FFF" />
+					</View>
+				</TouchableOpacity>
 			)}
 
 			{!tricycleId && (
@@ -1378,6 +1383,8 @@ const MaintenanceTracker = ({ tricycleId, serverHistory }) => {
 						onMarkDone={markDone}
 						onDefer={handleSkipMaintenance}
 						schedule={maintenanceSchedule}
+						filter={scheduleFilter}
+						onClearFilter={() => setScheduleFilter('all')}
 					/>
 				</ScrollView>
 			)}
