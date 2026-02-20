@@ -233,7 +233,7 @@ export default function AssignDriverModal({
                   {/* Boundary/Koding Section */}
                   <View style={localStyles.boundarySection}>
                     <Text style={localStyles.boundarySectionTitle}>
-                      <Ionicons name="cash-outline" size={16} /> Boundary (Koding)
+                      <Ionicons name="cash-outline" size={16} /> Boundary
                     </Text>
                     <Text style={localStyles.sectionHint}>
                       Set the boundary amount for this driver
@@ -320,7 +320,7 @@ export default function AssignDriverModal({
                   {assignmentType === 'exclusive' && (
                     <View style={localStyles.boundarySection}>
                       <Text style={localStyles.boundarySectionTitle}>
-                        <Ionicons name="cash-outline" size={16} /> Boundary (Koding)
+                        <Ionicons name="cash-outline" size={16} /> Boundary 
                       </Text>
                       
                       <Text style={localStyles.boundaryRate}>

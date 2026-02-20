@@ -69,8 +69,6 @@ export default function OverviewTab({
   // Calculate statistics
   const stats = useMemo(() => {
     const total = tricycles.length;
-    const active = tricycles.filter(t => t.status === 'available' || t.status === 'active').length;
-    const inactive = tricycles.filter(t => t.status === 'unavailable' || t.status === 'inactive').length;
     const assigned = tricycles.filter(t => t.driverId || t.driver).length;
     const unassigned = tricycles.filter(t => !t.driverId && !t.driver).length;
     
@@ -87,16 +85,12 @@ export default function OverviewTab({
       });
     }).length;
 
-    return { total, active, inactive, assigned, unassigned, needsMaintenance };
+    return { total, assigned, unassigned, needsMaintenance };
   }, [tricycles]);
 
   // Filter tricycles based on active filter
   const filteredTricycles = useMemo(() => {
     switch (activeFilter) {
-      case 'active':
-        return tricycles.filter(t => t.status === 'available' || t.status === 'active');
-      case 'inactive':
-        return tricycles.filter(t => t.status === 'unavailable' || t.status === 'inactive');
       case 'assigned':
         return tricycles.filter(t => t.driverId || t.driver);
       case 'unassigned':
@@ -152,12 +146,8 @@ export default function OverviewTab({
               <WeatherWidget />
             </View>
 
-            {/* Stats Cards */}
-            <ScrollView 
-              horizontal 
-              showsHorizontalScrollIndicator={false}
-              contentContainerStyle={localStyles.statsContainer}
-            >
+            {/* Stats Cards (fill width) */}
+            <View style={localStyles.statsRow}>
               <StatCard 
                 icon="car-sport" 
                 label="Total" 
@@ -165,22 +155,6 @@ export default function OverviewTab({
                 color="#3B82F6"
                 onPress={() => setActiveFilter('all')}
                 isActive={activeFilter === 'all'}
-              />
-              <StatCard 
-                icon="checkmark-circle" 
-                label="Active" 
-                value={stats.active}
-                color="#22C55E"
-                onPress={() => setActiveFilter('active')}
-                isActive={activeFilter === 'active'}
-              />
-              <StatCard 
-                icon="close-circle" 
-                label="Inactive" 
-                value={stats.inactive}
-                color="#EF4444"
-                onPress={() => setActiveFilter('inactive')}
-                isActive={activeFilter === 'inactive'}
               />
               <StatCard 
                 icon="person" 
@@ -198,7 +172,7 @@ export default function OverviewTab({
                 onPress={() => setActiveFilter('unassigned')}
                 isActive={activeFilter === 'unassigned'}
               />
-            </ScrollView>
+            </View>
 
             {/* Maintenance Alert */}
             {stats.needsMaintenance > 0 && (
@@ -298,7 +272,8 @@ const localStyles = StyleSheet.create({
     borderRadius: 12,
     padding: spacing.medium,
     alignItems: 'center',
-    minWidth: 85,
+    flex: 1,
+    marginHorizontal: 6,
     borderWidth: 1,
     borderColor: colors.ivory3,
     shadowColor: '#000',
@@ -384,5 +359,12 @@ const localStyles = StyleSheet.create({
   sectionCount: {
     fontSize: 12,
     color: colors.orangeShade5,
+  },
+  statsRow: {
+    flexDirection: 'row',
+    alignItems: 'stretch',
+    justifyContent: 'space-between',
+    paddingHorizontal: spacing.medium,
+    paddingVertical: spacing.small,
   },
 });
