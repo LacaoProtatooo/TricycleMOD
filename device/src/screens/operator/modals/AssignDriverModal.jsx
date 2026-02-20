@@ -242,6 +242,21 @@ export default function AssignDriverModal({
                     <Text style={localStyles.boundaryRate}>
                       Daily Rate: ₱{boundary.amount}
                     </Text>
+
+                    <View style={localStyles.customAmountRow}>
+                      <Text style={localStyles.customAmountLabel}>Custom Amount:</Text>
+                      <TextInput
+                        style={localStyles.customAmountInput}
+                        value={boundary.amount ? String(boundary.amount) : ''}
+                        onChangeText={(t) => {
+                          const num = parseInt(t.replace(/[^0-9]/g, ''), 10);
+                          setBoundary({ ...boundary, amount: isNaN(num) ? 0 : num });
+                        }}
+                        placeholder="e.g. 335"
+                        keyboardType="numeric"
+                        maxLength={5}
+                      />
+                    </View>
                     
                     <ScrollView 
                       horizontal 
@@ -326,6 +341,21 @@ export default function AssignDriverModal({
                       <Text style={localStyles.boundaryRate}>
                         Daily Rate: ₱{boundary.amount}
                       </Text>
+
+                      <View style={localStyles.customAmountRow}>
+                        <Text style={localStyles.customAmountLabel}>Custom Amount:</Text>
+                        <TextInput
+                          style={localStyles.customAmountInput}
+                          value={boundary.amount ? String(boundary.amount) : ''}
+                          onChangeText={(t) => {
+                            const num = parseInt(t.replace(/[^0-9]/g, ''), 10);
+                            setBoundary({ ...boundary, amount: isNaN(num) ? 0 : num });
+                          }}
+                          placeholder="e.g. 335"
+                          keyboardType="numeric"
+                          maxLength={5}
+                        />
+                      </View>
                       
                       <ScrollView 
                         horizontal 
@@ -681,6 +711,27 @@ const localStyles = StyleSheet.create({
     fontSize: 14,
     marginBottom: 8,
     fontWeight: '500',
+  },
+  customAmountRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+    gap: 8,
+  },
+  customAmountLabel: {
+    fontSize: 13,
+    fontWeight: '500',
+    color: '#495057',
+  },
+  customAmountInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: '#dee2e6',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    fontSize: 14,
+    backgroundColor: '#fff',
   },
   boundaryScroll: {
     marginBottom: 8,

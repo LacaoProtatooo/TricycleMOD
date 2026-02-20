@@ -8,6 +8,43 @@ import { getCodingDayName, isTodayCodingDay } from '../../utils/codingDayUtils';
 // Tricycle logo
 const TricycleLogo = require('../../../assets/webttrac_logo_bgrm.png');
 
+// Day abbreviations mapping
+const DAY_ABBREVS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+// Check if a driver has a schedule for today
+const isDriverScheduledToday = (tricycle) => {
+  const today = DAY_ABBREVS[new Date().getDay()];
+  
+  // If tricycle has schedules (shared mode), check if any schedule covers today
+  if (tricycle.schedules && tricycle.schedules.length > 0) {
+    return tricycle.schedules.some(sch => sch.days && sch.days.includes(today));
+  }
+  
+  // If exclusive driver with no schedules, they're always scheduled
+  return true;
+};
+
+// Get effective status considering schedule
+const getEffectiveStatus = (tricycle) => {
+  const hasDriver = tricycle.driverId || tricycle.driver;
+  
+  // If no driver at all, it's unavailable
+  if (!hasDriver) return tricycle.status || 'unavailable';
+  
+  // If there are shared schedules, check if anyone is scheduled today
+  if (tricycle.schedules && tricycle.schedules.length > 0) {
+    if (!isDriverScheduledToday(tricycle)) {
+      // No driver scheduled today — tricycle is available for use
+      return 'available';
+    }
+    // Driver is scheduled today — tricycle is in use
+    return 'unavailable';
+  }
+  
+  // Exclusive driver (no schedules) — always in use
+  return tricycle.status || 'available';
+};
+
 // Helper function to get interval for maintenance items
 const getIntervalForItem = (itemKey) => {
   const intervals = {
@@ -58,6 +95,10 @@ export default function TricycleListItem({
   // Calculate maintenance health
   const maintenanceHealth = useMemo(() => getMaintenanceHealth(tricycle), [tricycle]);
   
+  // Get effective status (considers schedule)
+  const effectiveStatus = useMemo(() => getEffectiveStatus(tricycle), [tricycle]);
+  const scheduledToday = useMemo(() => isDriverScheduledToday(tricycle), [tricycle]);
+  
   // Get status color
   const getStatusColor = (status) => {
     switch (status?.toLowerCase()) {
@@ -87,7 +128,7 @@ export default function TricycleListItem({
           top: 0,
           bottom: 0,
           width: 4,
-          backgroundColor: getStatusColor(tricycle.status),
+          backgroundColor: getStatusColor(effectiveStatus),
           borderTopLeftRadius: 10,
           borderBottomLeftRadius: 10,
         }} />
@@ -140,10 +181,10 @@ export default function TricycleListItem({
                 width: 8, 
                 height: 8, 
                 borderRadius: 4, 
-                backgroundColor: getStatusColor(tricycle.status),
+                backgroundColor: getStatusColor(effectiveStatus),
                 marginRight: 4 
               }} />
-              <Text style={styles.meta}>{tricycle.status || 'unavailable'}</Text>
+              <Text style={styles.meta}>{effectiveStatus}</Text>
             </View>
             <Text style={styles.meta}>•</Text>
             <Text style={styles.meta}>{tricycle.model || 'N/A'}</Text>
@@ -154,6 +195,29 @@ export default function TricycleListItem({
               </>
             )}
           </View>
+          {/* No Schedule Today Badge */}
+          {hasDriver && !scheduledToday && tricycle.schedules?.length > 0 && (
+            <View style={{ 
+              flexDirection: 'row', 
+              alignItems: 'center', 
+              marginTop: 6,
+              backgroundColor: '#d4edda',
+              paddingHorizontal: 8,
+              paddingVertical: 3,
+              borderRadius: 12,
+              alignSelf: 'flex-start',
+            }}>
+              <Ionicons name="calendar-outline" size={12} color="#155724" />
+              <Text style={{ 
+                fontSize: 11, 
+                color: '#155724',
+                marginLeft: 4,
+                fontWeight: '500',
+              }}>
+                No driver scheduled today — Available
+              </Text>
+            </View>
+          )}
           {/* Coding Day Badge */}
           {tricycle.codingDay !== null && tricycle.codingDay !== undefined && (
             <View style={{ 

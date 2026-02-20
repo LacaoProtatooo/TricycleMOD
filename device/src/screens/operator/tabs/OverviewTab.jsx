@@ -21,6 +21,28 @@ import styles from '../operatorStyles';
 
 const { width: screenWidth } = Dimensions.get('window');
 
+// Day abbreviations mapping
+const DAY_ABBREVS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+// Check if a driver has a schedule for today
+const isDriverScheduledToday = (tricycle) => {
+  const today = DAY_ABBREVS[new Date().getDay()];
+  if (tricycle.schedules && tricycle.schedules.length > 0) {
+    return tricycle.schedules.some(sch => sch.days && sch.days.includes(today));
+  }
+  return true;
+};
+
+// Check if tricycle is effectively available today (no driver scheduled)
+const isTricycleAvailableToday = (tricycle) => {
+  const hasDriver = tricycle.driverId || tricycle.driver;
+  if (!hasDriver) return true; // no driver = unassigned = available
+  if (tricycle.schedules && tricycle.schedules.length > 0) {
+    return !isDriverScheduledToday(tricycle);
+  }
+  return false;
+};
+
 // Stats Card Component
 const StatCard = ({ icon, label, value, color, onPress, isActive }) => (
   <TouchableOpacity 
@@ -71,11 +93,15 @@ export default function OverviewTab({
     const total = tricycles.length;
     const assigned = tricycles.filter(t => t.driverId || t.driver).length;
     const unassigned = tricycles.filter(t => !t.driverId && !t.driver).length;
+    // Tricycles that have a driver but no schedule today (effectively available)
+    const availableToday = tricycles.filter(t => {
+      const hasDriver = t.driverId || t.driver;
+      return hasDriver && isTricycleAvailableToday(t);
+    }).length;
     
     // Check maintenance status
     const needsMaintenance = tricycles.filter(t => {
       if (!t.maintenanceHistory || t.maintenanceHistory.length === 0) return false;
-      // Check if any maintenance item is at critical level (>80%)
       const currentKm = t.currentOdometer || 0;
       return t.maintenanceHistory.some(item => {
         const lastKm = item.lastServiceKm || 0;
@@ -85,7 +111,7 @@ export default function OverviewTab({
       });
     }).length;
 
-    return { total, assigned, unassigned, needsMaintenance };
+    return { total, assigned, unassigned, availableToday, needsMaintenance };
   }, [tricycles]);
 
   // Filter tricycles based on active filter
@@ -95,6 +121,11 @@ export default function OverviewTab({
         return tricycles.filter(t => t.driverId || t.driver);
       case 'unassigned':
         return tricycles.filter(t => !t.driverId && !t.driver);
+      case 'availableToday':
+        return tricycles.filter(t => {
+          const hasDriver = t.driverId || t.driver;
+          return hasDriver && isTricycleAvailableToday(t);
+        });
       case 'maintenance':
         return tricycles.filter(t => {
           if (!t.maintenanceHistory || t.maintenanceHistory.length === 0) return false;
@@ -172,6 +203,16 @@ export default function OverviewTab({
                 onPress={() => setActiveFilter('unassigned')}
                 isActive={activeFilter === 'unassigned'}
               />
+              {stats.availableToday > 0 && (
+                <StatCard 
+                  icon="calendar-outline" 
+                  label="Free Today" 
+                  value={stats.availableToday}
+                  color="#22C55E"
+                  onPress={() => setActiveFilter('availableToday')}
+                  isActive={activeFilter === 'availableToday'}
+                />
+              )}
             </View>
 
             {/* Maintenance Alert */}

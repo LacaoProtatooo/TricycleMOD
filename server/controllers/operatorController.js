@@ -314,6 +314,8 @@ export const getOperatorOverview = async (req, res) => {
         maintenanceHistory: tricycle.maintenanceHistory || [],
         schedules: tricycle.schedules || [],
         currentOdometer: tricycle.currentOdometer || 0,
+        codingDay: tricycle.codingDay !== undefined ? tricycle.codingDay : null,
+        boundary: tricycle.boundary || null,
         createdAt: tricycle.createdAt,
         updatedAt: tricycle.updatedAt,
       };
@@ -485,11 +487,13 @@ export const assignDriverToTricycle = async (req, res) => {
         if (!tricycle.driver) {
             tricycle.driver = driverId;
         }
+        tricycle.status = 'available';
 
     } else {
         // Exclusive Assignment Logic
         tricycle.schedules = []; 
         tricycle.driver = driverId;
+        tricycle.status = 'available';
     }
 
     await tricycle.save();
@@ -555,10 +559,16 @@ export const unassignDriverFromTricycle = async (req, res) => {
         if (tricycle.driver && tricycle.driver.toString() === driverId) {
             tricycle.driver = null;
         }
+        
+        // If no driver and no schedules left, mark unavailable
+        if (!tricycle.driver && (!tricycle.schedules || tricycle.schedules.length === 0)) {
+            tricycle.status = 'unavailable';
+        }
     } else {
         // Unassign ALL
         tricycle.driver = null;
         tricycle.schedules = [];
+        tricycle.status = 'unavailable';
     }
 
     await tricycle.save();

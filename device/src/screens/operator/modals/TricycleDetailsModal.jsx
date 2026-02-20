@@ -289,15 +289,11 @@ export default function TricycleDetailsModal({
       return;
     }
     
-    // Warn if odometer is being set lower than current
+    // Block if odometer is being set lower than current (illegal)
     if (currentOdometer && newOdometer < currentOdometer) {
       Alert.alert(
-        'Confirm Lower Reading',
-        `The new reading (${newOdometer} km) is lower than the current reading (${Math.round(currentOdometer)} km). Are you sure this is correct?`,
-        [
-          { text: 'Cancel', style: 'cancel' },
-          { text: 'Yes, Update', onPress: () => saveOdometerReading(newOdometer) }
-        ]
+        'Invalid Reading',
+        `The new reading (${newOdometer} km) cannot be lower than the current reading (${Math.round(currentOdometer)} km). Odometer rollback is not allowed.`
       );
       return;
     }
@@ -750,8 +746,25 @@ export default function TricycleDetailsModal({
 
       {/* Manual Odometer Input Modal */}
       <Modal visible={showOdometerModal} animationType="fade" transparent>
-        <View style={localStyles.pickerOverlay}>
-          <View style={[localStyles.pickerContainer, { maxHeight: 320 }]}>
+        <View style={{
+          flex: 1,
+          backgroundColor: 'rgba(0,0,0,0.9)',
+          justifyContent: 'center',
+          alignItems: 'center',
+          padding: 20,
+        }}>
+          <View style={{
+            backgroundColor: '#FFFFFF',
+            borderRadius: 16,
+            padding: 20,
+            width: '100%',
+            maxWidth: 340,
+            elevation: 10,
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 4 },
+            shadowOpacity: 0.3,
+            shadowRadius: 8,
+          }}>
             <View style={localStyles.pickerHeader}>
               <Ionicons name="speedometer" size={24} color={colors.primary} />
               <Text style={[localStyles.pickerTitle, { marginLeft: 8 }]}>Update Odometer</Text>
@@ -772,11 +785,11 @@ export default function TricycleDetailsModal({
                 <TextInput
                   style={{
                     flex: 1,
-                    backgroundColor: colors.white,
+                    backgroundColor: '#F9FAFB',
                     paddingVertical: 12,
                     paddingHorizontal: 16,
                     borderRadius: 10,
-                    borderWidth: 1,
+                    borderWidth: 1.5,
                     borderColor: colors.orangeShade3,
                     fontSize: 20,
                     fontWeight: '700',
@@ -839,15 +852,15 @@ export default function TricycleDetailsModal({
 const localStyles = StyleSheet.create({
   modalOverlay: {
     flex: 1,
-    backgroundColor: 'rgba(0,0,0,0.6)',
+    backgroundColor: 'rgba(0,0,0,0.85)',
     justifyContent: 'flex-end',
   },
   modalContainer: {
     backgroundColor: '#FAFAFA',
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
-    maxHeight: screenHeight * 0.92,
-    minHeight: screenHeight * 0.75,
+    height: screenHeight * 0.92,
+    overflow: 'hidden',
   },
   handleBar: {
     width: 40,
