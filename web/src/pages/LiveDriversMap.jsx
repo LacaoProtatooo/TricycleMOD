@@ -1,13 +1,7 @@
 import { useCallback, useEffect, useState, useRef } from "react";
 import { useDispatch, useSelector } from "react-redux";
-import {
-  GoogleMap,
-  useJsApiLoader,
-  Polyline,
-  Polygon,
-  Marker,
-  InfoWindow,
-} from "@react-google-maps/api";
+import { MapContainer, TileLayer, Polyline, Polygon, Marker, Popup, useMap } from "react-leaflet";
+import L from "leaflet";
 import PageMeta from "../components/common/PageMeta";
 import PageBreadCrumb from "../components/common/PageBreadCrumb";
 import { fetchActiveDrivers } from "../redux/actions/liveTrackingAction";
@@ -32,29 +26,46 @@ const containerStyle = {
   borderRadius: "16px",
 };
 
-// Map options
-const mapOptions = {
-  mapTypeId: "roadmap",
-  mapTypeControl: true,
-  mapTypeControlOptions: {
-    position: 3, // TOP_RIGHT
-  },
-  streetViewControl: false,
-  fullscreenControl: true,
-  zoomControl: true,
+// Leaflet DivIcon for tricycle markers
+const createTricycleIcon = (heading = 0, isSelected = false) => {
+  const color = isSelected ? "#2563eb" : "#FF6B00";
+  const size = isSelected ? 32 : 26;
+  return L.divIcon({
+    className: "",
+    html: `<div style="
+      width: ${size}px; height: ${size}px;
+      background: ${color};
+      border: 2px solid #fff;
+      border-radius: 50% 50% 50% 0;
+      transform: rotate(-45deg);
+      box-shadow: 0 2px 6px rgba(0,0,0,0.35);
+    "></div>`,
+    iconSize: [size, size],
+    iconAnchor: [size / 2, size],
+    popupAnchor: [0, -size],
+  });
 };
 
-// Tricycle marker icon (SVG path for tricycle shape)
-const createTricycleIcon = (heading = 0, isSelected = false) => ({
-  path: "M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z",
-  fillColor: isSelected ? "#2563eb" : "#FF6B00",
-  fillOpacity: 1,
-  strokeWeight: 2,
-  strokeColor: "#ffffff",
-  scale: isSelected ? 1.8 : 1.5,
-  anchor: { x: 12, y: 22 },
-  rotation: heading,
-});
+// Component to fit map bounds to route on load
+function FitBounds({ coords }) {
+  const map = useMap();
+  useEffect(() => {
+    if (coords.length > 0) {
+      const bounds = L.latLngBounds(coords.map((c) => [c.lat, c.lng]));
+      map.fitBounds(bounds, { padding: [20, 20] });
+    }
+  }, [map, coords]);
+  return null;
+}
+
+// Component to expose map instance via ref callback
+function MapController({ onMapReady }) {
+  const map = useMap();
+  useEffect(() => {
+    onMapReady(map);
+  }, [map, onMapReady]);
+  return null;
+}
 
 // Helper functions for buffer polygon (same as WebttodaRouteMap)
 const offsetPoint = (lat, lng, bearing, distanceMeters) => {
@@ -234,15 +245,13 @@ export default function LiveDriversMap() {
     (state) => state.liveTracking
   );
 
-  const [map, setMap] = useState(null);
+  const [mapInstance, setMapInstance] = useState(null);
   const [bufferPolygon, setBufferPolygon] = useState([]);
-  const [infoWindowOpen, setInfoWindowOpen] = useState(null);
   const refreshIntervalRef = useRef(null);
 
-  const { isLoaded, loadError } = useJsApiLoader({
-    id: "google-map-script",
-    googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "",
-  });
+  const handleMapReady = useCallback((map) => {
+    setMapInstance(map);
+  }, []);
 
   // Fetch active drivers on mount
   useEffect(() => {
@@ -273,27 +282,12 @@ export default function LiveDriversMap() {
     setBufferPolygon(polygon);
   }, []);
 
-  const onLoad = useCallback((map) => {
-    const bounds = new window.google.maps.LatLngBounds();
-    webttodaRouteCoordinates.forEach((coord) => {
-      bounds.extend(coord);
-    });
-    map.fitBounds(bounds);
-    setMap(map);
-  }, []);
-
-  const onUnmount = useCallback(() => {
-    setMap(null);
-  }, []);
-
   const handleMarkerClick = (driver) => {
     dispatch(selectDriver(driver));
-    setInfoWindowOpen(driver.driver?._id);
   };
 
-  const handleInfoWindowClose = () => {
+  const handlePopupClose = () => {
     dispatch(clearSelectedDriver());
-    setInfoWindowOpen(null);
   };
 
   const handleManualRefresh = () => {
@@ -316,23 +310,9 @@ export default function LiveDriversMap() {
     return `${kmh} km/h`;
   };
 
-  if (loadError) {
-    return (
-      <>
-        <PageMeta title="Live Tracking | WEBT-TRaC Admin Dashboard" />
-        <PageBreadCrumb pageTitle="Live Driver Tracking" />
-        <div className="flex items-center justify-center h-[500px] bg-gray-100 dark:bg-gray-800 rounded-2xl">
-          <div className="text-center">
-            <svg className="w-16 h-16 text-gray-400 mx-auto mb-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7" />
-            </svg>
-            <p className="text-gray-500 dark:text-gray-400">Error loading Google Maps</p>
-            <p className="text-sm text-gray-400 dark:text-gray-500 mt-1">Please check your API key configuration</p>
-          </div>
-        </div>
-      </>
-    );
-  }
+  // Convert {lat, lng} to [lat, lng] for Leaflet
+  const routePositions = webttodaRouteCoordinates.map((c) => [c.lat, c.lng]);
+  const bufferPositions = bufferPolygon.map((c) => [c.lat, c.lng]);
 
   return (
     <>
@@ -427,126 +407,116 @@ export default function LiveDriversMap() {
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
           {/* Map */}
           <div className="lg:col-span-3 bg-white dark:bg-gray-800 rounded-2xl shadow-sm overflow-hidden">
-            {!isLoaded ? (
-              <div className="flex items-center justify-center h-[500px]">
-                <div className="text-center">
-                  <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-500 mx-auto mb-4"></div>
-                  <p className="text-gray-500 dark:text-gray-400">Loading map...</p>
-                </div>
-              </div>
-            ) : (
-              <GoogleMap
-                mapContainerStyle={containerStyle}
-                center={WBT_CENTER}
-                zoom={16}
-                onLoad={onLoad}
-                onUnmount={onUnmount}
-                options={mapOptions}
-              >
-                {/* Service area buffer polygon */}
-                {mapSettings.showServiceArea && bufferPolygon.length > 0 && (
-                  <Polygon
-                    paths={bufferPolygon}
-                    options={{
-                      fillColor: "#FF6B00",
-                      fillOpacity: 0.1,
-                      strokeColor: "#FF6B00",
-                      strokeOpacity: 0.4,
-                      strokeWeight: 2,
-                    }}
-                  />
-                )}
+            <MapContainer
+              center={[WBT_CENTER.lat, WBT_CENTER.lng]}
+              zoom={16}
+              style={containerStyle}
+              scrollWheelZoom={true}
+            >
+              <TileLayer
+                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              />
+              <FitBounds coords={webttodaRouteCoordinates} />
+              <MapController onMapReady={handleMapReady} />
 
-                {/* Main route polyline */}
-                {mapSettings.showRoute && (
-                  <Polyline
-                    path={webttodaRouteCoordinates}
-                    options={{
-                      strokeColor: "#FF6B00",
-                      strokeOpacity: 0.8,
-                      strokeWeight: 3,
-                    }}
-                  />
-                )}
+              {/* Service area buffer polygon */}
+              {mapSettings.showServiceArea && bufferPositions.length > 0 && (
+                <Polygon
+                  positions={bufferPositions}
+                  pathOptions={{
+                    fillColor: "#FF6B00",
+                    fillOpacity: 0.1,
+                    color: "#FF6B00",
+                    opacity: 0.4,
+                    weight: 2,
+                  }}
+                />
+              )}
 
-                {/* Driver markers */}
-                {drivers.map((driver) => (
-                  <Marker
-                    key={driver.driver?._id || driver.tripInfo?.tripId}
-                    position={{
-                      lat: driver.currentLocation.latitude,
-                      lng: driver.currentLocation.longitude,
-                    }}
-                    icon={createTricycleIcon(
-                      driver.currentLocation.heading,
-                      selectedDriver?.driver?._id === driver.driver?._id
-                    )}
-                    onClick={() => handleMarkerClick(driver)}
-                    title={driver.driver?.name || "Unknown Driver"}
-                  >
-                    {infoWindowOpen === driver.driver?._id && (
-                      <InfoWindow
-                        onCloseClick={handleInfoWindowClose}
-                        position={{
-                          lat: driver.currentLocation.latitude,
-                          lng: driver.currentLocation.longitude,
-                        }}
-                      >
-                        <div className="p-2 min-w-[200px]">
-                          <div className="flex items-center gap-3 mb-3">
-                            {driver.driver?.image ? (
-                              <img
-                                src={driver.driver.image}
-                                alt={driver.driver.name}
-                                className="w-10 h-10 rounded-full object-cover"
-                              />
-                            ) : (
-                              <div className="w-10 h-10 rounded-full bg-orange-100 dark:bg-orange-900/30 flex items-center justify-center">
-                                <span className="text-orange-600 dark:text-orange-400 font-semibold">
-                                  {driver.driver?.name?.charAt(0) || "?"}
-                                </span>
-                              </div>
-                            )}
-                            <div>
-                              <h4 className="font-semibold text-gray-900 dark:text-white">
-                                {driver.driver?.name || "Unknown Driver"}
-                              </h4>
-                              {driver.tricycle && (
-                                <p className="text-xs text-gray-500 dark:text-gray-400">
-                                  {driver.tricycle.plateNumber} • Body #{driver.tricycle.bodyNumber}
-                                </p>
-                              )}
-                            </div>
+              {/* Main route polyline */}
+              {mapSettings.showRoute && (
+                <Polyline
+                  positions={routePositions}
+                  pathOptions={{
+                    color: "#FF6B00",
+                    opacity: 0.8,
+                    weight: 3,
+                  }}
+                />
+              )}
+
+              {/* Driver markers */}
+              {drivers.map((driver) => (
+                <Marker
+                  key={driver.driver?._id || driver.tripInfo?.tripId}
+                  position={[
+                    driver.currentLocation.latitude,
+                    driver.currentLocation.longitude,
+                  ]}
+                  icon={createTricycleIcon(
+                    driver.currentLocation.heading,
+                    selectedDriver?.driver?._id === driver.driver?._id
+                  )}
+                  eventHandlers={{
+                    click: () => handleMarkerClick(driver),
+                  }}
+                  title={driver.driver?.name || "Unknown Driver"}
+                >
+                  <Popup onClose={handlePopupClose}>
+                    <div className="p-2 min-w-[200px]">
+                      <div className="flex items-center gap-3 mb-3">
+                        {driver.driver?.image ? (
+                          <img
+                            src={driver.driver.image}
+                            alt={driver.driver.name}
+                            className="w-10 h-10 rounded-full object-cover"
+                          />
+                        ) : (
+                          <div className="w-10 h-10 rounded-full bg-orange-100 flex items-center justify-center">
+                            <span className="text-orange-600 font-semibold">
+                              {driver.driver?.name?.charAt(0) || "?"}
+                            </span>
                           </div>
-                          <div className="space-y-1 text-sm">
-                            <div className="flex justify-between">
-                              <span className="text-gray-500 dark:text-gray-400">Speed:</span>
-                              <span className="font-medium text-gray-900 dark:text-white">{formatSpeed(driver.currentLocation?.speed)}</span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span className="text-gray-500 dark:text-gray-400">Last Update:</span>
-                              <span className="font-medium text-gray-900 dark:text-white">{formatTime(driver.currentLocation?.timestamp || driver.activity?.lastActiveAt)}</span>
-                            </div>
-                            {driver.driver?.rating > 0 && (
-                              <div className="flex justify-between">
-                                <span className="text-gray-500 dark:text-gray-400">Rating:</span>
-                                <span className="font-medium text-gray-900 dark:text-white">⭐ {driver.driver.rating.toFixed(1)}</span>
-                              </div>
-                            )}
-                            {driver.driver?.tripCount > 0 && (
-                              <div className="flex justify-between">
-                                <span className="text-gray-500 dark:text-gray-400">Trips:</span>
-                                <span className="font-medium text-gray-900 dark:text-white">{driver.driver.tripCount}</span>
-                              </div>
-                            )}
-                          </div>
+                        )}
+                        <div>
+                          <h4 className="font-semibold text-gray-900">
+                            {driver.driver?.name || "Unknown Driver"}
+                          </h4>
+                          {driver.tricycle && (
+                            <p className="text-xs text-gray-500">
+                              {driver.tricycle.plateNumber} • Body #{driver.tricycle.bodyNumber}
+                            </p>
+                          )}
                         </div>
-                      </InfoWindow>
-                    )}
-                  </Marker>
-                ))}
-              </GoogleMap>
-            )}
+                      </div>
+                      <div className="space-y-1 text-sm">
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Speed:</span>
+                          <span className="font-medium text-gray-900">{formatSpeed(driver.currentLocation?.speed)}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="text-gray-500">Last Update:</span>
+                          <span className="font-medium text-gray-900">{formatTime(driver.currentLocation?.timestamp || driver.activity?.lastActiveAt)}</span>
+                        </div>
+                        {driver.driver?.rating > 0 && (
+                          <div className="flex justify-between">
+                            <span className="text-gray-500">Rating:</span>
+                            <span className="font-medium text-gray-900">⭐ {driver.driver.rating.toFixed(1)}</span>
+                          </div>
+                        )}
+                        {driver.driver?.tripCount > 0 && (
+                          <div className="flex justify-between">
+                            <span className="text-gray-500">Trips:</span>
+                            <span className="font-medium text-gray-900">{driver.driver.tripCount}</span>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </Popup>
+                </Marker>
+              ))}
+            </MapContainer>
           </div>
 
           {/* Driver List Sidebar */}
@@ -582,12 +552,11 @@ export default function LiveDriversMap() {
                           key={driver.driver?._id || driver.tripInfo?.tripId}
                           onClick={() => {
                             handleMarkerClick(driver);
-                            if (map && driver.currentLocation) {
-                              map.panTo({
-                                lat: driver.currentLocation.latitude,
-                                lng: driver.currentLocation.longitude,
-                              });
-                              map.setZoom(18);
+                            if (mapInstance && driver.currentLocation) {
+                              mapInstance.flyTo(
+                                [driver.currentLocation.latitude, driver.currentLocation.longitude],
+                                18
+                              );
                             }
                           }}
                           className={`w-full text-left p-3 rounded-lg border transition-all ${

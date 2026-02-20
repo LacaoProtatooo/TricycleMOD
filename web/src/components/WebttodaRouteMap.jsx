@@ -1,15 +1,11 @@
-import { useCallback, useEffect, useState } from "react";
-import {
-  GoogleMap,
-  useJsApiLoader,
-  Polyline,
-  Polygon,
-} from "@react-google-maps/api";
+import { useEffect, useState } from "react";
+import { MapContainer, TileLayer, Polyline, Polygon, useMap } from "react-leaflet";
 import {
   webttodaRouteCoordinates,
   WBT_CENTER,
   COVERAGE_BUFFER_METERS,
 } from "../data/webttodaRoute";
+import L from "leaflet";
 
 const containerStyle = {
   width: "100%",
@@ -17,16 +13,17 @@ const containerStyle = {
   borderRadius: "16px",
 };
 
-const mapOptions = {
-  mapTypeId: "satellite",
-  mapTypeControl: true,
-  mapTypeControlOptions: {
-    position: 3, // TOP_RIGHT
-  },
-  streetViewControl: false,
-  fullscreenControl: true,
-  zoomControl: true,
-};
+// Component to fit map bounds to route on load
+function FitBounds({ coords }) {
+  const map = useMap();
+  useEffect(() => {
+    if (coords.length > 0) {
+      const bounds = L.latLngBounds(coords.map((c) => [c.lat, c.lng]));
+      map.fitBounds(bounds, { padding: [20, 20] });
+    }
+  }, [map, coords]);
+  return null;
+}
 
 // Function to calculate offset point for buffer polygon
 const offsetPoint = (lat, lng, bearing, distanceMeters) => {
@@ -212,14 +209,7 @@ const generateSmoothBufferPolygon = (routeCoords, bufferMeters) => {
 };
 
 export default function WebttodaRouteMap() {
-  const [map, setMap] = useState(null);
   const [bufferPolygon, setBufferPolygon] = useState([]);
-
-  // Use your Google Maps API key from environment variables
-  const { isLoaded, loadError } = useJsApiLoader({
-    id: "google-map-script",
-    googleMapsApiKey: import.meta.env.VITE_GOOGLE_MAPS_API_KEY || "",
-  });
 
   useEffect(() => {
     // Generate smooth buffer polygon on mount
@@ -230,91 +220,46 @@ export default function WebttodaRouteMap() {
     setBufferPolygon(polygon);
   }, []);
 
-  const onLoad = useCallback((map) => {
-    // Fit bounds to show entire route
-    const bounds = new window.google.maps.LatLngBounds();
-    webttodaRouteCoordinates.forEach((coord) => {
-      bounds.extend(coord);
-    });
-    map.fitBounds(bounds);
-    setMap(map);
-  }, []);
-
-  const onUnmount = useCallback(() => {
-    setMap(null);
-  }, []);
-
-  if (loadError) {
-    return (
-      <div className="flex items-center justify-center h-[500px] bg-gray-100 dark:bg-gray-800 rounded-2xl">
-        <div className="text-center">
-          <svg
-            className="w-16 h-16 text-gray-400 mx-auto mb-4"
-            fill="none"
-            viewBox="0 0 24 24"
-            stroke="currentColor"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"
-            />
-          </svg>
-          <p className="text-gray-500 dark:text-gray-400">
-            Error loading Google Maps
-          </p>
-          <p className="text-sm text-gray-400 dark:text-gray-500 mt-1">
-            Please check your API key configuration
-          </p>
-        </div>
-      </div>
-    );
-  }
-
-  if (!isLoaded) {
-    return (
-      <div className="flex items-center justify-center h-[500px] bg-gray-100 dark:bg-gray-800 rounded-2xl">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-orange-500 mx-auto mb-4"></div>
-          <p className="text-gray-500 dark:text-gray-400">Loading map...</p>
-        </div>
-      </div>
-    );
-  }
+  // Convert {lat, lng} to [lat, lng] for Leaflet
+  const routePositions = webttodaRouteCoordinates.map((c) => [c.lat, c.lng]);
+  const bufferPositions = bufferPolygon.map((c) => [c.lat, c.lng]);
 
   return (
-    <GoogleMap
-      mapContainerStyle={containerStyle}
-      center={WBT_CENTER}
+    <MapContainer
+      center={[WBT_CENTER.lat, WBT_CENTER.lng]}
       zoom={16}
-      onLoad={onLoad}
-      onUnmount={onUnmount}
-      options={mapOptions}
+      style={containerStyle}
+      scrollWheelZoom={true}
     >
+      <TileLayer
+        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+        url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+      />
+      <FitBounds coords={webttodaRouteCoordinates} />
+
       {/* 30 meter coverage buffer polygon with smooth rounded edges */}
-      {bufferPolygon.length > 0 && (
+      {bufferPositions.length > 0 && (
         <Polygon
-          paths={bufferPolygon}
-          options={{
+          positions={bufferPositions}
+          pathOptions={{
             fillColor: "#FF6B00",
             fillOpacity: 0.2,
-            strokeColor: "#FF6B00",
-            strokeOpacity: 0.6,
-            strokeWeight: 2,
+            color: "#FF6B00",
+            opacity: 0.6,
+            weight: 2,
           }}
         />
       )}
 
       {/* Main route polyline */}
       <Polyline
-        path={webttodaRouteCoordinates}
-        options={{
-          strokeColor: "#FF6B00",
-          strokeOpacity: 1,
-          strokeWeight: 4,
+        positions={routePositions}
+        pathOptions={{
+          color: "#FF6B00",
+          opacity: 1,
+          weight: 4,
         }}
       />
-    </GoogleMap>
+    </MapContainer>
   );
 }
