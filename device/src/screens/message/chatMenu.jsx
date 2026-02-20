@@ -173,7 +173,7 @@ const ChatMenu = () => {
       >
         <Image
           source={
-            imageUri ? { uri: imageUri } : require('../../../assets/ghost.png')
+            imageUri ? { uri: imageUri } : require('../../../assets/webttrac_logo_bgrm.png')
           }
           style={styles.avatar}
         />

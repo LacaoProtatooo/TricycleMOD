@@ -1307,6 +1307,36 @@ const MaintenanceTracker = ({ tricycleId, serverHistory }) => {
 				</TouchableOpacity>
 			)}
 
+			{/* Clear Filter button right below the alert banner */}
+			{scheduleFilter !== 'all' && (
+				<TouchableOpacity
+					activeOpacity={0.7}
+					onPress={() => setScheduleFilter('all')}
+					style={{
+						flexDirection: 'row',
+						alignItems: 'center',
+						justifyContent: 'center',
+						backgroundColor: scheduleFilter === 'critical' ? '#DC262612' : '#F59E0B12',
+						borderWidth: 1,
+						borderColor: scheduleFilter === 'critical' ? '#DC262630' : '#F59E0B30',
+						borderRadius: 10,
+						paddingHorizontal: 14,
+						paddingVertical: 8,
+						marginTop: 6,
+					}}
+				>
+					<Ionicons name="close-circle" size={16} color={scheduleFilter === 'critical' ? '#DC2626' : '#F59E0B'} />
+					<Text style={{
+						fontSize: 13,
+						fontWeight: '600',
+						color: scheduleFilter === 'critical' ? '#DC2626' : '#D97706',
+						marginLeft: 6,
+					}}>
+						Clear Filter — Show All Items
+					</Text>
+				</TouchableOpacity>
+			)}
+
 			{!tricycleId && (
 				<Text style={{color: 'red', marginBottom: 10, fontSize: 12}}>
 					No tricycle assigned. Data will be saved locally only.

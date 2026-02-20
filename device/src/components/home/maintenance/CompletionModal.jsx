@@ -1,10 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, Modal, ScrollView, TouchableOpacity, TextInput, KeyboardAvoidingView, Platform, Image, Alert, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import { colors } from '../../common/theme';
 import { styles } from './maintenanceStyles';
-import { FALLBACK_COMPLETION_STATUS_OPTIONS } from './maintenanceConstants';
+import { FALLBACK_COMPLETION_STATUS_OPTIONS, READING_OPTIONS_BY_KEY, DEFAULT_READING_OPTIONS } from './maintenanceConstants';
 
 const CompletionModal = ({
 	visible,
@@ -16,10 +16,38 @@ const CompletionModal = ({
 }) => {
 	const [status, setStatus] = useState('completed');
 	const [reading, setReading] = useState('');
+	const [readingDropdownOpen, setReadingDropdownOpen] = useState(false);
 	const [notes, setNotes] = useState('');
 	const [cost, setCost] = useState('');
 	const [proofImage, setProofImage] = useState(null);
 	const [uploading, setUploading] = useState(false);
+
+	// Get reading options based on item key
+	const itemKey = item?.key || '';
+	const readingConfig = READING_OPTIONS_BY_KEY[itemKey] || DEFAULT_READING_OPTIONS;
+	const selectedReadingOption = readingConfig.options.find(o => o.value === reading);
+
+	// Reset state when modal opens with new item
+	useEffect(() => {
+		if (visible) {
+			setStatus('completed');
+			setReading('');
+			setReadingDropdownOpen(false);
+			setNotes('');
+			setCost('');
+			setProofImage(null);
+			setUploading(false);
+		}
+	}, [visible, item]);
+
+	// Color for reading status dot
+	const getReadingColor = (value) => {
+		const goodValues = ['good', 'clean', 'strong', 'normal', 'full', 'clear', 'in_spec', 'replaced', 'adjusted', 'adjusted_lubed', 'lubricated', 'cleaned', 'charged', 'topped_up', 'flushed', 'full_overhaul', 'gasket_replaced', 'sealed'];
+		const warnValues = ['slightly_used', 'adequate', 'slightly_low', 'ok', 'dusty', 'oily', 'slightly_clogged', 'loose', 'tight', 'dry', 'sticky', 'soft', 'stiff', 'worn', 'thin', 'rich', 'lean', 'brittle', 'repaired', 'fair', 'serviced'];
+		if (goodValues.includes(value)) return '#16A34A';
+		if (warnValues.includes(value)) return '#D97706';
+		return '#DC2626';
+	};
 
 	const pickImage = async () => {
 		try {
@@ -76,7 +104,7 @@ const CompletionModal = ({
 		setUploading(true);
 		onSubmit({
 			status,
-			reading: reading.trim() || null,
+			reading: selectedReadingOption ? selectedReadingOption.label : (reading.trim() || null),
 			notes: notes.trim() || `${status} via app`,
 			cost: cost ? parseFloat(cost) : null,
 			completedAt: new Date().toISOString(),
@@ -90,6 +118,7 @@ const CompletionModal = ({
 		// Reset state
 		setStatus('completed');
 		setReading('');
+		setReadingDropdownOpen(false);
 		setNotes('');
 		setCost('');
 		setProofImage(null);
@@ -99,6 +128,7 @@ const CompletionModal = ({
 	const handleClose = () => {
 		setStatus('completed');
 		setReading('');
+		setReadingDropdownOpen(false);
 		setNotes('');
 		setCost('');
 		setProofImage(null);
@@ -172,15 +202,105 @@ const CompletionModal = ({
 							))}
 						</View>
 
-						{/* Reading/Measurement Input */}
-						<Text style={styles.completionLabel}>Reading / Measurement (optional)</Text>
-						<TextInput
-							style={styles.completionInput}
-							placeholder="e.g., 32 PSI, 3.5L oil, 0.8mm gap..."
-							placeholderTextColor={colors.orangeShade4}
-							value={reading}
-							onChangeText={setReading}
-						/>
+						{/* Reading/Measurement Dropdown */}
+						<Text style={styles.completionLabel}>{readingConfig.label} *</Text>
+						
+						{/* Dropdown Trigger */}
+						<TouchableOpacity
+							activeOpacity={0.7}
+							onPress={() => setReadingDropdownOpen(!readingDropdownOpen)}
+							style={{
+								flexDirection: 'row',
+								alignItems: 'center',
+								justifyContent: 'space-between',
+								backgroundColor: colors.ivory4 || '#FAFAF2',
+								borderRadius: readingDropdownOpen ? 10 : 10,
+								borderBottomLeftRadius: readingDropdownOpen ? 0 : 10,
+								borderBottomRightRadius: readingDropdownOpen ? 0 : 10,
+								paddingHorizontal: 14,
+								paddingVertical: 14,
+								borderWidth: 1.5,
+								borderColor: readingDropdownOpen ? colors.primary : (reading ? getReadingColor(reading) + '60' : (colors.ivory3 || '#E8E8D0')),
+								marginBottom: readingDropdownOpen ? 0 : 12,
+							}}
+						>
+							{selectedReadingOption ? (
+								<View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+									<View style={{
+										width: 10, height: 10, borderRadius: 5,
+										backgroundColor: getReadingColor(reading),
+										marginRight: 10,
+									}} />
+									<Text style={{ fontSize: 14, fontWeight: '600', color: colors.orangeShade7, flex: 1 }} numberOfLines={1}>
+										{selectedReadingOption.label}
+									</Text>
+								</View>
+							) : (
+								<Text style={{ fontSize: 14, color: colors.orangeShade4 || '#FFB74D' }}>
+									Tap to select reading...
+								</Text>
+							)}
+							<Ionicons 
+								name={readingDropdownOpen ? "chevron-up" : "chevron-down"} 
+								size={20} 
+								color={colors.orangeShade5} 
+							/>
+						</TouchableOpacity>
+
+						{/* Dropdown Options List */}
+						{readingDropdownOpen && (
+							<View style={{
+								backgroundColor: colors.ivory1 || '#FFFFF0',
+								borderWidth: 1.5,
+								borderTopWidth: 0,
+								borderColor: colors.primary,
+								borderBottomLeftRadius: 10,
+								borderBottomRightRadius: 10,
+								marginBottom: 12,
+								overflow: 'hidden',
+							}}>
+								{readingConfig.options.map((option, index) => {
+									const isSelected = reading === option.value;
+									const optColor = getReadingColor(option.value);
+									return (
+										<TouchableOpacity
+											key={option.value}
+											activeOpacity={0.7}
+											onPress={() => {
+												setReading(option.value);
+												setReadingDropdownOpen(false);
+											}}
+											style={{
+												flexDirection: 'row',
+												alignItems: 'center',
+												paddingHorizontal: 14,
+												paddingVertical: 13,
+												backgroundColor: isSelected ? optColor + '12' : 'transparent',
+												borderBottomWidth: index < readingConfig.options.length - 1 ? 1 : 0,
+												borderBottomColor: (colors.ivory3 || '#E8E8D0') + '80',
+											}}
+										>
+											<View style={{
+												width: 10, height: 10, borderRadius: 5,
+												backgroundColor: optColor,
+											}} />
+											<Text style={{
+												fontSize: 14,
+												color: isSelected ? optColor : colors.orangeShade7,
+												fontWeight: isSelected ? '700' : '400',
+												flex: 1,
+												marginLeft: 10,
+											}}>
+												{option.label}
+											</Text>
+											{isSelected && (
+												<Ionicons name="checkmark-circle" size={20} color={optColor} />
+											)}
+										</TouchableOpacity>
+									);
+								})}
+							</View>
+						)}
 
 						{/* Cost Input */}
 						<Text style={styles.completionLabel}>Cost (optional)</Text>

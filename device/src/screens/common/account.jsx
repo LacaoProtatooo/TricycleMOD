@@ -1070,7 +1070,7 @@ const styles = StyleSheet.create({
     fontWeight: '500',
   },
   infoText: {
-    fontSize: 16,
+    fontSize: 13,
     color: colors.text,
     marginLeft: 28,
     marginTop: 4,

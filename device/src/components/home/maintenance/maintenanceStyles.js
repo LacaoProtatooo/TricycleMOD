@@ -40,10 +40,13 @@ export const styles = StyleSheet.create({
 		flexDirection: 'row',
 		alignItems: 'center',
 		justifyContent: 'center',
-		paddingVertical: 10,
+		paddingVertical: 8,
 		paddingHorizontal: 12,
 		borderRadius: 10,
 		gap: 6,
+		minWidth: 72, // ensure tabs have enough width for labels
+		paddingLeft: 10,
+		paddingRight: 10,
 	},
 	tabActive: {
 		backgroundColor: colors.primary + '15',
@@ -52,6 +55,9 @@ export const styles = StyleSheet.create({
 		fontSize: 13,
 		fontWeight: '600',
 		color: colors.orangeShade5,
+		textAlign: 'center',
+		flexWrap: 'wrap',
+		maxWidth: 90,
 	},
 	tabTextActive: {
 		color: colors.primary,
