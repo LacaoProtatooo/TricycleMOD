@@ -418,6 +418,13 @@ input[type="time"]::-webkit-calendar-picker-indicator {
   @apply !h-auto !w-auto;
 }
 
+/* Fix: Confine Leaflet's internal z-indexes (200–700) within a stacking context
+   so header dropdowns and modals (z-50) always appear on top of the map */
+.leaflet-container {
+  position: relative;
+  z-index: 0 !important;
+}
+
 .flatpickr-wrapper {
   @apply w-full;
 }
