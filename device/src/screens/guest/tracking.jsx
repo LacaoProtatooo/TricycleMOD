@@ -1181,7 +1181,7 @@ const GuestTracking = () => {
           )}
 
           {/* Relive path */}
-          {reliveTrip && reliveActive && (
+          {reliveTrip && reliveActive && reliveTrip.coordinates?.length > 1 && (
             <>
               <Polyline
                 coordinates={reliveTrip.coordinates.map(c => ({

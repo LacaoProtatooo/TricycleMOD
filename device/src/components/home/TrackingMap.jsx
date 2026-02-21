@@ -123,7 +123,7 @@ export default function TrackingMap({ follow = true, onEnterTerminalZone, odomet
   const reliveSpeedRef = useRef(1);
   const [scrubTooltip, setScrubTooltip] = useState(null);
   const [reliveTraversedPath, setReliveTraversedPath] = useState([]);
-  const [mapType, setMapType] = useState('mutedStandard');
+  const [mapType, setMapType] = useState('standard');
   const progressBarRef = useRef(null);
   const progressBarWidth = useRef(0);
   const insideTerminalRef = useRef(null);
@@ -1314,8 +1314,8 @@ ${trackPoints}
                 </Marker>
               ))}
 
-              {/* Current position polyline */}
-              {positions.length > 0 && !reliveActive && (
+              {/* Current position polyline - needs at least 2 points */}
+              {positions.length > 1 && !reliveActive && (
                 <Polyline
                   key="position-polyline"
                   coordinates={positions}

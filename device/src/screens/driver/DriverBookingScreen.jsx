@@ -30,6 +30,7 @@ import MapView, { Marker, Circle, Polyline, PROVIDER_GOOGLE } from 'react-native
 import * as Location from 'expo-location';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useIsFocused } from '@react-navigation/native';
 import { useSelector } from 'react-redux';
 import axios from 'axios';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -70,6 +71,7 @@ const VIEW_MODE = {
 };
 
 const DriverBookingScreen = ({ navigation }) => {
+  const isFocused = useIsFocused();
   const db = useAsyncSQLiteContext();
   const mapRef = useRef(null);
   const watchRef = useRef(null);
@@ -1549,10 +1551,11 @@ const DriverBookingScreen = ({ navigation }) => {
         </View>
 
         {/* Map */}
+        {isFocused ? (
         <MapView
           ref={mapRef}
           provider={PROVIDER_GOOGLE}
-          mapType="mutedStandard"
+          mapType="standard"
           style={styles.fullMap}
           region={{
             latitude: userLocation?.latitude || activeBooking.pickup.latitude,
@@ -1586,7 +1589,7 @@ const DriverBookingScreen = ({ navigation }) => {
           </Marker>
 
           {/* Route line - Uses actual road route */}
-          {activeRouteCoordinates.length > 0 ? (
+          {activeRouteCoordinates.length > 1 ? (
             <>
               {/* Main route line */}
               <Polyline
@@ -1611,15 +1614,20 @@ const DriverBookingScreen = ({ navigation }) => {
               )}
             </>
           ) : (
-            <Polyline
-              coordinates={[
+            (() => {
+              const fallbackCoords = [
                 isPickedUp ? userLocation : activeBooking.pickup,
                 activeBooking.destination,
-              ].filter(Boolean)}
-              strokeColor={colors.primary}
-              strokeWidth={4}
-              lineDashPattern={[10, 5]}
-            />
+              ].filter(Boolean);
+              return fallbackCoords.length >= 2 ? (
+                <Polyline
+                  coordinates={fallbackCoords}
+                  strokeColor={colors.primary}
+                  strokeWidth={4}
+                  lineDashPattern={[10, 5]}
+                />
+              ) : null;
+            })()
           )}
 
           {/* Completion zone */}
@@ -1644,6 +1652,11 @@ const DriverBookingScreen = ({ navigation }) => {
             </Marker>
           )}
         </MapView>
+        ) : (
+          <View style={[styles.fullMap, { justifyContent: 'center', alignItems: 'center' }]}>
+            <ActivityIndicator size="large" color={colors.primary} />
+          </View>
+        )}
 
         {/* Center on user button */}
         <TouchableOpacity style={styles.centerMapBtn} onPress={centerMapOnUser}>
@@ -2097,10 +2110,11 @@ const DriverBookingScreen = ({ navigation }) => {
           {viewMode === VIEW_MODE.MAP ? (
             // Map view
             <View style={styles.mapContainer}>
+              {isFocused ? (
               <MapView
                 ref={mapRef}
                 provider={PROVIDER_GOOGLE}
-                mapType="mutedStandard"
+                mapType="standard"
                 style={styles.fullMap}
                 region={mapRegion}
                 showsUserLocation={true}
@@ -2119,6 +2133,11 @@ const DriverBookingScreen = ({ navigation }) => {
                   </Marker>
                 ))}
               </MapView>
+              ) : (
+                <View style={[styles.fullMap, { justifyContent: 'center', alignItems: 'center' }]}>
+                  <ActivityIndicator size="large" color={colors.primary} />
+                </View>
+              )}
               <TouchableOpacity style={styles.centerMapBtn} onPress={centerMapOnUser}>
                 <Ionicons name="locate" size={22} color={colors.primary} />
               </TouchableOpacity>
@@ -2247,11 +2266,11 @@ const DriverBookingScreen = ({ navigation }) => {
               )}
 
               {/* Map showing route - Only render when not calculating */}
-              {!isCalculatingRoute && (
+              {!isCalculatingRoute && isFocused && (
                 <View style={styles.routeMapContainer}>
                   <MapView
                     provider={PROVIDER_GOOGLE}
-                    mapType="mutedStandard"
+                    mapType="standard"
                     style={styles.routePreviewMap}
                     initialRegion={{
                       latitude: (previewBooking.pickup.latitude + previewBooking.destination.latitude) / 2,

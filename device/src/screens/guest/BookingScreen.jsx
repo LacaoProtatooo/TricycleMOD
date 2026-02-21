@@ -1256,13 +1256,15 @@ const BookingScreen = ({ navigation }) => {
         />
 
         {/* WEBTODA GPX Route - Main service route reference */}
-        <Polyline
-          coordinates={WEBTODA_ROUTE_COORDINATES}
-          strokeColor={colors.primary}
-          strokeWidth={4}
-          lineCap="round"
-          lineJoin="round"
-        />
+        {WEBTODA_ROUTE_COORDINATES.length > 1 && (
+          <Polyline
+            coordinates={WEBTODA_ROUTE_COORDINATES}
+            strokeColor={colors.primary}
+            strokeWidth={4}
+            lineCap="round"
+            lineJoin="round"
+          />
+        )}
 
         {/* Route buffer visualization (150m pickup zone) */}
         {bookingStatus === BOOKING_STATUS.SELECTING_LOCATIONS && selectingLocationType === 'pickup' && (
@@ -1327,7 +1329,7 @@ const BookingScreen = ({ navigation }) => {
         )}
 
         {/* Route line from pickup to destination - Uses actual road route */}
-        {pickupLocation && destinationLocation && routeCoordinates.length > 0 && (
+        {pickupLocation && destinationLocation && routeCoordinates.length > 1 && (
           <Polyline
             coordinates={routeCoordinates}
             strokeColor={destinationWarning ? '#dc3545' : '#2196F3'}
