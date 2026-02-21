@@ -32,27 +32,32 @@ const WEAR_PATTERNS_KEY = 'wear_patterns_v1';
 const KM_KEY = 'vehicle_current_km_v1';
 
 // Default maintenance schedule with expected intervals
+// timeDecayType:
+//   'time_sensitive' — degrades with time even when vehicle is idle (fluids, rubber, battery)
+//   'usage_based'    — only degrades from actual riding/use (mechanical friction parts)
+//   'hybrid'         — degrades primarily from use but also slowly from sitting
+// maxDaysInterval: max days between service regardless of km (null = km-only)
 const MAINTENANCE_ITEMS = {
-  tire_pressure: { name: 'Tire Pressure', interval: 500, category: 'safety', criticalThreshold: 0.9 },
-  chain: { name: 'Chain', interval: 500, category: 'drivetrain', criticalThreshold: 0.85 },
-  battery_water: { name: 'Battery Water', interval: 500, category: 'electrical', criticalThreshold: 0.9 },
-  air_filter_clean: { name: 'Air Filter (Clean)', interval: 500, category: 'engine', criticalThreshold: 0.8 },
-  brake_check: { name: 'Brake System', interval: 500, category: 'safety', criticalThreshold: 0.85 },
-  cables: { name: 'Cables', interval: 500, category: 'controls', criticalThreshold: 0.8 },
-  engine_oil: { name: 'Engine Oil', interval: 1000, category: 'engine', criticalThreshold: 0.9 },
-  spark_plug: { name: 'Spark Plug', interval: 1000, category: 'ignition', criticalThreshold: 0.85 },
-  carburetor: { name: 'Carburetor', interval: 1000, category: 'fuel', criticalThreshold: 0.8 },
-  chain_sprockets: { name: 'Chain & Sprockets', interval: 1000, category: 'drivetrain', criticalThreshold: 0.85 },
-  oil_filter: { name: 'Oil Filter', interval: 4000, category: 'engine', criticalThreshold: 0.9 },
-  air_filter_replace: { name: 'Air Filter (Replace)', interval: 4000, category: 'engine', criticalThreshold: 0.85 },
-  valve_clearance: { name: 'Valve Clearance', interval: 4000, category: 'engine', criticalThreshold: 0.8 },
-  battery_test: { name: 'Battery Test', interval: 4000, category: 'electrical', criticalThreshold: 0.85 },
-  brake_fluid_flush: { name: 'Brake Fluid', interval: 11000, category: 'safety', criticalThreshold: 0.9 },
-  clutch_plates: { name: 'Clutch Plates', interval: 11000, category: 'drivetrain', criticalThreshold: 0.85 },
-  suspension: { name: 'Suspension', interval: 11000, category: 'chassis', criticalThreshold: 0.8 },
-  engine_overhaul: { name: 'Engine Overhaul', interval: 20000, category: 'engine', criticalThreshold: 0.95 },
-  transmission_oil: { name: 'Transmission Oil', interval: 20000, category: 'drivetrain', criticalThreshold: 0.9 },
-  wiring_harness: { name: 'Wiring Harness', interval: 20000, category: 'electrical', criticalThreshold: 0.85 },
+  tire_pressure: { name: 'Tire Pressure', interval: 500, category: 'safety', criticalThreshold: 0.9, safetyWeight: 1.5, timeDecayType: 'time_sensitive', maxDaysInterval: 30 },
+  chain: { name: 'Chain', interval: 500, category: 'drivetrain', criticalThreshold: 0.85, safetyWeight: 1.2, timeDecayType: 'usage_based', maxDaysInterval: null },
+  battery_water: { name: 'Battery Water', interval: 500, category: 'electrical', criticalThreshold: 0.9, safetyWeight: 1.0, timeDecayType: 'time_sensitive', maxDaysInterval: 30 },
+  air_filter_clean: { name: 'Air Filter (Clean)', interval: 500, category: 'engine', criticalThreshold: 0.8, safetyWeight: 1.0, timeDecayType: 'hybrid', maxDaysInterval: 60 },
+  brake_check: { name: 'Brake System', interval: 500, category: 'safety', criticalThreshold: 0.85, safetyWeight: 1.8, timeDecayType: 'hybrid', maxDaysInterval: 45 },
+  cables: { name: 'Cables', interval: 500, category: 'controls', criticalThreshold: 0.8, safetyWeight: 1.3, timeDecayType: 'hybrid', maxDaysInterval: 90 },
+  engine_oil: { name: 'Engine Oil', interval: 1000, category: 'engine', criticalThreshold: 0.9, safetyWeight: 1.4, timeDecayType: 'time_sensitive', maxDaysInterval: 180 },
+  spark_plug: { name: 'Spark Plug', interval: 1000, category: 'ignition', criticalThreshold: 0.85, safetyWeight: 1.0, timeDecayType: 'usage_based', maxDaysInterval: null },
+  carburetor: { name: 'Carburetor', interval: 1000, category: 'fuel', criticalThreshold: 0.8, safetyWeight: 1.0, timeDecayType: 'time_sensitive', maxDaysInterval: 120 },
+  chain_sprockets: { name: 'Chain & Sprockets', interval: 1000, category: 'drivetrain', criticalThreshold: 0.85, safetyWeight: 1.2, timeDecayType: 'usage_based', maxDaysInterval: null },
+  oil_filter: { name: 'Oil Filter', interval: 4000, category: 'engine', criticalThreshold: 0.9, safetyWeight: 1.1, timeDecayType: 'time_sensitive', maxDaysInterval: 180 },
+  air_filter_replace: { name: 'Air Filter (Replace)', interval: 4000, category: 'engine', criticalThreshold: 0.85, safetyWeight: 1.0, timeDecayType: 'hybrid', maxDaysInterval: 365 },
+  valve_clearance: { name: 'Valve Clearance', interval: 4000, category: 'engine', criticalThreshold: 0.8, safetyWeight: 1.0, timeDecayType: 'usage_based', maxDaysInterval: null },
+  battery_test: { name: 'Battery Test', interval: 4000, category: 'electrical', criticalThreshold: 0.85, safetyWeight: 1.0, timeDecayType: 'time_sensitive', maxDaysInterval: 90 },
+  brake_fluid_flush: { name: 'Brake Fluid', interval: 11000, category: 'safety', criticalThreshold: 0.9, safetyWeight: 1.7, timeDecayType: 'time_sensitive', maxDaysInterval: 365 },
+  clutch_plates: { name: 'Clutch Plates', interval: 11000, category: 'drivetrain', criticalThreshold: 0.85, safetyWeight: 1.2, timeDecayType: 'usage_based', maxDaysInterval: null },
+  suspension: { name: 'Suspension', interval: 11000, category: 'chassis', criticalThreshold: 0.8, safetyWeight: 1.4, timeDecayType: 'hybrid', maxDaysInterval: 545 },
+  engine_overhaul: { name: 'Engine Overhaul', interval: 20000, category: 'engine', criticalThreshold: 0.95, safetyWeight: 1.3, timeDecayType: 'usage_based', maxDaysInterval: null },
+  transmission_oil: { name: 'Transmission Oil', interval: 20000, category: 'drivetrain', criticalThreshold: 0.9, safetyWeight: 1.1, timeDecayType: 'time_sensitive', maxDaysInterval: 365 },
+  wiring_harness: { name: 'Wiring Harness', interval: 20000, category: 'electrical', criticalThreshold: 0.85, safetyWeight: 1.0, timeDecayType: 'hybrid', maxDaysInterval: 730 },
 };
 
 // ============== PREDICTIVE ANALYTICS ENGINE ==============
@@ -94,68 +99,369 @@ const linearRegression = (data) => {
 };
 
 /**
- * Predict when maintenance will be needed
- * Returns estimated km until service required
+ * Predict when maintenance will be needed — ADAPTIVE AI ENGINE
+ * 
+ * Learns from:
+ * - Wear history data points (regression when available)
+ * - User's actual maintenance intervals (riding habits)
+ * - Time elapsed since last service
+ * - Safety priority of the component
+ * - Ride diagnostic survey data (checkup symptoms linked to parts)
+ * 
+ * Confidence grows as the system collects more data about the user's habits.
+ * Even with zero history, confidence is rated honestly and improves over time.
+ *
+ * @param {string} itemKey - The maintenance item key (e.g. 'brake_check')
+ * @param {number} currentKm - Current odometer reading
+ * @param {number} lastServiceKm - Last service odometer reading
+ * @param {Array} wearHistory - Wear pattern data points
+ * @param {Array} maintenanceHistory - Maintenance completion records
+ * @param {string} lastServiceDate - ISO date string of last service
+ * @param {Object} rideDiagnosticData - Data from ride experience checkup surveys
+ * @param {Array} rideDiagnosticData.recentIssues - Recent issues mapped to this part
+ * @param {number} rideDiagnosticData.symptomSeverity - Max severity from recent checkups (0-5)
+ * @param {string} rideDiagnosticData.trend - 'worsening' | 'stable' | 'improving'
+ * @param {number} rideDiagnosticData.occurrences - How many times this part was flagged
  */
-const predictNextService = (itemKey, currentKm, lastServiceKm, wearHistory) => {
+const predictNextService = (itemKey, currentKm, lastServiceKm, wearHistory, maintenanceHistory, lastServiceDate, rideDiagnosticData) => {
   const item = MAINTENANCE_ITEMS[itemKey];
   if (!item) return null;
   
-  // Ensure currentKm is a valid number
   const validCurrentKm = typeof currentKm === 'number' && !isNaN(currentKm) ? currentKm : 0;
   const validLastServiceKm = typeof lastServiceKm === 'number' && !isNaN(lastServiceKm) ? lastServiceKm : 0;
   
   const baseInterval = item.interval;
   const criticalThreshold = item.criticalThreshold;
+  const safetyWeight = item.safetyWeight || 1.0;
   
-  // Calculate basic wear info first
+  // ---- Basic wear calculation ----
   const kmSinceService = Math.max(0, validCurrentKm - validLastServiceKm);
   const basicWearPercent = Math.min(100, (kmSinceService / baseInterval) * 100);
   
-  // If we have enough valid history data points, use regression
-  if (wearHistory && Array.isArray(wearHistory) && wearHistory.length >= 3) {
-    // Ensure all data points are valid
-    const validHistory = wearHistory.filter(point => 
-      point && 
+  // ---- Adaptive interval: learn from user's own maintenance history ----
+  let adaptedInterval = baseInterval;
+  let historyServiceIntervals = [];
+  
+  if (wearHistory && Array.isArray(wearHistory) && wearHistory.length >= 2) {
+    // Calculate actual intervals between services from wear history data
+    const sorted = [...wearHistory]
+      .filter(p => p && typeof p.km === 'number' && !isNaN(p.km))
+      .sort((a, b) => a.km - b.km);
+    
+    for (let i = 1; i < sorted.length; i++) {
+      const interval = sorted[i].km - sorted[i - 1].km;
+      if (interval > 0 && interval < baseInterval * 4) {
+        historyServiceIntervals.push(interval);
+      }
+    }
+  }
+  
+  // Also learn from maintenance history records
+  if (maintenanceHistory && Array.isArray(maintenanceHistory)) {
+    const itemRecords = maintenanceHistory
+      .filter(h => (h.itemKey === itemKey || h.item === itemKey) && typeof h.km === 'number' && !isNaN(h.km))
+      .sort((a, b) => a.km - b.km);
+    
+    for (let i = 1; i < itemRecords.length; i++) {
+      const interval = itemRecords[i].km - itemRecords[i - 1].km;
+      if (interval > 0 && interval < baseInterval * 4) {
+        historyServiceIntervals.push(interval);
+      }
+    }
+  }
+  
+  // If we have learned intervals, use weighted average (recent intervals matter more)
+  if (historyServiceIntervals.length > 0) {
+    let weightedSum = 0;
+    let weightTotal = 0;
+    historyServiceIntervals.forEach((interval, idx) => {
+      const recencyWeight = 1 + (idx / historyServiceIntervals.length); // newer = heavier
+      weightedSum += interval * recencyWeight;
+      weightTotal += recencyWeight;
+    });
+    const avgUserInterval = weightedSum / weightTotal;
+    
+    // Blend: trust the user's pattern more as we get more data
+    const trustFactor = Math.min(0.8, historyServiceIntervals.length * 0.15); // max 80% trust
+    adaptedInterval = Math.round(baseInterval * (1 - trustFactor) + avgUserInterval * trustFactor);
+    
+    // Safety items: never stretch beyond 110% of base interval
+    if (item.category === 'safety') {
+      adaptedInterval = Math.min(adaptedInterval, Math.round(baseInterval * 1.1));
+    }
+  }
+  
+  // ---- Ride diagnostic (checkup survey) factor ----
+  // Symptoms reported by the driver during checkups directly affect wear predictions
+  let diagnosticFactor = 1.0; // 1 = no extra pressure from diagnostics
+  let diagnosticConfidenceBoost = 0;
+  let hasDiagnosticData = false;
+  
+  if (rideDiagnosticData && typeof rideDiagnosticData === 'object') {
+    hasDiagnosticData = true;
+    const { symptomSeverity = 0, trend = 'stable', occurrences = 0 } = rideDiagnosticData;
+    
+    // Severity accelerates predicted wear (severity 0-5 scale)
+    // A severity of 3+ means the driver is experiencing noticeable issues
+    if (symptomSeverity >= 2) {
+      // Scale: severity 2 = 1.15x, severity 3 = 1.3x, severity 4 = 1.5x, severity 5 = 1.8x
+      diagnosticFactor = 1 + (symptomSeverity - 1) * 0.15;
+    }
+    
+    // Worsening trend further accelerates predictions
+    if (trend === 'worsening') {
+      diagnosticFactor *= 1.2; // 20% extra urgency for worsening symptoms
+    } else if (trend === 'improving') {
+      diagnosticFactor *= 0.9; // 10% less urgency if symptoms are improving
+    }
+    
+    // Recurring issues (flagged multiple times) add urgency
+    if (occurrences >= 3) {
+      diagnosticFactor *= 1.15; // Chronic issue boost
+    }
+    
+    // Cap diagnostic factor to prevent unreasonable predictions
+    diagnosticFactor = Math.min(2.0, diagnosticFactor);
+    
+    // Diagnostic data provides confidence boost (real-world driver feedback)
+    diagnosticConfidenceBoost = Math.min(12, occurrences * 3 + (symptomSeverity >= 2 ? 5 : 0));
+  }
+  
+  // ---- Usage-Aware Time Decay Factor ----
+  // Different parts have different time sensitivity:
+  //   'time_sensitive' — fluids/rubber/battery degrade even when vehicle sits idle
+  //   'usage_based'    — chain/clutch/spark plug only wear from actual riding
+  //   'hybrid'         — primarily usage-based but some slow time degradation
+  const timeDecayType = item.timeDecayType || 'hybrid';
+  const maxDaysInterval = item.maxDaysInterval || null;
+  
+  let timeFactor = 1.0; // 1 = no time pressure, higher = more urgency
+  let daysSinceService = null;
+  let isVehicleIdle = false;     // true when vehicle appears to be sitting unused
+  let actualDailyKm = null;      // computed average km/day since last service
+  let idleTimeWearPercent = 0;   // time-only wear for idle time_sensitive parts
+  let maxDaysExceeded = false;   // true if maxDaysInterval has been surpassed
+  
+  if (lastServiceDate) {
+    const d = new Date(lastServiceDate);
+    if (!isNaN(d.getTime())) {
+      daysSinceService = Math.floor((Date.now() - d.getTime()) / (1000 * 60 * 60 * 24));
+      
+      // Calculate ACTUAL daily km usage to detect idle state
+      if (daysSinceService > 0) {
+        actualDailyKm = kmSinceService / daysSinceService;
+        // Vehicle is considered idle if averaging < 5 km/day over 7+ days
+        isVehicleIdle = actualDailyKm < 5 && daysSinceService >= 7;
+      }
+      
+      // Check if max calendar days interval has been exceeded
+      if (maxDaysInterval && daysSinceService > maxDaysInterval) {
+        maxDaysExceeded = true;
+      }
+      
+      // Apply time factor based on part type and usage state
+      if (timeDecayType === 'time_sensitive') {
+        // Fluids, rubber, battery — always decay with time, even when idle
+        // Use maxDaysInterval as the reference instead of hardcoded 30 km/day
+        const timeBasis = maxDaysInterval || (adaptedInterval / 30);
+        if (timeBasis > 0 && daysSinceService > timeBasis * 0.5) {
+          timeFactor = Math.min(2.0, daysSinceService / timeBasis);
+        }
+        // For idle vehicles, compute pure time-based wear (engine oil oxidizes, battery self-discharges, etc.)
+        if (isVehicleIdle && maxDaysInterval) {
+          idleTimeWearPercent = Math.min(100, (daysSinceService / maxDaysInterval) * 100);
+        }
+      } else if (timeDecayType === 'usage_based') {
+        // Chain, clutch, spark plug — NO time pressure when vehicle is idle
+        if (isVehicleIdle) {
+          timeFactor = 1.0; // Completely ignore time when parked
+        } else {
+          const expectedDays = adaptedInterval / 30;
+          if (expectedDays > 0 && daysSinceService > expectedDays * 0.7) {
+            timeFactor = Math.min(1.5, daysSinceService / expectedDays);
+          }
+        }
+      } else {
+        // 'hybrid' — partial time sensitivity (e.g., brake pads rust, cables corrode slowly)
+        if (isVehicleIdle) {
+          // Only apply 30% of the normal time pressure when idle
+          const expectedDays = maxDaysInterval || (adaptedInterval / 30);
+          if (expectedDays > 0 && daysSinceService > expectedDays * 0.7) {
+            const fullTimeFactor = Math.min(1.5, daysSinceService / expectedDays);
+            timeFactor = 1.0 + (fullTimeFactor - 1.0) * 0.3; // 30% of time urgency
+          }
+        } else {
+          const expectedDays = adaptedInterval / 30;
+          if (expectedDays > 0 && daysSinceService > expectedDays * 0.7) {
+            timeFactor = Math.min(1.5, daysSinceService / expectedDays);
+          }
+        }
+      }
+    }
+  }
+  
+  // ---- Regression-based AI prediction (when enough data) ----
+  if (wearHistory && Array.isArray(wearHistory) && wearHistory.length >= 2) {
+    const validHistory = wearHistory.filter(point =>
+      point &&
       typeof point.km === 'number' && !isNaN(point.km) &&
       typeof point.wearLevel === 'number' && !isNaN(point.wearLevel)
     );
     
-    if (validHistory.length >= 3) {
+    if (validHistory.length >= 2) {
       const regression = linearRegression(validHistory);
       
-      if (regression && regression.rSquared > 0.3 && regression.slope > 0) {
-        // Predict when wear will reach critical threshold (e.g., 90%)
+      if (regression && regression.slope > 0) {
+        // Predict when wear reaches critical threshold
         const kmToFailure = (criticalThreshold * 100 - regression.intercept) / regression.slope;
-        const predictedKmRemaining = Math.max(0, kmToFailure - validCurrentKm);
+        let predictedKmRemaining = Math.max(0, kmToFailure - validCurrentKm);
         
-        // Sanity check: prediction should be reasonable (not more than 3x base interval)
-        const maxReasonable = baseInterval * 3;
+        // Apply time factor: if time is pressing, shorten prediction
+        predictedKmRemaining = Math.round(predictedKmRemaining / timeFactor);
+        
+        // Apply diagnostic factor: checkup symptoms accelerate prediction
+        if (diagnosticFactor > 1.0) {
+          predictedKmRemaining = Math.round(predictedKmRemaining / diagnosticFactor);
+        }
+        
+        // If maxDaysInterval exceeded, force remaining to 0 for time-sensitive parts
+        if (maxDaysExceeded && timeDecayType === 'time_sensitive') {
+          predictedKmRemaining = 0;
+        }
+        
+        // Safety items: add a margin of safety (recommend service earlier)
+        if (safetyWeight > 1.2) {
+          predictedKmRemaining = Math.round(predictedKmRemaining * (1 / safetyWeight));
+        }
+        
+        // Sanity clamp
+        const maxReasonable = adaptedInterval * 3;
         const clampedPrediction = Math.min(maxReasonable, predictedKmRemaining);
+        
+        // ---- Adaptive confidence calculation ----
+        // Base: R² contributes up to 50 points
+        let confidence = Math.round(regression.rSquared * 50);
+        // Data quantity bonus: up to +25 for 10+ points
+        confidence += Math.min(25, validHistory.length * 2.5);
+        // History consistency bonus: if user has a pattern, +15
+        if (historyServiceIntervals.length >= 2) {
+          const stdDev = Math.sqrt(
+            historyServiceIntervals.reduce((sum, v) => {
+              const mean = historyServiceIntervals.reduce((s, x) => s + x, 0) / historyServiceIntervals.length;
+              return sum + Math.pow(v - mean, 2);
+            }, 0) / historyServiceIntervals.length
+          );
+          const cv = stdDev / (historyServiceIntervals.reduce((s, x) => s + x, 0) / historyServiceIntervals.length);
+          // Lower cv = more consistent = higher bonus
+          confidence += Math.round(Math.max(0, 15 * (1 - cv)));
+        }
+        // Time data bonus: if we have date info, +5
+        if (daysSinceService !== null) confidence += 5;
+        // Ride diagnostic data bonus: real driver feedback increases confidence
+        confidence += diagnosticConfidenceBoost;
+        // Safety penalty: be conservative with safety items (lower confidence = earlier warning)
+        if (item.category === 'safety') confidence = Math.min(confidence, 85);
+        
+        confidence = Math.min(97, Math.max(40, confidence));
+        
+        const actualWearRate = regression.slope;
+        const expectedWearRate = 100 / baseInterval;
         
         return {
           predictedKm: Math.round(clampedPrediction),
-          confidence: Math.min(95, Math.max(30, Math.round(regression.rSquared * 100))),
+          confidence,
           method: 'ai_regression',
-          wearRate: regression.slope,
-          currentWear: basicWearPercent,
-          isAnomalous: Math.abs(regression.slope) > (100 / baseInterval) * 1.5, // 50% faster than expected
+          wearRate: actualWearRate,
+          currentWear: isVehicleIdle && timeDecayType === 'time_sensitive' ? Math.max(basicWearPercent, idleTimeWearPercent) : basicWearPercent,
+          isAnomalous: actualWearRate > expectedWearRate * 1.5,
           dataPoints: validHistory.length,
+          adaptedInterval,
+          safetyPriority: safetyWeight > 1.2 ? 'high' : safetyWeight > 1.0 ? 'medium' : 'normal',
+          daysSinceService,
+          timeFactor,
+          diagnosticFactor,
+          hasDiagnosticData,
+          // Idle/usage awareness fields
+          isVehicleIdle,
+          actualDailyKm,
+          timeDecayType,
+          maxDaysInterval,
+          maxDaysExceeded,
+          idleTimeWearPercent,
         };
       }
     }
   }
   
-  // Fallback: simple calculation based on last service
-  const kmRemaining = Math.max(0, baseInterval - kmSinceService);
+  // ---- Adaptive fallback (no regression, but still learns) ----
+  const kmRemaining = Math.max(0, adaptedInterval - kmSinceService);
+  
+  // Apply time factor to fallback too
+  const adjustedKmRemaining = Math.round(kmRemaining / timeFactor);
+  
+  // Apply diagnostic factor to fallback: checkup symptoms reduce remaining km
+  const diagnosticAdjustedKm = diagnosticFactor > 1.0 
+    ? Math.round(adjustedKmRemaining / diagnosticFactor)
+    : adjustedKmRemaining;
+  
+  // If maxDaysInterval exceeded, force remaining to 0 for time-sensitive parts
+  let safeKmRemaining;
+  if (maxDaysExceeded && timeDecayType === 'time_sensitive') {
+    safeKmRemaining = 0;
+  } else {
+    // Safety items: shave off extra margin for safe riding
+    safeKmRemaining = safetyWeight > 1.2
+      ? Math.round(diagnosticAdjustedKm * (1 / safetyWeight))
+      : diagnosticAdjustedKm;
+  }
+  
+  // ---- Smart confidence even for fallback ----
+  // Starts lower but grows with any available information
+  let confidence = 45; // honest base: "we're estimating from standard intervals"
+  
+  // If we have maintenance history (user has serviced before), reliability improves
+  if (historyServiceIntervals.length > 0) {
+    confidence += Math.min(20, historyServiceIntervals.length * 5); // up to +20
+  }
+  // If we have a last service date, that's useful info
+  if (daysSinceService !== null) confidence += 8;
+  // If the item has just been serviced recently (>50% of interval left), higher confidence
+  if (basicWearPercent < 50) confidence += 7;
+  // If we have any wear data at all (even 1 point), it helps
+  if (wearHistory && wearHistory.length > 0) confidence += Math.min(10, wearHistory.length * 5);
+  // Ride diagnostic data bonus: real driver feedback increases confidence
+  confidence += diagnosticConfidenceBoost;
+  // Safety items: cap confidence lower to be cautious
+  if (item.category === 'safety') confidence = Math.min(confidence, 80);
+  
+  confidence = Math.min(92, Math.max(35, confidence));
+  
+  // For idle vehicles with time-sensitive parts, use time-based wear instead of km-based
+  const effectiveWear = isVehicleIdle && timeDecayType === 'time_sensitive'
+    ? Math.max(basicWearPercent, idleTimeWearPercent)
+    : basicWearPercent;
+  
   return {
-    predictedKm: Math.round(kmRemaining),
-    confidence: 60, // Lower confidence for simple calculation
-    method: 'interval_based',
-    wearRate: 100 / baseInterval,
-    currentWear: basicWearPercent,
+    predictedKm: Math.round(safeKmRemaining),
+    confidence,
+    method: historyServiceIntervals.length > 0 ? 'adaptive_interval' : 'interval_based',
+    wearRate: 100 / adaptedInterval,
+    currentWear: effectiveWear,
     isAnomalous: false,
-    dataPoints: 0,
+    dataPoints: (wearHistory ? wearHistory.length : 0),
+    adaptedInterval,
+    safetyPriority: safetyWeight > 1.2 ? 'high' : safetyWeight > 1.0 ? 'medium' : 'normal',
+    daysSinceService,
+    timeFactor,
+    diagnosticFactor,
+    hasDiagnosticData,
+    // Idle/usage awareness fields
+    isVehicleIdle,
+    actualDailyKm,
+    timeDecayType,
+    maxDaysInterval,
+    maxDaysExceeded,
+    idleTimeWearPercent,
   };
 };
 
@@ -236,8 +542,15 @@ const getRecommendation = (itemKey, rateRatio) => {
 
 /**
  * Calculate overall vehicle health score
+ * Now usage-aware: accounts for time-based degradation of fluids/rubber/battery
+ * even when the vehicle is idle (not accumulating km).
+ * 
+ * @param {Object} maintenanceData - { itemKey: lastServiceKm }
+ * @param {number} currentKm - Current odometer
+ * @param {Array} predictions - AI predictions array (optional, used for cross-reference)
+ * @param {Object} lastServiceDates - { itemKey: ISO date string } (optional, enables time-based wear)
  */
-const calculateHealthScore = (maintenanceData, currentKm, predictions) => {
+const calculateHealthScore = (maintenanceData, currentKm, predictions, lastServiceDates) => {
   let totalWeight = 0;
   let weightedScore = 0;
   
@@ -260,7 +573,32 @@ const calculateHealthScore = (maintenanceData, currentKm, predictions) => {
     const lastService = maintenanceData?.[itemKey] || 0;
     const validLastService = typeof lastService === 'number' && !isNaN(lastService) ? lastService : 0;
     const kmSinceService = Math.max(0, validCurrentKm - validLastService);
-    const wearPercent = Math.min(100, (kmSinceService / item.interval) * 100);
+    let wearPercent = Math.min(100, (kmSinceService / item.interval) * 100);
+    
+    // For time-sensitive and hybrid parts, also consider calendar-based degradation
+    // This ensures idle vehicles still show degraded fluids/battery/rubber
+    const timeDecayType = item.timeDecayType || 'hybrid';
+    const maxDaysInterval = item.maxDaysInterval || null;
+    
+    if ((timeDecayType === 'time_sensitive' || timeDecayType === 'hybrid') && lastServiceDates) {
+      const serviceDate = lastServiceDates[itemKey];
+      if (serviceDate) {
+        const d = new Date(serviceDate);
+        if (!isNaN(d.getTime())) {
+          const daysSince = Math.floor((Date.now() - d.getTime()) / (1000 * 60 * 60 * 24));
+          if (maxDaysInterval && daysSince > 0) {
+            const timeWear = Math.min(100, (daysSince / maxDaysInterval) * 100);
+            if (timeDecayType === 'time_sensitive') {
+              // For fully time-sensitive parts, use whichever is worse: km wear or time wear
+              wearPercent = Math.max(wearPercent, timeWear);
+            } else {
+              // For hybrid parts, blend: 70% km-based, 30% time-based
+              wearPercent = Math.max(wearPercent, wearPercent * 0.7 + timeWear * 0.3);
+            }
+          }
+        }
+      }
+    }
     
     // Health is inverse of wear (100 - wear%)
     const health = Math.max(0, 100 - wearPercent);

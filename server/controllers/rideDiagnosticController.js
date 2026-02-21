@@ -1,5 +1,6 @@
 import { RideDiagnostic } from "../models/rideDiagnosticModel.js";
 import Tricycle from "../models/tricycleModel.js";
+import { MaintenanceLog, MaintenanceScheduleGroup } from "../models/maintenanceScheduleModel.js";
 
 // ==================== RIDE DIAGNOSTIC ENDPOINTS ====================
 
@@ -469,6 +470,103 @@ export const getAdaptiveInsights = async (req, res) => {
             }
         }
 
+        // ===== 9. MAINTENANCE LOG CROSS-REFERENCE =====
+        // Pull scheduled maintenance log data to enrich diagnostic insights
+        let maintenanceCrossRef = [];
+        try {
+            // Get approved maintenance logs for this tricycle
+            const maintenanceLogs = await MaintenanceLog.find({
+                tricycleId,
+                approvalStatus: 'approved'
+            }).sort({ completedAt: -1 }).lean();
+
+            // Get the maintenance schedule groups for interval info
+            const scheduleGroups = await MaintenanceScheduleGroup.find({ isActive: true }).sort({ sortOrder: 1 }).lean();
+
+            // Build a map of part keys that have been flagged in diagnostics
+            const diagnosticPartKeys = new Set();
+            allDiagnostics.forEach(d => {
+                d.diagnostics.forEach(diag => {
+                    (diag.partsToCheck || []).forEach(pk => diagnosticPartKeys.add(pk));
+                });
+            });
+
+            // Cross-reference: for each part flagged in checkups, find its maintenance status
+            for (const partKey of diagnosticPartKeys) {
+                // Find latest maintenance log for this part
+                const latestLog = maintenanceLogs.find(l => l.itemKey === partKey);
+                
+                // Find the schedule group this part belongs to
+                let scheduleGroup = null;
+                let scheduleItem = null;
+                for (const group of scheduleGroups) {
+                    const item = group.items?.find(i => i.key === partKey);
+                    if (item) {
+                        scheduleGroup = group;
+                        scheduleItem = item;
+                        break;
+                    }
+                }
+
+                if (scheduleItem) {
+                    const intervalKm = scheduleGroup?.intervalKm || 1000;
+                    const lastServiceKm = latestLog?.lastServiceKm || 0;
+                    const kmSinceService = latestOdometer > 0 ? Math.max(0, latestOdometer - lastServiceKm) : 0;
+                    const wearPercent = Math.min(100, Math.round((kmSinceService / intervalKm) * 100));
+
+                    // Count how many times this part was flagged in diagnostics
+                    let diagnosticFlagCount = 0;
+                    let maxSeverity = 0;
+                    allDiagnostics.forEach(d => {
+                        d.diagnostics.forEach(diag => {
+                            if ((diag.partsToCheck || []).includes(partKey)) {
+                                diagnosticFlagCount++;
+                                maxSeverity = Math.max(maxSeverity, diag.severity || 0);
+                            }
+                        });
+                    });
+
+                    // Calculate days since last service
+                    let daysSinceService = null;
+                    if (latestLog?.completedAt) {
+                        daysSinceService = Math.floor((Date.now() - new Date(latestLog.completedAt).getTime()) / (1000 * 60 * 60 * 24));
+                    }
+
+                    // How many times this part has been serviced
+                    const serviceCount = maintenanceLogs.filter(l => l.itemKey === partKey).length;
+
+                    maintenanceCrossRef.push({
+                        partKey,
+                        partName: scheduleItem.name,
+                        groupTitle: scheduleGroup.title,
+                        intervalKm,
+                        lastServiceKm,
+                        kmSinceService,
+                        wearPercent,
+                        daysSinceService,
+                        serviceCount,
+                        diagnosticFlagCount,
+                        maxDiagnosticSeverity: maxSeverity,
+                        lastServiceDate: latestLog?.completedAt || null,
+                        lastServiceStatus: latestLog?.status || null,
+                        // Urgency: combine wear percent with diagnostic severity
+                        combinedUrgency: wearPercent >= 80 || maxSeverity >= 4 ? 'critical'
+                            : wearPercent >= 60 || maxSeverity >= 3 ? 'high'
+                            : wearPercent >= 40 || maxSeverity >= 2 ? 'medium'
+                            : 'low',
+                    });
+                }
+            }
+
+            // Sort by combined urgency (critical first)
+            const urgencyOrder = { critical: 0, high: 1, medium: 2, low: 3 };
+            maintenanceCrossRef.sort((a, b) => 
+                (urgencyOrder[a.combinedUrgency] || 3) - (urgencyOrder[b.combinedUrgency] || 3)
+            );
+        } catch (crossRefError) {
+            console.warn('Error building maintenance cross-reference:', crossRefError);
+        }
+
         res.status(200).json({
             success: true,
             data: {
@@ -483,6 +581,7 @@ export const getAdaptiveInsights = async (req, res) => {
                 avgDaysBetween,
                 ratingTrend,
                 predictedIssues,
+                maintenanceCrossRef,
             },
         });
     } catch (error) {
