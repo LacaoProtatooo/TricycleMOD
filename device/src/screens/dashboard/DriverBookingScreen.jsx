@@ -534,12 +534,14 @@ const DriverBookingScreen = () => {
             </Marker>
             
             {/* Route Line */}
-            <Polyline
-              coordinates={[activeBooking.pickup, activeBooking.destination]}
-              strokeColor={colors.primary}
-              strokeWidth={3}
-              lineDashPattern={[10, 5]}
-            />
+            {activeBooking.pickup && activeBooking.destination && (
+              <Polyline
+                coordinates={[activeBooking.pickup, activeBooking.destination]}
+                strokeColor={colors.primary}
+                strokeWidth={3}
+                lineDashPattern={[10, 5]}
+              />
+            )}
             
             {/* Completion Zone */}
             <Circle

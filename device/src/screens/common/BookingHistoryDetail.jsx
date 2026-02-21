@@ -325,12 +325,14 @@ const BookingHistoryDetail = ({ navigation, route }) => {
             </Marker>
 
             {/* Route line */}
-            <Polyline
-              coordinates={[booking.pickup, booking.destination]}
-              strokeColor={colors.primary}
-              strokeWidth={4}
-              lineDashPattern={[10, 5]}
-            />
+            {booking.pickup && booking.destination && (
+              <Polyline
+                coordinates={[booking.pickup, booking.destination]}
+                strokeColor={colors.primary}
+                strokeWidth={4}
+                lineDashPattern={[10, 5]}
+              />
+            )}
           </MapView>
         </View>
 

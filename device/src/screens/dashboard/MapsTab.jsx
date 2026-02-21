@@ -1,7 +1,8 @@
 import React, { useEffect, useState, useMemo } from "react";
-import { StyleSheet, View, TouchableOpacity, Text, Modal, Alert } from "react-native";
+import { StyleSheet, View, TouchableOpacity, Text, Modal, Alert, ActivityIndicator } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from '@expo/vector-icons';
+import { useIsFocused } from '@react-navigation/native';
 import { colors, spacing } from '../../components/common/theme';
 import TrackingMap from '../../components/home/TrackingMap';
 import QueueCard from '../../components/home/QueueCard';
@@ -16,6 +17,7 @@ const BACKEND = API_URL;
 const KM_KEY = 'vehicle_current_km_v1';
 
 const MapsTab = () => {
+  const isFocused = useIsFocused();
   const db = useAsyncSQLiteContext();
   const [user, setUser] = useState(null);
   const [assignedTricycle, setAssignedTricycle] = useState(null);
@@ -118,6 +120,8 @@ const MapsTab = () => {
         </View>
       )}
 
+      {/* Only render map when tab is focused to prevent multiple MapView crashes */}
+      {isFocused ? (
       <TrackingMap
         odometerSeed={odometerSeed}
         codingDayRestricted={codingDayStatus?.isCodingDay || false}
@@ -141,6 +145,12 @@ const MapsTab = () => {
           );
         }}
       />
+      ) : (
+        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+          <ActivityIndicator size="large" color={colors.primary} />
+          <Text style={{ marginTop: 12, color: colors.orangeShade5 }}>Loading map...</Text>
+        </View>
+      )}
 
       <View style={styles.fabContainer}>
         <TouchableOpacity style={styles.fab} onPress={() => setQueueVisible(true)}>

@@ -21,7 +21,7 @@ import {
   withdrawOffer,
   getDriverPendingOffers,
 } from '../controllers/bookingController.js';
-import { protect, authorize, requireVerified, requireDriverLicense } from '../middleware/authMiddleware.js';
+import { protect, authorize, requireVerified } from '../middleware/authMiddleware.js';
 
 const router = express.Router();
 
@@ -48,9 +48,9 @@ router.post('/:id/rate', protect, rateDriver);
 router.get('/nearby', protect, authorize('driver'), getNearbyBookings);
 router.get('/driver', protect, authorize('driver'), getDriverBookings);
 router.get('/driver/pending-offers', protect, authorize('driver'), getDriverPendingOffers);  // Get driver's pending offers
-router.post('/:id/driver-respond', protect, authorize('driver'), requireDriverLicense, driverRespondToBooking);
+router.post('/:id/driver-respond', protect, authorize('driver'), driverRespondToBooking);
 router.post('/:id/withdraw-offer', protect, authorize('driver'), withdrawOffer);  // Withdraw driver's offer
-router.post('/:id/start-trip', protect, authorize('driver'), requireDriverLicense, startTrip);
+router.post('/:id/start-trip', protect, authorize('driver'), startTrip);
 
 // Shared routes (user or driver)
 router.get('/:id', protect, getBookingDetails);

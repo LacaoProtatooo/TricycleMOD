@@ -1,4 +1,4 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   Modal,
   View,
@@ -36,28 +36,64 @@ const CODING_DAYS = [
   { value: 6, label: 'Saturday' },
 ];
 
-// Maintenance schedule intervals
-const MAINTENANCE_INTERVALS = {
-  tire_pressure: { interval: 500, name: 'Tire Pressure', icon: 'ellipse' },
-  chain: { interval: 500, name: 'Chain', icon: 'link' },
-  battery_water: { interval: 500, name: 'Battery Water', icon: 'battery-half' },
-  air_filter_clean: { interval: 500, name: 'Air Filter (Clean)', icon: 'cloud' },
-  brake_check: { interval: 500, name: 'Brakes', icon: 'hand-left' },
-  cables: { interval: 500, name: 'Cables', icon: 'git-branch' },
-  engine_oil: { interval: 1000, name: 'Engine Oil', icon: 'water' },
-  spark_plug: { interval: 1000, name: 'Spark Plug', icon: 'flash' },
-  carburetor: { interval: 1000, name: 'Carburetor', icon: 'settings' },
-  chain_sprockets: { interval: 1000, name: 'Chain & Sprockets', icon: 'cog' },
-  oil_filter: { interval: 4000, name: 'Oil Filter', icon: 'funnel' },
-  air_filter_replace: { interval: 4000, name: 'Air Filter (Replace)', icon: 'swap-vertical' },
-  valve_clearance: { interval: 4000, name: 'Valve Clearance', icon: 'options' },
-  battery_test: { interval: 4000, name: 'Battery Test', icon: 'pulse' },
-  brake_fluid_flush: { interval: 11000, name: 'Brake Fluid', icon: 'beaker' },
-  clutch_plates: { interval: 11000, name: 'Clutch Plates', icon: 'disc' },
-  suspension: { interval: 11000, name: 'Suspension', icon: 'resize' },
-  engine_overhaul: { interval: 20000, name: 'Engine Overhaul', icon: 'construct' },
-  transmission_oil: { interval: 20000, name: 'Transmission Oil', icon: 'shuffle' },
-  wiring_harness: { interval: 20000, name: 'Wiring', icon: 'git-network' },
+// Fallback maintenance schedule (used when server config is unavailable)
+const FALLBACK_SCHEDULE = [
+  {
+    id: 'weekly', title: 'Weekly (or every 300–500 km)', intervalKm: 500, baselineDays: 7, reminderLabel: 'Weekly',
+    items: [
+      { key: 'tire_pressure', name: 'Tire Pressure', notes: 'Recheck and inflate, check for uneven wear' },
+      { key: 'chain', name: 'Chain', notes: 'Clean, lubricate, and adjust' },
+      { key: 'battery_water', name: 'Battery Water', notes: 'Top up with distilled water (non-MF)' },
+      { key: 'air_filter_clean', name: 'Air Filter (Clean)', notes: 'Clean using compressed air' },
+      { key: 'brake_check', name: 'Brake System', notes: 'Check pads/shoes for wear' },
+      { key: 'cables', name: 'Cables', notes: 'Lubricate clutch/throttle cables' },
+    ],
+  },
+  {
+    id: '1000', title: 'Every 1,000 km (monthly heavy use)', intervalKm: 1000, baselineDays: 30, reminderLabel: 'Monthly',
+    items: [
+      { key: 'engine_oil', name: 'Engine Oil', notes: 'Replace (SAE 10W-40 or 20W-50)' },
+      { key: 'spark_plug', name: 'Spark Plug', notes: 'Inspect/clean or replace; gap 0.7–0.8 mm' },
+      { key: 'carburetor', name: 'Carburetor', notes: 'Check idle & mixture' },
+      { key: 'chain_sprockets', name: 'Chain & Sprockets', notes: 'Inspect for wear' },
+    ],
+  },
+  {
+    id: '3000-5000', title: 'Every 3,000–5,000 km', intervalKm: 4000, baselineDays: 90, reminderLabel: 'Quarterly',
+    items: [
+      { key: 'oil_filter', name: 'Oil Filter', notes: 'Replace if equipped' },
+      { key: 'air_filter_replace', name: 'Air Filter (Replace)', notes: 'Replace if dusty/oily' },
+      { key: 'valve_clearance', name: 'Valve Clearance', notes: 'Adjust per spec' },
+      { key: 'battery_test', name: 'Battery Test', notes: 'Test voltage; replace if weak' },
+    ],
+  },
+  {
+    id: '10000', title: 'Every 10,000–12,000 km (or annually)', intervalKm: 11000, baselineDays: 365, reminderLabel: 'Annual',
+    items: [
+      { key: 'brake_fluid_flush', name: 'Brake Fluid', notes: 'Flush & replace' },
+      { key: 'clutch_plates', name: 'Clutch Plates', notes: 'Inspect & replace if slipping' },
+      { key: 'suspension', name: 'Suspension', notes: 'Inspect fork oil & shocks' },
+    ],
+  },
+  {
+    id: '20000', title: 'Major service — Every 20,000 km', intervalKm: 20000, baselineDays: 730, reminderLabel: 'Bi-Annual',
+    items: [
+      { key: 'engine_overhaul', name: 'Engine Overhaul', notes: 'Check rings, valves, gaskets' },
+      { key: 'transmission_oil', name: 'Transmission Oil', notes: 'Replace if applicable' },
+      { key: 'wiring_harness', name: 'Wiring Harness', notes: 'Replace brittle wiring' },
+    ],
+  },
+];
+
+// Maintenance part icons for display
+const PART_ICONS = {
+  tire_pressure: 'ellipse', chain: 'link', battery_water: 'battery-half',
+  air_filter_clean: 'cloud', brake_check: 'hand-left', cables: 'git-branch',
+  engine_oil: 'water', spark_plug: 'flash', carburetor: 'settings',
+  chain_sprockets: 'cog', oil_filter: 'funnel', air_filter_replace: 'swap-vertical',
+  valve_clearance: 'options', battery_test: 'pulse', brake_fluid_flush: 'beaker',
+  clutch_plates: 'disc', suspension: 'resize', engine_overhaul: 'construct',
+  transmission_oil: 'shuffle', wiring_harness: 'git-network',
 };
 
 // Tab Button Component
@@ -85,44 +121,6 @@ const TabButton = ({ label, icon, isActive, onPress, badge }) => (
   </TouchableOpacity>
 );
 
-// Maintenance Item Card
-const MaintenanceItemCard = ({ itemKey, currentKm, lastServiceKm, onMarkDone }) => {
-  const item = MAINTENANCE_INTERVALS[itemKey];
-  if (!item) return null;
-
-  const diff = Math.max(0, currentKm - (lastServiceKm || 0));
-  const progress = Math.min(100, Math.round((diff / item.interval) * 100));
-  const remaining = Math.max(0, item.interval - diff);
-  const color = getWearColor(progress);
-
-  return (
-    <View style={localStyles.maintenanceCard}>
-      <View style={[localStyles.maintenanceIcon, { backgroundColor: color + '20' }]}>
-        <Ionicons name={item.icon} size={20} color={color} />
-      </View>
-      <View style={localStyles.maintenanceInfo}>
-        <Text style={localStyles.maintenanceName}>{item.name}</Text>
-        <View style={localStyles.progressContainer}>
-          <View style={localStyles.progressBar}>
-            <View style={[localStyles.progressFill, { width: `${progress}%`, backgroundColor: color }]} />
-          </View>
-          <Text style={[localStyles.progressText, { color }]}>{progress}%</Text>
-        </View>
-        <Text style={localStyles.maintenanceDetails}>
-          {remaining > 0 ? `${remaining} km remaining` : 'Service overdue!'}
-          {lastServiceKm > 0 && ` • Last: ${Math.round(lastServiceKm)} km`}
-        </Text>
-      </View>
-      <TouchableOpacity 
-        style={[localStyles.markDoneBtn, progress >= 80 && localStyles.markDoneBtnUrgent]}
-        onPress={() => onMarkDone(itemKey)}
-      >
-        <Ionicons name="checkmark" size={16} color={colors.white} />
-      </TouchableOpacity>
-    </View>
-  );
-};
-
 export default function TricycleDetailsModal({
   visible,
   onClose,
@@ -142,17 +140,64 @@ export default function TricycleDetailsModal({
   const [manualOdometer, setManualOdometer] = useState('');
   const [savingOdometer, setSavingOdometer] = useState(false);
 
+  // Maintenance schedule state
+  const [maintenanceSchedule, setMaintenanceSchedule] = useState(FALLBACK_SCHEDULE);
+  const [maintenanceStatusMap, setMaintenanceStatusMap] = useState({}); // { itemKey: { lastServiceKm, lastServiceDate } }
+  const [markingDone, setMarkingDone] = useState(null); // itemKey currently being marked
+
   // Get tricycle ID (handle both id and _id)
   const tricycleId = selectedTricycle?._id || selectedTricycle?.id;
+
+  // Fetch maintenance config from server
+  const fetchMaintenanceConfig = useCallback(async () => {
+    try {
+      const token = await getToken(db);
+      const res = await fetch(`${BACKEND}/api/maintenance/config`, {
+        headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }
+      });
+      if (res.ok) {
+        const config = await res.json();
+        const data = config.data || config;
+        if (data.schedule && data.schedule.length > 0) {
+          setMaintenanceSchedule(data.schedule);
+        }
+      }
+    } catch (e) {
+      console.warn('Error fetching maintenance config:', e);
+    }
+  }, [db]);
+
+  // Fetch maintenance status for this tricycle
+  const fetchMaintenanceStatus = useCallback(async () => {
+    if (!tricycleId) return;
+    try {
+      const token = await getToken(db);
+      const res = await fetch(`${BACKEND}/api/maintenance/tricycle/${tricycleId}/status`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      if (res.ok) {
+        const result = await res.json();
+        if (result.data) {
+          setMaintenanceStatusMap(result.data);
+        }
+      }
+    } catch (e) {
+      console.warn('Error fetching maintenance status:', e);
+    }
+  }, [tricycleId, db]);
 
   // Fetch fresh tricycle data when modal opens
   useEffect(() => {
     if (visible && tricycleId) {
       fetchTricycleData();
+      fetchMaintenanceConfig();
+      fetchMaintenanceStatus();
     }
     if (!visible) {
       setActiveTab('info');
       setTricycleData(null);
+      setMaintenanceStatusMap({});
+      setMarkingDone(null);
     }
   }, [visible, tricycleId]);
 
@@ -189,51 +234,104 @@ export default function TricycleDetailsModal({
   // Use fetched data or fall back to passed data
   const tricycle = tricycleData || selectedTricycle;
   const currentOdometer = tricycle?.currentOdometer || 0;
-  const maintenanceHistory = tricycle?.maintenanceHistory || [];
 
-  // Calculate parts status
+  // Get current tricycle ID for API calls
+  const currentTricycleId = tricycle?._id || tricycle?.id || tricycleId;
+
+  // Calculate parts status from schedule + maintenance status map
   const partsStatus = useMemo(() => {
     const status = {};
-    Object.keys(MAINTENANCE_INTERVALS).forEach(key => {
-      const history = maintenanceHistory.find(h => h.itemKey === key);
-      const lastServiceKm = history?.lastServiceKm || 0;
-      const diff = Math.max(0, currentOdometer - lastServiceKm);
-      const progress = Math.min(100, Math.round((diff / MAINTENANCE_INTERVALS[key].interval) * 100));
-      status[key] = { progress, lastServiceKm };
+    maintenanceSchedule.forEach(group => {
+      group.items.forEach(item => {
+        const statusData = maintenanceStatusMap[item.key];
+        const lastServiceKm = statusData?.lastServiceKm || 0;
+        const lastServiceDate = statusData?.lastServiceDate || null;
+        const diff = Math.max(0, currentOdometer - lastServiceKm);
+        const kmProgress = Math.min(100, Math.round((diff / group.intervalKm) * 100));
+
+        let timeProgress = 0;
+        let daysRemaining = null;
+        if (lastServiceDate && group.baselineDays) {
+          const daysSince = Math.floor((Date.now() - new Date(lastServiceDate)) / (1000 * 60 * 60 * 24));
+          timeProgress = Math.min(100, Math.round((daysSince / group.baselineDays) * 100));
+          daysRemaining = group.baselineDays - daysSince;
+        }
+
+        const overallProgress = Math.max(kmProgress, timeProgress);
+        status[item.key] = {
+          progress: overallProgress,
+          kmProgress,
+          timeProgress,
+          lastServiceKm,
+          lastServiceDate,
+          daysRemaining,
+          intervalKm: group.intervalKm,
+          baselineDays: group.baselineDays,
+        };
+      });
     });
     return status;
-  }, [maintenanceHistory, currentOdometer]);
+  }, [maintenanceSchedule, maintenanceStatusMap, currentOdometer]);
 
   // Count critical items
   const criticalCount = useMemo(() => {
     return Object.values(partsStatus).filter(p => p.progress >= 80).length;
   }, [partsStatus]);
 
-  // Get current tricycle ID for API calls
-  const currentTricycleId = tricycle?._id || tricycle?.id || tricycleId;
-
-  // Handle marking maintenance as done
-  const handleMarkDone = async (itemKey) => {
+  // Handle marking maintenance as done (uses proper maintenance log endpoint, auto-approved for operator)
+  const handleMarkDone = (itemKey, itemName) => {
     if (!currentTricycleId) return;
-    
+
+    Alert.alert(
+      'Mark as Serviced',
+      `Are you sure you want to mark "${itemName}" as serviced at ${Math.round(currentOdometer)} km?`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Yes, Mark Done',
+          style: 'default',
+          onPress: () => doMarkDone(itemKey, itemName),
+        },
+      ]
+    );
+  };
+
+  const doMarkDone = async (itemKey, itemName) => {
+    if (!currentTricycleId) return;
+    setMarkingDone(itemKey);
+
     try {
       const token = await getToken(db);
-      await fetch(`${BACKEND}/api/tricycles/${currentTricycleId}/maintenance`, {
+      const res = await fetch(`${BACKEND}/api/maintenance/tricycle/${currentTricycleId}/log`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Authorization: `Bearer ${token}`
+          Authorization: `Bearer ${token}`,
         },
         body: JSON.stringify({
           itemKey,
           lastServiceKm: currentOdometer,
-          notes: 'Marked done by operator'
-        })
+          status: 'completed',
+          notes: 'Serviced by operator',
+          completedAt: new Date().toISOString(),
+        }),
       });
-      // Refresh data
-      fetchTricycleData();
+
+      const result = await res.json();
+      if (res.ok && result.success) {
+        Alert.alert('Done', `"${itemName}" has been marked as serviced.`);
+        // Refresh data
+        fetchTricycleData();
+        fetchMaintenanceStatus();
+        if (onTricycleUpdated) onTricycleUpdated();
+      } else {
+        Alert.alert('Error', result.message || 'Failed to record maintenance.');
+      }
     } catch (error) {
       console.error('Error marking maintenance:', error);
+      Alert.alert('Error', 'Failed to record maintenance. Please try again.');
+    } finally {
+      setMarkingDone(null);
     }
   };
 
@@ -376,7 +474,7 @@ export default function TricycleDetailsModal({
       {/* Quick Stats */}
       <View style={localStyles.statsRow}>
         <View style={localStyles.statBox}>
-          <Text style={localStyles.statValue}>{maintenanceHistory.length}</Text>
+          <Text style={localStyles.statValue}>{Object.keys(maintenanceStatusMap).length}</Text>
           <Text style={localStyles.statLabel}>Services</Text>
         </View>
         <View style={[localStyles.statBox, criticalCount > 0 && localStyles.statBoxAlert]}>
@@ -491,23 +589,18 @@ export default function TricycleDetailsModal({
   );
 
   const renderMaintenanceTab = () => {
-    // Group by urgency
-    const critical = [];
-    const warning = [];
-    const normal = [];
-
-    Object.entries(partsStatus).forEach(([key, value]) => {
-      const item = { key, ...value };
-      if (value.progress >= 80) critical.push(item);
-      else if (value.progress >= 60) warning.push(item);
-      else normal.push(item);
-    });
-
     return (
       <ScrollView 
         style={localStyles.tabContent}
         refreshControl={
-          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} colors={[colors.primary]} />
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={() => {
+              onRefresh();
+              fetchMaintenanceStatus();
+            }}
+            colors={[colors.primary]}
+          />
         }
       >
         {/* Odometer Display - Tap to Edit */}
@@ -530,68 +623,168 @@ export default function TricycleDetailsModal({
           </View>
         </TouchableOpacity>
 
-        {/* Critical Items */}
-        {critical.length > 0 && (
-          <View style={localStyles.maintenanceSection}>
-            <View style={localStyles.sectionHeader}>
-              <Ionicons name="warning" size={18} color="#EF4444" />
-              <Text style={[localStyles.sectionHeaderText, { color: '#EF4444' }]}>
-                Critical ({critical.length})
-              </Text>
-            </View>
-            {critical.map(item => (
-              <MaintenanceItemCard
-                key={item.key}
-                itemKey={item.key}
-                currentKm={currentOdometer}
-                lastServiceKm={item.lastServiceKm}
-                onMarkDone={handleMarkDone}
-              />
-            ))}
+        {/* Quick Stats */}
+        <View style={{ flexDirection: 'row', gap: 8, marginBottom: 14 }}>
+          <View style={[localStyles.statBox, criticalCount > 0 && localStyles.statBoxAlert, { flex: 1 }]}>
+            <Text style={[localStyles.statValue, criticalCount > 0 && { color: '#EF4444' }]}>{criticalCount}</Text>
+            <Text style={localStyles.statLabel}>Critical</Text>
           </View>
-        )}
+          <View style={[localStyles.statBox, { flex: 1 }]}>
+            <Text style={localStyles.statValue}>
+              {Object.values(partsStatus).filter(p => p.progress >= 60 && p.progress < 80).length}
+            </Text>
+            <Text style={localStyles.statLabel}>Approaching</Text>
+          </View>
+          <View style={[localStyles.statBox, { flex: 1 }]}>
+            <Text style={[localStyles.statValue, { color: '#22C55E' }]}>
+              {Object.values(partsStatus).filter(p => p.progress < 60).length}
+            </Text>
+            <Text style={localStyles.statLabel}>Good</Text>
+          </View>
+        </View>
 
-        {/* Warning Items */}
-        {warning.length > 0 && (
-          <View style={localStyles.maintenanceSection}>
-            <View style={localStyles.sectionHeader}>
-              <Ionicons name="alert-circle" size={18} color="#F59E0B" />
-              <Text style={[localStyles.sectionHeaderText, { color: '#F59E0B' }]}>
-                Approaching ({warning.length})
-              </Text>
-            </View>
-            {warning.map(item => (
-              <MaintenanceItemCard
-                key={item.key}
-                itemKey={item.key}
-                currentKm={currentOdometer}
-                lastServiceKm={item.lastServiceKm}
-                onMarkDone={handleMarkDone}
-              />
-            ))}
-          </View>
-        )}
+        {/* Vehicle Diagnostic View */}
+        <VehicleDiagnostic partsStatus={partsStatus} />
 
-        {/* Normal Items */}
-        {normal.length > 0 && (
-          <View style={localStyles.maintenanceSection}>
-            <View style={localStyles.sectionHeader}>
-              <Ionicons name="checkmark-circle" size={18} color="#22C55E" />
-              <Text style={[localStyles.sectionHeaderText, { color: '#22C55E' }]}>
-                Good Condition ({normal.length})
-              </Text>
+        {/* Schedule Groups */}
+        <Text style={localStyles.scheduleTitle}>Maintenance Schedule</Text>
+        <Text style={localStyles.scheduleHint}>
+          <Ionicons name="information-circle-outline" size={12} color={colors.orangeShade5} />{' '}
+          Tap the checkmark to mark an item as serviced
+        </Text>
+
+        {maintenanceSchedule.map((group) => {
+          // Count critical in this group
+          const groupCritical = group.items.filter(it => (partsStatus[it.key]?.progress || 0) >= 80).length;
+
+          return (
+            <View key={group.id} style={localStyles.scheduleGroup}>
+              {/* Group Header */}
+              <View style={localStyles.scheduleGroupHeader}>
+                <View style={{ flex: 1 }}>
+                  <Text style={localStyles.scheduleGroupTitle}>{group.title}</Text>
+                </View>
+                <View style={localStyles.reminderBadge}>
+                  <Ionicons name="notifications-outline" size={11} color={colors.primary} />
+                  <Text style={localStyles.reminderBadgeText}>{group.reminderLabel}</Text>
+                </View>
+                {groupCritical > 0 && (
+                  <View style={localStyles.groupCriticalBadge}>
+                    <Text style={localStyles.groupCriticalBadgeText}>{groupCritical}</Text>
+                  </View>
+                )}
+              </View>
+
+              {/* Items in group */}
+              {group.items.map((it) => {
+                const status = partsStatus[it.key] || {};
+                const kmProgress = status.kmProgress || 0;
+                const timeProgress = status.timeProgress || 0;
+                const overallProgress = status.progress || 0;
+                const overallColor = getWearColor(overallProgress);
+                const kmColor = getWearColor(kmProgress);
+                const lastKm = status.lastServiceKm || 0;
+                const dueKm = lastKm + group.intervalKm;
+                const remainingKm = Math.max(0, dueKm - currentOdometer);
+                const lastDate = status.lastServiceDate;
+                const daysRemaining = status.daysRemaining;
+                const isBeingMarked = markingDone === it.key;
+
+                let timeColor = '#22C55E';
+                if (timeProgress >= 100) timeColor = '#DC2626';
+                else if (timeProgress >= 80) timeColor = '#F59E0B';
+                else if (timeProgress >= 60) timeColor = '#FBBF24';
+
+                return (
+                  <View key={it.key} style={localStyles.scheduleCard}>
+                    {/* Status indicator bar */}
+                    <View style={[localStyles.scheduleStatusBar, { backgroundColor: overallColor }]} />
+
+                    {/* Icon */}
+                    <View style={[localStyles.scheduleIcon, { backgroundColor: overallColor + '18' }]}>
+                      <Ionicons name={PART_ICONS[it.key] || 'build'} size={18} color={overallColor} />
+                    </View>
+
+                    {/* Info */}
+                    <View style={localStyles.scheduleInfo}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <Text style={localStyles.scheduleItemName}>{it.name}</Text>
+                        <Text style={[localStyles.scheduleStatusLabel, { color: overallColor }]}>
+                          {overallProgress < 30 ? '✓ Good' : overallProgress < 60 ? '⚠ Fair' : overallProgress < 80 ? '⚠ Worn' : '⛔ Critical'}
+                        </Text>
+                      </View>
+                      <Text style={localStyles.scheduleItemNotes}>{it.notes}</Text>
+
+                      {/* KM info */}
+                      <Text style={localStyles.scheduleSmallText}>
+                        <Ionicons name="speedometer-outline" size={11} color={colors.orangeShade5} />{' '}
+                        Last: {lastKm} km · Next: {dueKm} km
+                        {remainingKm > 0 ? ` · ${remainingKm} km left` : ' · Overdue!'}
+                      </Text>
+
+                      {/* Time info */}
+                      {lastDate ? (
+                        <Text style={[localStyles.scheduleSmallText, { color: timeColor }]}>
+                          <Ionicons name="calendar-outline" size={11} color={timeColor} />{' '}
+                          {new Date(lastDate).toLocaleDateString()}
+                          {daysRemaining !== null && (
+                            daysRemaining > 0
+                              ? ` · ${daysRemaining}d until due`
+                              : ` · ${Math.abs(daysRemaining)}d overdue!`
+                          )}
+                        </Text>
+                      ) : (
+                        <Text style={[localStyles.scheduleSmallText, { color: '#F59E0B' }]}>
+                          <Ionicons name="alert-circle-outline" size={11} color="#F59E0B" /> No service date recorded
+                        </Text>
+                      )}
+
+                      {/* KM Progress Bar */}
+                      <View style={localStyles.progressSection}>
+                        <Text style={localStyles.progressLabel}>KM</Text>
+                        <View style={localStyles.progressBarSmall}>
+                          <View style={[localStyles.progressFillSmall, { width: `${kmProgress}%`, backgroundColor: kmColor }]} />
+                        </View>
+                        <Text style={[localStyles.progressPercent, { color: kmColor }]}>{kmProgress}%</Text>
+                      </View>
+
+                      {/* Time Progress Bar */}
+                      {group.baselineDays && (
+                        <View style={localStyles.progressSection}>
+                          <Text style={localStyles.progressLabel}>Time</Text>
+                          <View style={localStyles.progressBarSmall}>
+                            <View style={[localStyles.progressFillSmall, { width: `${timeProgress}%`, backgroundColor: timeColor }]} />
+                          </View>
+                          <Text style={[localStyles.progressPercent, { color: timeColor }]}>{timeProgress}%</Text>
+                        </View>
+                      )}
+                    </View>
+
+                    {/* Mark Done Button */}
+                    <TouchableOpacity
+                      style={[
+                        localStyles.markDoneBtn,
+                        overallProgress >= 80 && localStyles.markDoneBtnUrgent,
+                        isBeingMarked && { opacity: 0.5 },
+                      ]}
+                      onPress={() => handleMarkDone(it.key, it.name)}
+                      disabled={isBeingMarked}
+                      activeOpacity={0.7}
+                    >
+                      {isBeingMarked ? (
+                        <ActivityIndicator size="small" color={colors.white} />
+                      ) : (
+                        <Ionicons name="checkmark-done" size={18} color={colors.white} />
+                      )}
+                    </TouchableOpacity>
+                  </View>
+                );
+              })}
             </View>
-            {normal.map(item => (
-              <MaintenanceItemCard
-                key={item.key}
-                itemKey={item.key}
-                currentKm={currentOdometer}
-                lastServiceKm={item.lastServiceKm}
-                onMarkDone={handleMarkDone}
-              />
-            ))}
-          </View>
-        )}
+          );
+        })}
+
+        <View style={{ height: 30 }} />
       </ScrollView>
     );
   };
@@ -680,12 +873,7 @@ export default function TricycleDetailsModal({
               onPress={() => setActiveTab('maintenance')}
               badge={criticalCount}
             />
-            <TabButton
-              label="Diagnostic"
-              icon="analytics"
-              isActive={activeTab === 'diagnostic'}
-              onPress={() => setActiveTab('diagnostic')}
-            />
+         
           </View>
 
           {/* Content */}
@@ -856,7 +1044,7 @@ const localStyles = StyleSheet.create({
     justifyContent: 'flex-end',
   },
   modalContainer: {
-    backgroundColor: '#FAFAFA',
+    backgroundColor: '#FFFFFF',
     borderTopLeftRadius: 28,
     borderTopRightRadius: 28,
     height: screenHeight * 0.92,
@@ -1197,62 +1385,157 @@ const localStyles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
   },
-  maintenanceCard: {
+
+  // Schedule group styles (driver-like layout)
+  scheduleTitle: {
+    fontSize: 15,
+    fontWeight: '700',
+    color: colors.orangeShade7,
+    marginTop: 14,
+    marginBottom: 4,
+  },
+  scheduleHint: {
+    fontSize: 11,
+    color: colors.orangeShade5,
+    marginBottom: 12,
+    fontStyle: 'italic',
+  },
+  scheduleGroup: {
+    marginBottom: 16,
+  },
+  scheduleGroupHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 8,
+    paddingBottom: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: '#E5E7EB',
+  },
+  scheduleGroupTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.orangeShade7,
+  },
+  reminderBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.primary + '15',
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 8,
+    marginLeft: 8,
+    gap: 3,
+  },
+  reminderBadgeText: {
+    fontSize: 10,
+    fontWeight: '600',
+    color: colors.primary,
+  },
+  groupCriticalBadge: {
+    backgroundColor: '#EF4444',
+    borderRadius: 10,
+    minWidth: 20,
+    height: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 6,
+    paddingHorizontal: 5,
+  },
+  groupCriticalBadgeText: {
+    fontSize: 10,
+    fontWeight: 'bold',
+    color: '#FFF',
+  },
+  scheduleCard: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: colors.white,
-    padding: 12,
     borderRadius: 12,
     marginBottom: 8,
+    padding: 10,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.04,
+    shadowRadius: 4,
+    elevation: 1,
   },
-  maintenanceIcon: {
-    width: 40,
-    height: 40,
+  scheduleStatusBar: {
+    width: 4,
+    height: '100%',
+    borderRadius: 2,
+    position: 'absolute',
+    left: 0,
+    top: 0,
+    bottom: 0,
+  },
+  scheduleIcon: {
+    width: 36,
+    height: 36,
     borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
+    marginLeft: 6,
   },
-  maintenanceInfo: {
+  scheduleInfo: {
     flex: 1,
-    marginLeft: 12,
+    marginLeft: 10,
   },
-  maintenanceName: {
-    fontSize: 14,
-    fontWeight: '600',
+  scheduleItemName: {
+    fontSize: 13,
+    fontWeight: '700',
     color: colors.orangeShade7,
+    flex: 1,
   },
-  progressContainer: {
+  scheduleStatusLabel: {
+    fontSize: 10,
+    fontWeight: '700',
+    marginLeft: 4,
+  },
+  scheduleItemNotes: {
+    fontSize: 11,
+    color: colors.orangeShade5,
+    marginTop: 1,
+    marginBottom: 4,
+  },
+  scheduleSmallText: {
+    fontSize: 10,
+    color: colors.orangeShade5,
+    marginTop: 2,
+  },
+  progressSection: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginTop: 6,
-    gap: 8,
+    marginTop: 4,
+    gap: 6,
   },
-  progressBar: {
+  progressLabel: {
+    fontSize: 9,
+    fontWeight: '700',
+    color: colors.orangeShade5,
+    width: 28,
+  },
+  progressBarSmall: {
     flex: 1,
-    height: 6,
+    height: 5,
     backgroundColor: '#E5E7EB',
     borderRadius: 3,
     overflow: 'hidden',
   },
-  progressFill: {
+  progressFillSmall: {
     height: '100%',
     borderRadius: 3,
   },
-  progressText: {
-    fontSize: 12,
-    fontWeight: '600',
-    width: 36,
+  progressPercent: {
+    fontSize: 10,
+    fontWeight: '700',
+    width: 32,
     textAlign: 'right',
   },
-  maintenanceDetails: {
-    fontSize: 11,
-    color: colors.orangeShade5,
-    marginTop: 4,
-  },
   markDoneBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     backgroundColor: colors.primary,
     alignItems: 'center',
     justifyContent: 'center',

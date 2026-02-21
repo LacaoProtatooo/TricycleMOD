@@ -1,10 +1,51 @@
 import React from 'react';
-import { View, Text, TouchableOpacity } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../../common/theme';
 import { styles } from './maintenanceStyles';
 import { FALLBACK_SCHEDULE } from './maintenanceConstants';
 import { getWearColor } from '../VehicleDiagnostic';
+
+// AI Recommendation helpers — combines schedule progress + AI prediction + safety for best recommendation
+const getAIRecommendation = (prediction, overallProgress) => {
+	if (!prediction) return null;
+	const km = prediction.predictedKm || 0;
+	const isSafety = prediction.safetyPriority === 'high';
+	
+	// Safety items: trigger warnings earlier (more conservative)
+	if (isSafety) {
+		if (km <= 100 || overallProgress >= 90) {
+			return { label: 'Service Now', color: '#DC2626', icon: 'alert-circle', priority: 1 };
+		}
+		if (km <= 300 || overallProgress >= 70) {
+			return { label: 'Service Soon', color: '#F59E0B', icon: 'time', priority: 2 };
+		}
+		if (km <= 500 || overallProgress >= 50) {
+			return { label: 'Schedule Service', color: '#3B82F6', icon: 'calendar', priority: 3 };
+		}
+		return { label: 'Good — Safe', color: '#22C55E', icon: 'shield-checkmark', priority: 4 };
+	}
+	
+	// Regular items
+	if (km <= 50 || overallProgress >= 100) {
+		return { label: 'Service Now', color: '#DC2626', icon: 'alert-circle', priority: 1 };
+	}
+	if (km <= 200 || overallProgress >= 80) {
+		return { label: 'Service Soon', color: '#F59E0B', icon: 'time', priority: 2 };
+	}
+	if (km <= 500 || overallProgress >= 60) {
+		return { label: 'Schedule Service', color: '#3B82F6', icon: 'calendar', priority: 3 };
+	}
+	return { label: 'Good Condition', color: '#22C55E', icon: 'checkmark-circle', priority: 4 };
+};
+
+const getHealthLabel = (score) => {
+	if (score >= 80) return { text: 'Excellent', color: '#22C55E' };
+	if (score >= 60) return { text: 'Good', color: '#84CC16' };
+	if (score >= 40) return { text: 'Fair', color: '#EAB308' };
+	if (score >= 20) return { text: 'Poor', color: '#F97316' };
+	return { text: 'Critical', color: '#EF4444' };
+};
 
 const MaintenanceScheduleList = ({
 	data,
@@ -14,9 +55,14 @@ const MaintenanceScheduleList = ({
 	currentKm,
 	onMarkDone,
 	onDefer,
-	schedule = FALLBACK_SCHEDULE, // Accept dynamic schedule with fallback
-	filter = 'all', // 'all' | 'critical' | 'attention'
+	schedule = FALLBACK_SCHEDULE,
+	filter = 'all',
 	onClearFilter,
+	predictions = {},
+	anomalies = [],
+	healthScore = 100,
+	onMaintenanceNeeded,
+	maintenanceRecords = {},
 }) => {
 	const progressFor = (lastKm, intervalKm) => {
 		const cur = parseInt(odometerKm || currentKm || '0', 10);
@@ -58,8 +104,125 @@ const MaintenanceScheduleList = ({
 		? 'Items Needing Attention' 
 		: null;
 
+	// Build anomaly lookup for quick access
+	const anomalyMap = {};
+	anomalies.forEach(a => { anomalyMap[a.itemKey] = a; });
+
+	// Count AI insights
+	const aiInsightCount = Object.values(predictions).filter(p => p.method === 'ai_regression').length;
+	const adaptedCount = Object.values(predictions).filter(p => p.method === 'adaptive_interval').length;
+	const urgentAICount = Object.values(predictions).filter(p => p.predictedKm <= 100).length;
+	const safetyUrgentCount = Object.values(predictions).filter(p => p.safetyPriority === 'high' && p.predictedKm <= 200).length;
+	const avgConfidence = Object.values(predictions).length > 0
+		? Math.round(Object.values(predictions).reduce((s, p) => s + (p.confidence || 0), 0) / Object.values(predictions).length)
+		: 0;
+	const health = getHealthLabel(healthScore);
+
+	// Detect if the vehicle is idle (most predictions agree)
+	const idlePredictions = Object.values(predictions).filter(p => p.isVehicleIdle);
+	const isVehicleIdle = idlePredictions.length > Object.values(predictions).length / 2;
+	const maxDaysExceededCount = Object.values(predictions).filter(p => p.maxDaysExceeded).length;
+	const timeSensitiveIdleCount = Object.values(predictions).filter(p => p.isVehicleIdle && p.timeDecayType === 'time_sensitive').length;
+
 	return (
 		<View>
+			{/* AI Health Score & Insights Summary Card */}
+			<View style={aiStyles.healthCard}>
+				<View style={aiStyles.healthRow}>
+					<View style={aiStyles.healthScoreCircle}>
+						<Text style={[aiStyles.healthScoreNum, { color: health.color }]}>{healthScore}</Text>
+					</View>
+					<View style={{ flex: 1, marginLeft: 12 }}>
+						<View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 2 }}>
+							<Ionicons name="sparkles" size={14} color="#a78bfa" />
+							<Text style={aiStyles.healthTitle}>  AI Vehicle Health</Text>
+						</View>
+						<Text style={[aiStyles.healthLabel, { color: health.color }]}>{health.text} — {avgConfidence}% avg. confidence</Text>
+						<View style={aiStyles.healthStatsRow}>
+							{urgentAICount > 0 && (
+								<View style={[aiStyles.healthStat, { backgroundColor: '#DC262615' }]}>
+									<Text style={[aiStyles.healthStatText, { color: '#DC2626' }]}>{urgentAICount} urgent</Text>
+								</View>
+							)}
+							{safetyUrgentCount > 0 && (
+								<View style={[aiStyles.healthStat, { backgroundColor: '#EF444415' }]}>
+									<Text style={[aiStyles.healthStatText, { color: '#EF4444' }]}>{safetyUrgentCount} safety</Text>
+								</View>
+							)}
+							{aiInsightCount > 0 && (
+								<View style={[aiStyles.healthStat, { backgroundColor: '#a78bfa15' }]}>
+									<Text style={[aiStyles.healthStatText, { color: '#a78bfa' }]}>{aiInsightCount} ML</Text>
+								</View>
+							)}
+							{adaptedCount > 0 && (
+								<View style={[aiStyles.healthStat, { backgroundColor: '#22C55E15' }]}>
+									<Text style={[aiStyles.healthStatText, { color: '#16A34A' }]}>{adaptedCount} adapted</Text>
+								</View>
+							)}
+						</View>
+					</View>
+					{/* Health bar */}
+					<View style={aiStyles.healthBarContainer}>
+						<View style={[aiStyles.healthBar, { height: `${healthScore}%`, backgroundColor: health.color }]} />
+					</View>
+				</View>
+				<Text style={aiStyles.healthNote}>
+					{aiInsightCount + adaptedCount > 0
+						? 'Predictions adapt to your riding habits. Confidence improves with each service you complete.'
+						: 'Complete maintenance services to help AI learn your riding patterns and improve predictions.'
+					}
+				</Text>
+			</View>
+
+		{/* Idle Vehicle Advisory Banner */}
+		{isVehicleIdle && (
+			<View style={{
+				marginBottom: 10, padding: 12, borderRadius: 10,
+				backgroundColor: '#3B82F610', borderWidth: 1, borderColor: '#3B82F625',
+			}}>
+				<View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 6 }}>
+					<Ionicons name="moon-outline" size={16} color="#3B82F6" />
+					<Text style={{ fontSize: 13, fontWeight: '700', color: '#3B82F6', marginLeft: 6 }}>Vehicle Appears Idle</Text>
+				</View>
+				<Text style={{ fontSize: 12, color: '#64748B', lineHeight: 17 }}>
+					Low usage detected — mechanical parts (chain, clutch, brakes) won't wear much while parked, but fluids, battery, and rubber still degrade over time.
+				</Text>
+				{timeSensitiveIdleCount > 0 && (
+					<View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 6, backgroundColor: '#F59E0B10', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 }}>
+						<Ionicons name="alert-circle" size={12} color="#F59E0B" />
+						<Text style={{ fontSize: 11, color: '#92400E', marginLeft: 4 }}>
+							{timeSensitiveIdleCount} part(s) are time-sensitive and still need attention
+							{maxDaysExceededCount > 0 ? ` (${maxDaysExceededCount} overdue)` : ''}
+						</Text>
+					</View>
+				)}
+			</View>
+		)}
+
+		{/* Anomaly Alerts */}
+		{anomalies.length > 0 && (
+			<View style={{ marginBottom: 10 }}>
+				{anomalies.slice(0, 3).map((anomaly) => (
+					<View key={anomaly.itemKey} style={aiStyles.anomalyBanner}>
+						<Ionicons 
+							name={anomaly.severity === 'critical' ? 'warning' : 'alert-circle'} 
+							size={16} 
+							color={anomaly.severity === 'critical' ? '#EF4444' : '#F97316'} 
+						/>
+							<View style={{ flex: 1, marginLeft: 8 }}>
+								<Text style={aiStyles.anomalyTitle}>{anomaly.itemName}</Text>
+								<Text style={aiStyles.anomalyMsg}>{anomaly.message}</Text>
+								{anomaly.recommendation && (
+									<Text style={aiStyles.anomalyRec}>
+										<Ionicons name="bulb-outline" size={11} color="#60A5FA" /> {anomaly.recommendation}
+									</Text>
+								)}
+							</View>
+						</View>
+					))}
+				</View>
+			)}
+
 			{/* Active Filter Banner */}
 			{filter !== 'all' && (
 				<View style={{
@@ -170,13 +333,27 @@ const MaintenanceScheduleList = ({
 						// Use the worse of km or time progress for overall status
 						const overallProgress = Math.max(progress, timeProgress);
 						const overallColor = getWearColor(overallProgress);
+
+						// AI prediction & recommendation for this item
+						const prediction = predictions[it.key];
+						const anomaly = anomalyMap[it.key];
+						const recommendation = getAIRecommendation(prediction, overallProgress);
 						
 						return (
 							<View key={it.key} style={styles.card}>
 								<View style={[styles.statusIndicator, { backgroundColor: overallColor }]} />
 								
 								<View style={styles.cardLeft}>
-									<Text style={styles.itemName}>{it.name}</Text>
+									<View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+										<Text style={[styles.itemName, { flex: 1 }]}>{it.name}</Text>
+										{/* AI Recommendation Badge */}
+										{recommendation && (
+											<View style={[aiStyles.recBadge, { backgroundColor: recommendation.color + '15', borderColor: recommendation.color + '30' }]}>
+												<Ionicons name={recommendation.icon} size={10} color={recommendation.color} />
+												<Text style={[aiStyles.recBadgeText, { color: recommendation.color }]}>{recommendation.label}</Text>
+											</View>
+										)}
+									</View>
 									<Text style={styles.itemNotes}>{it.notes}</Text>
 									
 									{/* KM-based info */}
@@ -225,6 +402,91 @@ const MaintenanceScheduleList = ({
 									<Text style={[styles.statusText, { color: overallColor }]}>
 										{overallProgress < 30 ? '✓ Good' : overallProgress < 60 ? '⚠ Fair' : overallProgress < 80 ? '⚠ Worn' : '⛔ Critical'}
 									</Text>
+
+									{/* AI Prediction Insight Row */}
+									{prediction && (
+										<View style={aiStyles.insightContainer}>
+											<View style={aiStyles.insightRow}>
+												<Ionicons name="sparkles" size={11} color="#a78bfa" />
+												<Text style={aiStyles.insightText}>
+													AI: ~{prediction.predictedKm <= 0 ? 'Due now' : `${prediction.predictedKm} km left`}
+												</Text>
+												<Text style={aiStyles.insightConfidence}>
+													{prediction.confidence}% conf.
+												</Text>
+												{prediction.method === 'ai_regression' && (
+													<View style={aiStyles.aiMethodTag}>
+														<Text style={aiStyles.aiMethodText}>ML</Text>
+													</View>
+												)}
+												{prediction.method === 'adaptive_interval' && (
+													<View style={[aiStyles.aiMethodTag, { backgroundColor: '#22C55E20' }]}>
+														<Text style={[aiStyles.aiMethodText, { color: '#16A34A' }]}>Adapted</Text>
+													</View>
+												)}
+											</View>
+											{/* Safety priority indicator */}
+											{prediction.safetyPriority === 'high' && (
+												<View style={aiStyles.safetyRow}>
+													<Ionicons name="shield-checkmark" size={11} color="#DC2626" />
+													<Text style={aiStyles.safetyText}>
+														Safety-critical — recommended earlier service for safe riding
+													</Text>
+												</View>
+											)}
+											{/* Adapted interval info */}
+											{prediction.adaptedInterval && prediction.adaptedInterval !== group.intervalKm && (
+												<View style={aiStyles.adaptedRow}>
+													<Ionicons name="trending-up" size={11} color="#6D28D9" />
+													<Text style={aiStyles.adaptedText}>
+														Learned interval: {prediction.adaptedInterval} km (based on your habits)
+													</Text>
+												</View>
+											)}
+											{/* Time decay warning */}
+											{prediction.timeFactor > 1.1 && prediction.daysSinceService !== null && (
+												<View style={aiStyles.insightAnomalyRow}>
+													<Ionicons name="time" size={11} color="#F59E0B" />
+													<Text style={aiStyles.insightAnomalyText}>
+														{prediction.daysSinceService}d since service — time-based wear factored in
+													</Text>
+												</View>
+											)}
+											{/* Idle vehicle context for this specific part */}
+											{prediction.isVehicleIdle && prediction.timeDecayType === 'usage_based' && (
+												<View style={aiStyles.insightAnomalyRow}>
+													<Ionicons name="pause-circle" size={11} color="#3B82F6" />
+													<Text style={[aiStyles.insightAnomalyText, { color: '#3B82F6' }]}>
+														Vehicle idle — this part only wears from riding, no time pressure
+													</Text>
+												</View>
+											)}
+											{prediction.isVehicleIdle && prediction.timeDecayType === 'time_sensitive' && (
+												<View style={aiStyles.insightAnomalyRow}>
+													<Ionicons name="water" size={11} color="#F59E0B" />
+													<Text style={aiStyles.insightAnomalyText}>
+														Still degrades while parked{prediction.maxDaysExceeded ? ' — MAX TIME EXCEEDED' : ` (max ${prediction.maxDaysInterval}d)`}
+													</Text>
+												</View>
+											)}
+											{prediction.isVehicleIdle && prediction.timeDecayType === 'hybrid' && (
+												<View style={aiStyles.insightAnomalyRow}>
+													<Ionicons name="hourglass" size={11} color="#6D28D9" />
+													<Text style={[aiStyles.insightAnomalyText, { color: '#6D28D9' }]}>
+														Slow time degradation while parked (30% rate)
+													</Text>
+												</View>
+											)}
+											{anomaly && (
+												<View style={aiStyles.insightAnomalyRow}>
+													<Ionicons name="warning" size={11} color="#F97316" />
+													<Text style={aiStyles.insightAnomalyText}>
+														{anomaly.message}
+													</Text>
+												</View>
+											)}
+										</View>
+									)}
 									
 									{/* Show deferred reason if exists */}
 									{skipReasons[it.key] && (
@@ -241,9 +503,20 @@ const MaintenanceScheduleList = ({
 								</View>
 
 								<View style={styles.cardRight}>
-									<TouchableOpacity style={styles.doneBtn} onPress={() => onMarkDone(it.key)}>
-										<Ionicons name="checkmark-done-outline" size={18} color={colors.ivory1} />
-									</TouchableOpacity>
+									{(() => {
+										const latestRecord = maintenanceRecords[it.key]?.[0];
+										const isPending = latestRecord?.approvalStatus === 'pending';
+										return isPending ? (
+											<View style={[styles.doneBtn, { backgroundColor: '#9CA3AF', opacity: 0.7, alignItems: 'center' }]}>
+												<Ionicons name="hourglass-outline" size={16} color={colors.ivory1} />
+												<Text style={{ fontSize: 8, color: colors.ivory1, fontWeight: '600', marginTop: 2 }}>Pending</Text>
+											</View>
+										) : (
+											<TouchableOpacity style={styles.doneBtn} onPress={() => onMarkDone(it.key)}>
+												<Ionicons name="checkmark-done-outline" size={18} color={colors.ivory1} />
+											</TouchableOpacity>
+										);
+									})()}
 									{/* Show defer button for overdue items */}
 									{(daysRemaining !== null && daysRemaining < 0) || progress >= 100 ? (
 										<TouchableOpacity 
@@ -270,3 +543,186 @@ const MaintenanceScheduleList = ({
 };
 
 export default MaintenanceScheduleList;
+
+// AI integration styles
+const aiStyles = StyleSheet.create({
+	// Health card at top of schedule
+	healthCard: {
+		backgroundColor: colors.ivory2 || '#f5f5f0',
+		borderRadius: 12,
+		padding: 14,
+		marginBottom: 12,
+		borderWidth: 1,
+		borderColor: colors.ivory3 || '#e8e8e0',
+	},
+	healthRow: {
+		flexDirection: 'row',
+		alignItems: 'center',
+	},
+	healthScoreCircle: {
+		width: 48,
+		height: 48,
+		borderRadius: 24,
+		backgroundColor: colors.ivory1 || '#fff',
+		alignItems: 'center',
+		justifyContent: 'center',
+		borderWidth: 2,
+		borderColor: colors.ivory3 || '#e8e8e0',
+	},
+	healthScoreNum: {
+		fontSize: 20,
+		fontWeight: '800',
+	},
+	healthTitle: {
+		fontSize: 14,
+		fontWeight: '700',
+		color: colors.orangeShade7 || '#333',
+	},
+	healthLabel: {
+		fontSize: 12,
+		fontWeight: '600',
+		marginBottom: 6,
+	},
+	healthStatsRow: {
+		flexDirection: 'row',
+		gap: 6,
+	},
+	healthStat: {
+		paddingHorizontal: 8,
+		paddingVertical: 3,
+		borderRadius: 8,
+	},
+	healthStatText: {
+		fontSize: 10,
+		fontWeight: '600',
+	},
+	healthBarContainer: {
+		width: 8,
+		height: 42,
+		backgroundColor: colors.ivory3 || '#e8e8e0',
+		borderRadius: 4,
+		overflow: 'hidden',
+		justifyContent: 'flex-end',
+	},
+	healthBar: {
+		width: '100%',
+		borderRadius: 4,
+	},
+	healthNote: {
+		fontSize: 10,
+		color: colors.orangeShade5 || '#888',
+		marginTop: 8,
+		fontStyle: 'italic',
+	},
+	// Anomaly banner
+	anomalyBanner: {
+		flexDirection: 'row',
+		alignItems: 'flex-start',
+		backgroundColor: '#FEF3C7',
+		borderRadius: 10,
+		padding: 10,
+		marginBottom: 6,
+		borderWidth: 1,
+		borderColor: '#FDE68A',
+	},
+	anomalyTitle: {
+		fontSize: 12,
+		fontWeight: '700',
+		color: '#92400E',
+	},
+	anomalyMsg: {
+		fontSize: 11,
+		color: '#B45309',
+		marginTop: 1,
+	},
+	anomalyRec: {
+		fontSize: 10,
+		color: '#3B82F6',
+		marginTop: 3,
+	},
+	// Recommendation badge on item name row
+	recBadge: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		paddingHorizontal: 7,
+		paddingVertical: 3,
+		borderRadius: 6,
+		borderWidth: 1,
+		gap: 3,
+		marginLeft: 6,
+	},
+	recBadgeText: {
+		fontSize: 9,
+		fontWeight: '700',
+	},
+	// AI insight row inside each card
+	insightContainer: {
+		backgroundColor: '#F5F3FF',
+		borderRadius: 8,
+		padding: 7,
+		marginTop: 5,
+		borderWidth: 1,
+		borderColor: '#E9E5FF',
+	},
+	insightRow: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		gap: 5,
+	},
+	insightText: {
+		fontSize: 11,
+		fontWeight: '600',
+		color: '#6D28D9',
+		flex: 1,
+	},
+	insightConfidence: {
+		fontSize: 10,
+		color: '#8B5CF6',
+	},
+	aiMethodTag: {
+		backgroundColor: '#a78bfa20',
+		paddingHorizontal: 5,
+		paddingVertical: 1,
+		borderRadius: 4,
+		marginLeft: 3,
+	},
+	aiMethodText: {
+		fontSize: 8,
+		fontWeight: '700',
+		color: '#7C3AED',
+	},
+	insightAnomalyRow: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		gap: 4,
+		marginTop: 4,
+	},
+	insightAnomalyText: {
+		fontSize: 10,
+		color: '#EA580C',
+		flex: 1,
+	},
+	safetyRow: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		gap: 4,
+		marginTop: 4,
+	},
+	safetyText: {
+		fontSize: 10,
+		color: '#DC2626',
+		fontWeight: '600',
+		flex: 1,
+	},
+	adaptedRow: {
+		flexDirection: 'row',
+		alignItems: 'center',
+		gap: 4,
+		marginTop: 3,
+	},
+	adaptedText: {
+		fontSize: 10,
+		color: '#6D28D9',
+		flex: 1,
+	},
+});

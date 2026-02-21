@@ -562,7 +562,7 @@ const getUrgencyLabel = (urgency) => {
 
 // ==================== MAIN COMPONENT ====================
 
-const RideExperienceSurvey = ({ tricycleId, onDiagnosticsComplete }) => {
+const RideExperienceSurvey = ({ tricycleId, onDiagnosticsComplete, maintenanceSchedule, maintenanceData, aiPredictions, aiAnomalies, healthScore: scheduleHealthScore, odometerKm, lastServiceDates, rideDiagnosticMap }) => {
 	const db = useAsyncSQLiteContext();
 	const [surveyActive, setSurveyActive] = useState(false);
 	const [currentStep, setCurrentStep] = useState(0); // 0 = overall rating, 1 = odometer, 2-9 = categories
@@ -1677,6 +1677,59 @@ const RideExperienceSurvey = ({ tricycleId, onDiagnosticsComplete }) => {
 	};
 
 	// ==================== RENDER: DIAGNOSTIC RESULTS ====================
+	/**
+	 * Cross-reference checkup issues with scheduled maintenance and AI predictions.
+	 * Returns enrichment data for each issue showing related maintenance items,
+	 * their current wear status, and AI prediction urgency.
+	 */
+	const getCrossReferenceData = (issuePartKeys) => {
+		if (!issuePartKeys || issuePartKeys.length === 0) return [];
+		if (!maintenanceSchedule || !maintenanceData) return [];
+
+		const crossRef = [];
+
+		issuePartKeys.forEach(partKey => {
+			// Find this part in the maintenance schedule
+			let scheduleGroup = null;
+			let scheduleItem = null;
+			for (const group of (maintenanceSchedule || [])) {
+				const found = group.items?.find(i => i.key === partKey);
+				if (found) {
+					scheduleGroup = group;
+					scheduleItem = found;
+					break;
+				}
+			}
+
+			if (scheduleItem) {
+				const lastServiceKm = maintenanceData[partKey] || 0;
+				const currentOdo = odometerKm || 0;
+				const kmSinceService = Math.max(0, currentOdo - lastServiceKm);
+				const intervalKm = scheduleGroup?.intervalKm || 1000;
+				const wearPercent = Math.min(100, Math.round((kmSinceService / intervalKm) * 100));
+				const lastDate = lastServiceDates?.[partKey] || null;
+				const prediction = aiPredictions?.[partKey] || null;
+				const anomaly = aiAnomalies?.find(a => a.itemKey === partKey) || null;
+
+				crossRef.push({
+					partKey,
+					partName: scheduleItem.name,
+					groupTitle: scheduleGroup.title,
+					intervalKm,
+					lastServiceKm,
+					kmSinceService,
+					wearPercent,
+					lastServiceDate: lastDate,
+					prediction,
+					anomaly,
+					notes: scheduleItem.notes,
+				});
+			}
+		});
+
+		return crossRef;
+	};
+
 	const renderResults = () => {
 		const ratingInfo = RIDE_RATINGS.find(r => r.value === overallRating) || RIDE_RATINGS[2];
 		const hasIssues = diagnosticResults.length > 0;
@@ -1875,6 +1928,130 @@ const RideExperienceSurvey = ({ tricycleId, onDiagnosticsComplete }) => {
 						))}
 					</View>
 				)}
+
+				{/* Scheduled Maintenance Cross-Reference Summary */}
+				{hasIssues && maintenanceSchedule && aiPredictions && (() => {
+					// Gather all unique part keys from all diagnostic issues
+					const allPartKeys = [];
+					diagnosticResults.forEach(issue => {
+						(issue.parts || []).forEach(pk => {
+							if (!allPartKeys.includes(pk)) allPartKeys.push(pk);
+						});
+					});
+					const crossRefs = getCrossReferenceData(allPartKeys);
+					const urgentParts = crossRefs.filter(cr => cr.wearPercent >= 60 || (cr.prediction && cr.prediction.predictedKm <= 200));
+
+					if (crossRefs.length === 0) return null;
+
+					return (
+						<View style={{
+							backgroundColor: '#6366f108',
+							borderRadius: 14,
+							padding: 14,
+							marginBottom: 16,
+							borderWidth: 1,
+							borderColor: '#6366f125',
+						}}>
+							<View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 10 }}>
+								<Ionicons name="git-compare-outline" size={18} color="#6366f1" />
+								<Text style={{ fontSize: 13, fontWeight: '700', color: '#6366f1', marginLeft: 6 }}>
+									Schedule & AI Cross-Reference
+								</Text>
+							</View>
+							<Text style={{ fontSize: 11, color: colors.orangeShade5, marginBottom: 12, lineHeight: 16 }}>
+								Your checkup symptoms are linked to {crossRefs.length} scheduled maintenance item{crossRefs.length !== 1 ? 's' : ''}.
+								{urgentParts.length > 0 ? ` ${urgentParts.length} need${urgentParts.length !== 1 ? '' : 's'} attention soon.` : ' All within safe thresholds.'}
+							</Text>
+							{crossRefs.slice(0, 6).map((cr, i) => {
+								const isUrgent = cr.wearPercent >= 80;
+								const isWarning = cr.wearPercent >= 60 && cr.wearPercent < 80;
+								const predictionUrgent = cr.prediction && cr.prediction.predictedKm <= 200;
+								const statusColor = isUrgent ? '#dc2626' : isWarning ? '#f59e0b' : '#22c55e';
+
+								return (
+									<View key={cr.partKey} style={{
+										backgroundColor: statusColor + '08',
+										borderRadius: 10,
+										padding: 10,
+										marginBottom: i < crossRefs.length - 1 ? 8 : 0,
+										borderLeftWidth: 3,
+										borderLeftColor: statusColor,
+									}}>
+										<View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+											<View style={{ flex: 1 }}>
+												<Text style={{ fontSize: 12, fontWeight: '700', color: colors.orangeShade7 }}>
+													{cr.partName}
+												</Text>
+												<Text style={{ fontSize: 10, color: colors.orangeShade5, marginTop: 2 }}>
+													{cr.groupTitle} • {cr.kmSinceService.toLocaleString()} / {cr.intervalKm.toLocaleString()} km
+												</Text>
+											</View>
+											<View style={{ alignItems: 'flex-end' }}>
+												<View style={{
+													backgroundColor: statusColor + '18',
+													paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6,
+												}}>
+													<Text style={{ fontSize: 10, fontWeight: '800', color: statusColor }}>
+														{cr.wearPercent}% worn
+													</Text>
+												</View>
+											</View>
+										</View>
+										{/* AI Prediction inline */}
+										{cr.prediction && (
+											<View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 6, gap: 8 }}>
+												{cr.prediction.method === 'ai_regression' && (
+													<View style={{ flexDirection: 'row', alignItems: 'center' }}>
+														<Ionicons name="sparkles" size={10} color="#a78bfa" />
+														<Text style={{ fontSize: 9, color: '#a78bfa', fontWeight: '600', marginLeft: 2 }}>AI</Text>
+													</View>
+												)}
+												<Text style={{ fontSize: 10, color: colors.orangeShade5 }}>
+													Next service in ~{cr.prediction.predictedKm > 0 ? `${cr.prediction.predictedKm} km` : 'Due now'}
+													{cr.prediction.confidence ? ` (${cr.prediction.confidence}% confidence)` : ''}
+												</Text>
+												{cr.prediction.hasDiagnosticData && (
+													<View style={{ flexDirection: 'row', alignItems: 'center' }}>
+														<Ionicons name="medkit" size={9} color="#6366f1" />
+														<Text style={{ fontSize: 9, color: '#6366f1', fontWeight: '600', marginLeft: 2 }}>Checkup data</Text>
+													</View>
+												)}
+											</View>
+										)}
+										{/* Anomaly warning */}
+										{cr.anomaly && (
+											<View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 4 }}>
+												<Ionicons name="warning" size={10} color="#f97316" />
+												<Text style={{ fontSize: 10, color: '#f97316', fontWeight: '600', marginLeft: 4 }}>
+													{cr.anomaly.message}
+												</Text>
+											</View>
+										)}
+										{/* Last service date */}
+										{cr.lastServiceDate && (
+											<Text style={{ fontSize: 9, color: colors.orangeShade4, marginTop: 3 }}>
+												Last serviced: {new Date(cr.lastServiceDate).toLocaleDateString()}
+											</Text>
+										)}
+									</View>
+								);
+							})}
+
+							{/* Schedule health score from maintenance tracker */}
+							{scheduleHealthScore != null && (
+								<View style={{
+									flexDirection: 'row', alignItems: 'center', justifyContent: 'center',
+									marginTop: 10, paddingTop: 10, borderTopWidth: 1, borderTopColor: '#6366f115',
+								}}>
+									<Ionicons name="heart" size={14} color={scheduleHealthScore >= 70 ? '#22c55e' : scheduleHealthScore >= 40 ? '#f59e0b' : '#dc2626'} />
+									<Text style={{ fontSize: 11, fontWeight: '700', color: colors.orangeShade6, marginLeft: 6 }}>
+										Vehicle Health Score: {scheduleHealthScore}/100
+									</Text>
+								</View>
+							)}
+						</View>
+					);
+				})()}
 
 				{/* No Issues */}
 				{!hasIssues && (
@@ -2076,6 +2253,11 @@ const RideExperienceSurvey = ({ tricycleId, onDiagnosticsComplete }) => {
 								: t('startBuilding')
 							}
 						</Text>
+						{maintenanceSchedule && aiPredictions && (
+							<Text style={{ fontSize: 11, color: '#6366f1', lineHeight: 16, marginTop: 6, fontWeight: '600' }}>
+								<Ionicons name="git-compare-outline" size={11} color="#6366f1" /> Checkup data is fed into your scheduled maintenance and AI predictive system for smarter predictions.
+							</Text>
+						)}
 					</View>
 				</View>
 

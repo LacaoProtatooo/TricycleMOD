@@ -231,7 +231,6 @@ const BookingScreen = ({ navigation }) => {
       BOOKING_STATUS.OFFERS_RECEIVED,  // Include OFFERS_RECEIVED to get new offers
       BOOKING_STATUS.OFFER_RECEIVED,
       BOOKING_STATUS.TRIP_ACTIVE,
-      BOOKING_STATUS.AWAITING_CONFIRMATION,
     ].includes(bookingStatus);
 
     if (shouldPoll && db && user) {
@@ -313,9 +312,6 @@ const BookingScreen = ({ navigation }) => {
           startLocationTracking();
           break;
         case 'awaiting_confirmation':
-          setBookingStatus(BOOKING_STATUS.AWAITING_CONFIRMATION);
-          setShowCompletionModal(true);
-          break;
         case 'completed':
           setBookingStatus(BOOKING_STATUS.TRIP_COMPLETED);
           setShowCompletionModal(false);
@@ -1261,13 +1257,15 @@ const BookingScreen = ({ navigation }) => {
         />
 
         {/* WEBTODA GPX Route - Main service route reference */}
-        <Polyline
-          coordinates={WEBTODA_ROUTE_COORDINATES}
-          strokeColor={colors.primary}
-          strokeWidth={4}
-          lineCap="round"
-          lineJoin="round"
-        />
+        {WEBTODA_ROUTE_COORDINATES.length > 1 && (
+          <Polyline
+            coordinates={WEBTODA_ROUTE_COORDINATES}
+            strokeColor={colors.primary}
+            strokeWidth={4}
+            lineCap="round"
+            lineJoin="round"
+          />
+        )}
 
         {/* Route buffer visualization (150m pickup zone) */}
         {bookingStatus === BOOKING_STATUS.SELECTING_LOCATIONS && selectingLocationType === 'pickup' && (
@@ -1332,7 +1330,7 @@ const BookingScreen = ({ navigation }) => {
         )}
 
         {/* Route line from pickup to destination - Uses actual road route */}
-        {pickupLocation && destinationLocation && routeCoordinates.length > 0 && (
+        {pickupLocation && destinationLocation && routeCoordinates.length > 1 && (
           <Polyline
             coordinates={routeCoordinates}
             strokeColor={destinationWarning ? '#dc3545' : '#2196F3'}

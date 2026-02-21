@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { View, Text, TouchableOpacity, ScrollView, Alert, TextInput, Modal, ActivityIndicator } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
@@ -7,7 +7,7 @@ import { colors } from '../../components/common/theme';
 import { getToken } from '../../utils/jwtStorage';
 import { useAsyncSQLiteContext } from '../../utils/asyncSQliteProvider';
 import VehicleDiagnostic, { getWearColor } from './VehicleDiagnostic';
-import PredictiveMaintenance from './PredictiveMaintenance';
+import { predictNextService, detectAnomalies, calculateHealthScore, MAINTENANCE_ITEMS } from './PredictiveMaintenance';
 import ServiceHistory from './ServiceHistory';
 import RideExperienceSurvey from './RideExperienceSurvey';
 import { API_URL } from '../../utils/config';
@@ -42,7 +42,7 @@ const MaintenanceTracker = ({ tricycleId, serverHistory }) => {
 	const [notifiedItems, setNotifiedItems] = useState({}); // Track which items have been notified
 	const [lastServiceDates, setLastServiceDates] = useState({}); // { itemKey: ISODate }
 	const hasCheckedNotifications = useRef(false);
-	const [activeTab, setActiveTab] = useState('schedule'); // 'schedule' | 'predictive' | 'history' | 'checkup'
+	const [activeTab, setActiveTab] = useState('schedule'); // 'schedule' | 'history' | 'checkup'
 	const [scheduleFilter, setScheduleFilter] = useState('all'); // 'all' | 'critical' | 'attention'
 	const [wearPatterns, setWearPatterns] = useState({});
 	const [plateNumber, setPlateNumber] = useState(null);
@@ -70,6 +70,11 @@ const MaintenanceTracker = ({ tricycleId, serverHistory }) => {
 	const [completionModalVisible, setCompletionModalVisible] = useState(false);
 	const [completionItem, setCompletionItem] = useState(null); // { key, name, notes, group }
 	const [maintenanceRecords, setMaintenanceRecords] = useState({}); // { itemKey: [{ status, reading, notes, cost, date, km }] }
+
+	// Ride diagnostic (checkup) data for feeding into AI predictions
+	// Maps part keys to diagnostic severity/trend data from checkup surveys
+	const [rideDiagnosticMap, setRideDiagnosticMap] = useState({}); // { partKey: { symptomSeverity, trend, occurrences, recentIssues } }
+	const [lastCheckupDate, setLastCheckupDate] = useState(null);
 
 	// Fetch maintenance configuration from server
 	const fetchMaintenanceConfig = async () => {
@@ -136,7 +141,23 @@ const MaintenanceTracker = ({ tricycleId, serverHistory }) => {
 	// Load maintenance config on mount
 	useEffect(() => {
 		fetchMaintenanceConfig();
+		loadRideDiagnosticMap();
 	}, []);
+
+	// Load cached ride diagnostic data for AI predictions
+	const loadRideDiagnosticMap = async () => {
+		try {
+			const key = tricycleId ? `ride_diagnostic_map_${tricycleId}` : 'ride_diagnostic_map_local';
+			const saved = await AsyncStorage.getItem(key);
+			if (saved) {
+				const parsed = JSON.parse(saved);
+				setRideDiagnosticMap(parsed.map || {});
+				setLastCheckupDate(parsed.lastDate || null);
+			}
+		} catch (e) {
+			console.warn('Error loading ride diagnostic map:', e);
+		}
+	};
 
 	// Setup notification channel for maintenance alerts
 	useEffect(() => {
@@ -972,6 +993,48 @@ const MaintenanceTracker = ({ tricycleId, serverHistory }) => {
 		});
 	});
 
+	// ==================== AI PREDICTIVE ANALYSIS (integrated into schedule) ====================
+	const aiPredictions = useMemo(() => {
+		const result = {};
+		maintenanceSchedule.forEach(group => {
+			group.items.forEach(item => {
+				const lastServiceKm = data[item.key] || 0;
+				const itemHistory = wearPatterns[item.key] || [];
+				const lastDate = lastServiceDates[item.key] || null;
+				// Build per-item maintenance history from serverHistory for adaptive learning
+				const itemMaintenanceHistory = serverHistory && Array.isArray(serverHistory)
+					? serverHistory.filter(h =>
+						(h.itemKey === item.key || h.item === item.key) &&
+						(h.approvalStatus === 'approved' || !h.approvalStatus)
+					)
+					: [];
+				// Get ride diagnostic data for this part from checkup surveys
+				const diagnosticData = rideDiagnosticMap[item.key] || null;
+				const prediction = predictNextService(
+					item.key,
+					odometerKm || 0,
+					lastServiceKm,
+					itemHistory,
+					itemMaintenanceHistory,
+					lastDate,
+					diagnosticData
+				);
+				if (prediction) {
+					result[item.key] = prediction;
+				}
+			});
+		});
+		return result;
+	}, [data, odometerKm, wearPatterns, maintenanceSchedule, lastServiceDates, serverHistory, rideDiagnosticMap]);
+
+	const aiAnomalies = useMemo(() => {
+		return detectAnomalies(wearPatterns, odometerKm || 0);
+	}, [wearPatterns, odometerKm]);
+
+	const healthScore = useMemo(() => {
+		return calculateHealthScore(data, odometerKm || 0, aiPredictions, lastServiceDates);
+	}, [data, odometerKm, aiPredictions, lastServiceDates]);
+
 	// Manual check for critical items notification
 	const handleCheckCritical = async () => {
 		hasCheckedNotifications.current = false;
@@ -1001,6 +1064,144 @@ const MaintenanceTracker = ({ tricycleId, serverHistory }) => {
 					{ text: 'Mark Done', onPress: () => markDone(itemKey) },
 				]
 			);
+		}
+	};
+
+	/**
+	 * Handle ride checkup completion — bridges checkup survey data into
+	 * the scheduled maintenance + AI predictive maintenance systems.
+	 * 
+	 * This converts symptom-level issues (e.g., "brakes squealing") into
+	 * part-level wear data (e.g., brake_check severity boost) that the
+	 * predictive AI can consume for better predictions.
+	 */
+	const handleDiagnosticsComplete = async (issues) => {
+		if (!issues || issues.length === 0) {
+			console.log('Ride checkup completed with no issues');
+			return;
+		}
+
+		console.log(`Ride diagnostic found ${issues.length} issue(s) — feeding into AI predictions`);
+
+		try {
+			// 1. Build a map of part keys → diagnostic severity data from the checkup
+			const updatedDiagMap = { ...rideDiagnosticMap };
+			const now = Date.now();
+
+			issues.forEach(issue => {
+				// Each issue has a .parts array with maintenance part keys
+				const partsToUpdate = issue.parts || [];
+				partsToUpdate.forEach(partKey => {
+					if (!updatedDiagMap[partKey]) {
+						updatedDiagMap[partKey] = {
+							symptomSeverity: 0,
+							trend: 'stable',
+							occurrences: 0,
+							recentIssues: [],
+						};
+					}
+
+					const entry = updatedDiagMap[partKey];
+
+					// Update max severity (take the worst reported symptom)
+					entry.symptomSeverity = Math.max(entry.symptomSeverity, issue.severity || 0);
+
+					// Track occurrence count
+					entry.occurrences = (entry.occurrences || 0) + 1;
+
+					// Keep recent issues list (last 10)
+					if (!entry.recentIssues) entry.recentIssues = [];
+					entry.recentIssues.unshift({
+						symptom: issue.symptom || issue.symptomId,
+						severity: issue.severity || 0,
+						urgency: issue.urgency || 'low',
+						categoryId: issue.categoryId,
+						date: new Date().toISOString(),
+					});
+					if (entry.recentIssues.length > 10) {
+						entry.recentIssues = entry.recentIssues.slice(0, 10);
+					}
+
+					// Determine trend based on recent severity history
+					if (entry.recentIssues.length >= 2) {
+						const recentSevs = entry.recentIssues.slice(0, Math.ceil(entry.recentIssues.length / 2)).map(r => r.severity);
+						const olderSevs = entry.recentIssues.slice(Math.ceil(entry.recentIssues.length / 2)).map(r => r.severity);
+						const recentAvg = recentSevs.reduce((a, b) => a + b, 0) / recentSevs.length;
+						const olderAvg = olderSevs.length > 0 ? olderSevs.reduce((a, b) => a + b, 0) / olderSevs.length : recentAvg;
+						entry.trend = recentAvg > olderAvg + 0.3 ? 'worsening' : recentAvg < olderAvg - 0.3 ? 'improving' : 'stable';
+					}
+				});
+			});
+
+			// 2. Update state so AI predictions recalculate with diagnostic data
+			setRideDiagnosticMap(updatedDiagMap);
+			setLastCheckupDate(new Date().toISOString());
+
+			// 3. Persist to AsyncStorage for cross-session learning
+			const storageKey = tricycleId ? `ride_diagnostic_map_${tricycleId}` : 'ride_diagnostic_map_local';
+			await AsyncStorage.setItem(storageKey, JSON.stringify({
+				map: updatedDiagMap,
+				lastDate: new Date().toISOString(),
+			}));
+
+			// 4. Boost wear patterns for parts flagged with high severity
+			// This creates additional data points for the regression model
+			const currentKmVal = parseInt(odometerKm || currentKm || '0', 10);
+			if (currentKmVal > 0) {
+				const updatedPatterns = { ...wearPatterns };
+				let patternsChanged = false;
+
+				issues.forEach(issue => {
+					const partsToUpdate = issue.parts || [];
+					partsToUpdate.forEach(partKey => {
+						if (issue.severity >= 2) {
+							// Find the expected interval for this part
+							const itemSchedule = maintenanceSchedule.find(g => g.items.find(i => i.key === partKey));
+							const expectedInterval = itemSchedule?.intervalKm || 1000;
+							const lastServiceKm = data[partKey] || 0;
+							const kmSinceService = Math.max(0, currentKmVal - lastServiceKm);
+
+							// Calculate an elevated wear level based on symptom severity
+							// Normal wear would be (kmSinceService / expectedInterval) * 100
+							// Symptom-boosted wear adds severity_percentage to reflect reported issues
+							const baseWear = Math.min(100, (kmSinceService / expectedInterval) * 100);
+							const severityBoost = issue.severity * 8; // severity 3 = +24%, severity 5 = +40%
+							const boostedWear = Math.min(100, baseWear + severityBoost);
+
+							if (!updatedPatterns[partKey]) {
+								updatedPatterns[partKey] = [];
+							}
+
+							updatedPatterns[partKey].push({
+								km: currentKmVal,
+								wearLevel: boostedWear,
+								kmSinceLastService: kmSinceService,
+								timestamp: now,
+								source: 'ride_checkup', // Tag data source for the AI engine
+								severity: issue.severity,
+								symptom: issue.symptom || issue.symptomId,
+							});
+
+							// Keep only last 20 data points per item
+							if (updatedPatterns[partKey].length > 20) {
+								updatedPatterns[partKey] = updatedPatterns[partKey].slice(-20);
+							}
+							patternsChanged = true;
+						}
+					});
+				});
+
+				if (patternsChanged) {
+					setWearPatterns(updatedPatterns);
+					const patternsKey = tricycleId ? `${WEAR_PATTERNS_KEY}_${tricycleId}` : WEAR_PATTERNS_KEY;
+					await AsyncStorage.setItem(patternsKey, JSON.stringify(updatedPatterns));
+					console.log('Wear patterns updated from checkup data for AI training');
+				}
+			}
+
+			console.log(`Diagnostic map updated: ${Object.keys(updatedDiagMap).length} parts tracked`);
+		} catch (e) {
+			console.warn('handleDiagnosticsComplete error:', e);
 		}
 	};
 
@@ -1262,19 +1463,6 @@ const MaintenanceTracker = ({ tricycleId, serverHistory }) => {
 						History
 					</Text>
 				</TouchableOpacity>
-				<TouchableOpacity 
-					style={[styles.tab, activeTab === 'predictive' && styles.tabActive]}
-					onPress={() => setActiveTab('predictive')}
-				>
-					<Ionicons 
-						name="analytics-outline" 
-						size={16} 
-						color={activeTab === 'predictive' ? colors.primary : colors.orangeShade5} 
-					/>
-					<Text style={[styles.tabText, activeTab === 'predictive' && styles.tabTextActive]}>
-						AI
-					</Text>
-				</TouchableOpacity>
 			</View>
 
 			{/* Critical/Worn Summary Banner */}
@@ -1352,27 +1540,15 @@ const MaintenanceTracker = ({ tricycleId, serverHistory }) => {
 				>
 					<RideExperienceSurvey 
 						tricycleId={tricycleId}
-						onDiagnosticsComplete={(issues) => {
-							if (issues && issues.length > 0) {
-								console.log(`Ride diagnostic found ${issues.length} issue(s)`);
-							}
-						}}
-					/>
-				</ScrollView>
-			)}
-
-			{/* Predictive AI Tab Content */}
-			{activeTab === 'predictive' && (
-				<ScrollView
-					nestedScrollEnabled={true}
-					contentContainerStyle={{ paddingBottom: 20 }}
-					showsVerticalScrollIndicator={false}
-				>
-					<PredictiveMaintenance 
+						onDiagnosticsComplete={handleDiagnosticsComplete}
+						maintenanceSchedule={maintenanceSchedule}
 						maintenanceData={data}
-						tricycleId={tricycleId}
-						currentOdometer={odometerKm}
-						onMaintenanceNeeded={handleMaintenanceNeeded}
+						aiPredictions={aiPredictions}
+						aiAnomalies={aiAnomalies}
+						healthScore={healthScore}
+						odometerKm={odometerKm}
+						lastServiceDates={lastServiceDates}
+						rideDiagnosticMap={rideDiagnosticMap}
 					/>
 				</ScrollView>
 			)}
@@ -1415,6 +1591,11 @@ const MaintenanceTracker = ({ tricycleId, serverHistory }) => {
 						schedule={maintenanceSchedule}
 						filter={scheduleFilter}
 						onClearFilter={() => setScheduleFilter('all')}
+						predictions={aiPredictions}
+						anomalies={aiAnomalies}
+						healthScore={healthScore}
+						onMaintenanceNeeded={handleMaintenanceNeeded}
+						maintenanceRecords={maintenanceRecords}
 					/>
 				</ScrollView>
 			)}

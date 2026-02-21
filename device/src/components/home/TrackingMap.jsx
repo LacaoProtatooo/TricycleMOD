@@ -515,7 +515,16 @@ export default function TrackingMap({ follow = true, onEnterTerminalZone, odomet
       });
       console.log(`Synced ${coordsToSync.length} coordinates`);
     } catch (error) {
-      console.error('Sync error:', error.message);
+      // If trip no longer exists (404), stop syncing to avoid repeated errors
+      if (error.response?.status === 404) {
+        console.log('Trip no longer active, stopping sync interval');
+        if (syncIntervalRef.current) {
+          clearInterval(syncIntervalRef.current);
+          syncIntervalRef.current = null;
+        }
+      } else {
+        console.error('Sync error:', error.message);
+      }
     } finally {
       setIsSyncing(false);
     }
@@ -589,7 +598,65 @@ export default function TrackingMap({ follow = true, onEnterTerminalZone, odomet
       Alert.alert('Recording Started', 'Your trip is being recorded');
     } catch (error) {
       console.error('Error starting recording:', error);
-      Alert.alert('Error', error.message || 'Failed to start recording');
+      
+      // Handle existing active trip (400 with tripId)
+      const errorData = error.response?.data;
+      if (errorData?.tripId) {
+        Alert.alert(
+          'Existing Trip Found',
+          'You have an active trip. Would you like to resume or cancel it?',
+          [
+            {
+              text: 'Cancel Old Trip',
+              style: 'destructive',
+              onPress: async () => {
+                try {
+                  await axios.post(`${BASE_URL}/api/tracking/${errorData.tripId}/cancel`);
+                  await AsyncStorage.removeItem(ACTIVE_TRIP_KEY);
+                  setIsRecording(false);
+                  setActiveTripId(null);
+                  activeTripIdRef.current = null;
+                  recordedPosRef.current = [];
+                  setRecordedPositions([]);
+                  setTripDistance(0);
+                  setTripDuration(0);
+                  distanceRef.current = 0;
+                  tripStartRef.current = null;
+                  Alert.alert('Cancelled', 'Old trip cancelled. You can start a new recording now.');
+                } catch (cancelErr) {
+                  console.error('Failed to cancel old trip:', cancelErr);
+                  Alert.alert('Error', 'Failed to cancel old trip. Please try again.');
+                }
+              },
+            },
+            {
+              text: 'Resume Trip',
+              onPress: () => {
+                // Resume the existing trip
+                setActiveTripId(errorData.tripId);
+                activeTripIdRef.current = errorData.tripId;
+                setIsRecording(true);
+                tripStartRef.current = Date.now();
+                recordedPosRef.current = [];
+                distanceRef.current = 0;
+                setRecordedPositions([]);
+                setTripDistance(0);
+                setTripDuration(0);
+                syncIntervalRef.current = setInterval(syncToServer, SYNC_INTERVAL_MS);
+                AsyncStorage.setItem(ACTIVE_TRIP_KEY, JSON.stringify({
+                  tripId: errorData.tripId,
+                  startTime: Date.now(),
+                  positions: [],
+                })).catch(() => {});
+                Alert.alert('Resumed', 'Continuing with existing trip recording.');
+              },
+            },
+            { text: 'Dismiss', style: 'cancel' },
+          ]
+        );
+      } else {
+        Alert.alert('Error', errorData?.message || error.message || 'Failed to start recording');
+      }
     }
   };
 
@@ -669,6 +736,29 @@ export default function TrackingMap({ follow = true, onEnterTerminalZone, odomet
       console.log('Auto-started recording from booking:', tripId);
     } catch (error) {
       console.error('Error auto-starting recording from booking:', error);
+      
+      // If there's an existing active trip, cancel it and retry
+      const errorData = error.response?.data;
+      if (errorData?.tripId) {
+        try {
+          console.log('Cancelling stale trip before auto-start:', errorData.tripId);
+          await axios.post(`${BASE_URL}/api/tracking/${errorData.tripId}/cancel`);
+          await AsyncStorage.removeItem(ACTIVE_TRIP_KEY);
+          
+          // Reset state and retry after a short delay
+          setIsRecording(false);
+          setActiveTripId(null);
+          activeTripIdRef.current = null;
+          recordedPosRef.current = [];
+          distanceRef.current = 0;
+          tripStartRef.current = null;
+          
+          // Retry starting recording
+          setTimeout(() => startRecordingFromBooking(bookingId, passengerName), 1000);
+        } catch (cancelErr) {
+          console.error('Failed to cancel stale trip:', cancelErr);
+        }
+      }
     }
   };
 
@@ -1224,8 +1314,8 @@ ${trackPoints}
                 </Marker>
               ))}
 
-              {/* Current position polyline */}
-              {positions.length > 0 && !reliveActive && (
+              {/* Current position polyline - needs at least 2 points */}
+              {positions.length > 1 && !reliveActive && (
                 <Polyline
                   key="position-polyline"
                   coordinates={positions}

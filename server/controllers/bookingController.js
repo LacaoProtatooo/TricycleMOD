@@ -790,24 +790,32 @@ export const completeTrip = async (req, res) => {
         booking.completionLocation = { latitude: driverLat, longitude: driverLon };
       }
 
-      // Mark driver completion and set status to awaiting user confirmation
+      // Mark trip as completed directly (no passenger confirmation needed)
       booking.driverConfirmedCompletion = true;
       booking.driverCompletedAt = new Date();
-      booking.status = 'awaiting_confirmation';
+      booking.userConfirmedCompletion = true;
+      booking.status = 'completed';
+      booking.completedAt = new Date();
+
+      // Update trip counts for both user and driver
+      await User.findByIdAndUpdate(booking.user, { $inc: { tripCount: 1 } });
+      if (booking.driver) {
+        await User.findByIdAndUpdate(booking.driver, { $inc: { tripCount: 1 } });
+      }
 
       await booking.save();
       await booking.populate('driver', 'firstname lastname rating image');
       await booking.populate('user', 'firstname lastname rating image');
 
-      // Notify user to confirm completion
+      // Notify user that trip is complete and to rate the driver
       const user = await User.findById(booking.user);
       if (user && user.FCMToken) {
         await sendNotification(
           user.FCMToken,
-          '🏁 Trip Completed by Driver',
-          'Your driver has marked the trip as complete. Please confirm arrival.',
+          '🏁 Trip Completed!',
+          'Your trip has been completed. Please rate your driver.',
           {
-            type: 'awaiting_confirmation',
+            type: 'trip_completed',
             bookingId: booking._id.toString(),
           }
         );
@@ -815,15 +823,42 @@ export const completeTrip = async (req, res) => {
 
       return res.status(200).json({
         success: true,
-        message: 'Trip marked complete. Awaiting passenger confirmation.',
+        message: 'Trip completed successfully.',
         booking,
       });
     }
 
-    // User should not call this endpoint directly - use confirm-completion instead
+    // User completing - also mark as completed directly
+    if (isUser) {
+      if (booking.status !== 'in_progress') {
+        return res.status(400).json({
+          success: false,
+          message: 'Trip must be in progress to complete',
+        });
+      }
+
+      booking.userConfirmedCompletion = true;
+      booking.status = 'completed';
+      booking.completedAt = new Date();
+
+      await User.findByIdAndUpdate(booking.user, { $inc: { tripCount: 1 } });
+      if (booking.driver) {
+        await User.findByIdAndUpdate(booking.driver, { $inc: { tripCount: 1 } });
+      }
+
+      await booking.save();
+      await booking.populate('driver', 'firstname lastname rating image');
+
+      return res.status(200).json({
+        success: true,
+        message: 'Trip completed successfully.',
+        booking,
+      });
+    }
+
     return res.status(400).json({
       success: false,
-      message: 'Please use the confirm-completion endpoint to confirm your trip',
+      message: 'Not authorized to complete this trip',
     });
 
   } catch (error) {
@@ -1192,7 +1227,8 @@ export const getActiveBooking = async (req, res) => {
   try {
     const userId = req.user._id;
 
-    const activeBooking = await Booking.findOne({
+    // First check for truly active bookings
+    let activeBooking = await Booking.findOne({
       user: userId,
       status: { $in: ['pending', 'offer_made', 'accepted', 'in_progress', 'awaiting_confirmation'] },
     })
@@ -1201,6 +1237,21 @@ export const getActiveBooking = async (req, res) => {
     .populate('driverOffers.driver', 'firstname lastname rating image phone')
     .populate('driverOffers.tricycle', 'plateNumber bodyNumber')
     .sort({ createdAt: -1 });
+
+    // If no active booking, check for recently completed but unrated bookings
+    // so the passenger can still rate the driver
+    if (!activeBooking) {
+      const thirtyMinutesAgo = new Date(Date.now() - 30 * 60 * 1000);
+      activeBooking = await Booking.findOne({
+        user: userId,
+        status: 'completed',
+        rating: null,
+        completedAt: { $gte: thirtyMinutesAgo },
+      })
+      .populate('driver', 'firstname lastname rating image phone')
+      .populate('tricycle', 'plateNumber bodyNumber')
+      .sort({ completedAt: -1 });
+    }
 
     // Check if booking has expired
     if (activeBooking && activeBooking.status === 'pending' && new Date() > activeBooking.expiresAt) {
