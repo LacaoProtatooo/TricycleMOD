@@ -71,19 +71,12 @@ export const logTableContents = async (dbInstance, tableName) => {
     console.error("No dbInstance provided to logTableContents");
     return;
   }
-  dbInstance.transaction((tx) => {
-    tx.executeSql(
-      `SELECT * FROM ${tableName};`,
-      [],
-      (_, { rows }) => {
-        console.log(`Contents of ${tableName}:`, rows._array);
-      },
-      (_, error) => {
-        console.error(`Error querying ${tableName}:`, error);
-        return false;
-      }
-    );
-  });
+  try {
+    const rows = await dbInstance.getAllAsync(`SELECT * FROM ${tableName};`);
+    console.log(`Contents of ${tableName}:`, rows);
+  } catch (error) {
+    console.error(`Error querying ${tableName}:`, error);
+  }
 };
 
 

@@ -13,22 +13,21 @@
   "license": "ISC",
   "description": "",
   "dependencies": {
-    "@react-native-async-storage/async-storage": "^2.2.0",
     "bcryptjs": "^2.4.3",
     "cloudinary": "^2.8.0",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",
     "express": "^5.1.0",
-    "express-jwt": "^8.5.1",
     "firebase-admin": "^13.5.0",
     "jsonwebtoken": "^9.0.2",
-    "mongodb": "^4.17.2",
     "mongoose": "^6.13.8",
     "multer": "^2.0.2",
     "nodemailer": "^7.0.11",
-    "nodemon": "^3.1.10",
     "tesseract.js": "^6.0.1",
     "uuid": "^13.0.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.1.10"
   }
 }

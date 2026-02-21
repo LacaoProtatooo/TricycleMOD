@@ -20,6 +20,7 @@ import {
   ActivityIndicator,
   Share,
   Linking,
+  Platform,
 } from 'react-native';
 import MapView, { Marker, Polyline, Circle, PROVIDER_GOOGLE, AnimatedRegion } from 'react-native-maps';
 import * as Location from 'expo-location';
@@ -266,7 +267,7 @@ const GuestTracking = () => {
   const [isImporting, setIsImporting] = useState(false);
 
   // Map type state
-  const [mapType, setMapType] = useState('mutedStandard');
+  const [mapType, setMapType] = useState(Platform.OS === 'ios' ? 'mutedStandard' : 'standard');
 
   // Refs for current values in callbacks
   const recordedPosRef = useRef([]);

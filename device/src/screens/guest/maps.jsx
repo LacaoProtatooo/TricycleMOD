@@ -5,7 +5,7 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
-import { View, StyleSheet, Text, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
+import { View, StyleSheet, Text, TouchableOpacity, Alert, ActivityIndicator, Platform } from 'react-native';
 import MapView, { Marker, Circle, PROVIDER_GOOGLE } from 'react-native-maps';
 import * as Location from 'expo-location';
 import Ionicons from 'react-native-vector-icons/Ionicons';
@@ -114,7 +114,7 @@ const GuestMaps = () => {
         <MapView
           ref={mapRef}
           provider={PROVIDER_GOOGLE}
-          mapType="mutedStandard"
+          mapType={Platform.OS === 'ios' ? 'mutedStandard' : 'standard'}
           style={styles.map}
           initialRegion={region}
           showsUserLocation={hasPermission}

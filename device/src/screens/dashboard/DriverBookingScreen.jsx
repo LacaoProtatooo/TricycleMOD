@@ -21,6 +21,7 @@ import {
   ActivityIndicator,
   FlatList,
   RefreshControl,
+  Platform,
 } from 'react-native';
 import MapView, { Marker, Circle, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import * as Location from 'expo-location';
@@ -508,7 +509,7 @@ const DriverBookingScreen = () => {
           <MapView
             ref={mapRef}
             provider={PROVIDER_GOOGLE}
-            mapType="mutedStandard"
+            mapType={Platform.OS === 'ios' ? 'mutedStandard' : 'standard'}
             style={styles.map}
             region={{
               latitude: userLocation?.latitude || activeBooking.pickup.latitude,

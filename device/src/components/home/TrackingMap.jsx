@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert, Easing, PanResponder, Modal, FlatList, ActivityIndicator, Share, Linking, Animated as RNAnimated } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, Easing, PanResponder, Modal, FlatList, ActivityIndicator, Share, Linking, Animated as RNAnimated, Platform } from 'react-native';
 import MapView, { Polyline, Marker, PROVIDER_GOOGLE, AnimatedRegion, Circle } from 'react-native-maps';
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
@@ -123,7 +123,7 @@ export default function TrackingMap({ follow = true, onEnterTerminalZone, odomet
   const reliveSpeedRef = useRef(1);
   const [scrubTooltip, setScrubTooltip] = useState(null);
   const [reliveTraversedPath, setReliveTraversedPath] = useState([]);
-  const [mapType, setMapType] = useState('mutedStandard');
+  const [mapType, setMapType] = useState(Platform.OS === 'ios' ? 'mutedStandard' : 'standard');
   const progressBarRef = useRef(null);
   const progressBarWidth = useRef(0);
   const insideTerminalRef = useRef(null);
