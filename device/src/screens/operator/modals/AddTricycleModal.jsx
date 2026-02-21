@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import {
   Modal,
   View,
@@ -13,11 +13,16 @@ import {
   Keyboard,
   Image,
   Alert,
+  Animated,
+  Dimensions,
+  StyleSheet,
 } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { colors, spacing } from '../../../components/common/theme';
 import styles from '../operatorStyles';
+
+const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
 const MOTORCYCLE_MODELS = [
   {
@@ -127,6 +132,43 @@ export default function AddTricycleModal({
   const [validationResult, setValidationResult] = useState(null);
   const [showCRDetails, setShowCRDetails] = useState(false);
   const [showORDetails, setShowORDetails] = useState(false);
+  const [showImageSourceModal, setShowImageSourceModal] = useState(null); // 'cr' | 'or' | null
+  const [crExpanded, setCrExpanded] = useState(false);
+  const [orExpanded, setOrExpanded] = useState(false);
+  
+  // Animated values for scan pulse
+  const crScanAnim = useRef(new Animated.Value(0)).current;
+  const orScanAnim = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    if (scanningCR) {
+      const loop = Animated.loop(
+        Animated.sequence([
+          Animated.timing(crScanAnim, { toValue: 1, duration: 1000, useNativeDriver: true }),
+          Animated.timing(crScanAnim, { toValue: 0, duration: 1000, useNativeDriver: true }),
+        ])
+      );
+      loop.start();
+      return () => loop.stop();
+    } else {
+      crScanAnim.setValue(0);
+    }
+  }, [scanningCR]);
+
+  useEffect(() => {
+    if (scanningOR) {
+      const loop = Animated.loop(
+        Animated.sequence([
+          Animated.timing(orScanAnim, { toValue: 1, duration: 1000, useNativeDriver: true }),
+          Animated.timing(orScanAnim, { toValue: 0, duration: 1000, useNativeDriver: true }),
+        ])
+      );
+      loop.start();
+      return () => loop.stop();
+    } else {
+      orScanAnim.setValue(0);
+    }
+  }, [scanningOR]);
 
   const handleModelSelect = (brand, model) => {
     setNewTricycle({ ...newTricycle, model: `${brand} ${model}` });
@@ -209,17 +251,19 @@ export default function AddTricycleModal({
     }
   };
 
-  // Show image source selection
+  // Show image source selection (modal instead of Alert)
   const showImageOptions = (type) => {
-    Alert.alert(
-      `Select ${type === 'cr' ? 'CR' : 'OR'} Image`,
-      'Choose an option',
-      [
-        { text: 'Camera', onPress: () => takePhoto(type) },
-        { text: 'Gallery', onPress: () => pickImage(type) },
-        { text: 'Cancel', style: 'cancel' },
-      ]
-    );
+    setShowImageSourceModal(type);
+  };
+
+  const handleImageSourceSelect = async (source) => {
+    const type = showImageSourceModal;
+    setShowImageSourceModal(null);
+    if (source === 'camera') {
+      await takePhoto(type);
+    } else {
+      await pickImage(type);
+    }
   };
 
   // Scan CR Document
@@ -366,47 +410,164 @@ export default function AddTricycleModal({
     setValidationResult(null);
     setShowCRDetails(false);
     setShowORDetails(false);
+    setShowImageSourceModal(null);
+    setCrExpanded(false);
+    setOrExpanded(false);
     onClose();
+  };
+
+  // Pretty field name mapping
+  const FIELD_LABELS = {
+    plateNumber: 'Plate Number',
+    mvFileNumber: 'MV File No.',
+    chassisNumber: 'Chassis No.',
+    engineNumber: 'Engine No.',
+    vehicleMake: 'Make',
+    vehicleSeries: 'Series / Model',
+    yearModel: 'Year Model',
+    bodyType: 'Body Type',
+    color: 'Color',
+    fuelType: 'Fuel Type',
+    dateOfInitialRegistration: 'Initial Reg. Date',
+    registrationExpiryDate: 'Expiry Date',
+    ltoOfficeCode: 'LTO Office',
+    classification: 'Classification',
+    denomination: 'Denomination',
+    registeredOwnerName: 'Owner Name',
+    ownerAddress: 'Address',
+    orNumber: 'OR Number',
+    orDate: 'OR Date',
+    amountPaid: 'Amount Paid',
+    paymentType: 'Payment Type',
+    ltoCollectionOffice: 'LTO Office',
+    validityCoverageYear: 'Validity Year',
+  };
+
+  const formatFieldValue = (key, value) => {
+    if (!value) return '—';
+    if (key === 'amountPaid') return `₱${Number(value).toLocaleString()}`;
+    if (key.toLowerCase().includes('date') && value instanceof Date) {
+      return new Date(value).toLocaleDateString();
+    }
+    if (typeof value === 'object') return JSON.stringify(value);
+    return String(value);
+  };
+
+  // Render a compact field row
+  const renderFieldRow = (key, value, icon) => {
+    const label = FIELD_LABELS[key] || key.replace(/([A-Z])/g, ' $1').trim();
+    return (
+      <View key={key} style={scanStyles.fieldRow}>
+        {icon && <Ionicons name={icon} size={14} color={colors.primary} style={{ marginRight: 6 }} />}
+        <Text style={scanStyles.fieldLabel}>{label}</Text>
+        <Text style={scanStyles.fieldValue} numberOfLines={1}>{formatFieldValue(key, value)}</Text>
+      </View>
+    );
+  };
+
+  // Render inline extracted data card
+  const renderExtractedData = (data, type) => {
+    if (!data) return null;
+    const isExpanded = type === 'cr' ? crExpanded : orExpanded;
+    const toggle = type === 'cr' ? () => setCrExpanded(!crExpanded) : () => setOrExpanded(!orExpanded);
+
+    const importantKeys = type === 'cr'
+      ? ['plateNumber', 'vehicleMake', 'vehicleSeries', 'engineNumber', 'chassisNumber', 'yearModel']
+      : ['plateNumber', 'orNumber', 'orDate', 'amountPaid', 'paymentType'];
+
+    const allKeys = Object.keys(data).filter(k => !['rawText', 'confidence'].includes(k) && data[k]);
+    const extraKeys = allKeys.filter(k => !importantKeys.includes(k));
+
+    const fieldIcon = (key) => {
+      const map = {
+        plateNumber: 'car-outline',
+        vehicleMake: 'construct-outline',
+        vehicleSeries: 'layers-outline',
+        engineNumber: 'cog-outline',
+        chassisNumber: 'hardware-chip-outline',
+        yearModel: 'calendar-outline',
+        orNumber: 'document-text-outline',
+        orDate: 'calendar-outline',
+        amountPaid: 'cash-outline',
+        paymentType: 'card-outline',
+      };
+      return map[key] || null;
+    };
+
+    return (
+      <View style={scanStyles.extractedCard}>
+        <View style={scanStyles.extractedHeader}>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <Ionicons name="checkmark-circle" size={16} color="#22C55E" />
+            <Text style={scanStyles.extractedTitle}>Extracted Data</Text>
+          </View>
+          {data.confidence > 0 && (
+            <View style={scanStyles.confidenceBadge}>
+              <Text style={scanStyles.confidenceText}>{Math.round(data.confidence * 100)}%</Text>
+            </View>
+          )}
+        </View>
+
+        {importantKeys.map(k => data[k] ? renderFieldRow(k, data[k], fieldIcon(k)) : null)}
+
+        {extraKeys.length > 0 && (
+          <>
+            <TouchableOpacity onPress={toggle} style={scanStyles.expandToggle}>
+              <Text style={scanStyles.expandText}>
+                {isExpanded ? 'Show Less' : `+${extraKeys.length} more fields`}
+              </Text>
+              <Ionicons name={isExpanded ? 'chevron-up' : 'chevron-down'} size={14} color={colors.primary} />
+            </TouchableOpacity>
+            {isExpanded && extraKeys.map(k => renderFieldRow(k, data[k]))}
+          </>
+        )}
+      </View>
+    );
   };
 
   // Render validation status
   const renderValidationStatus = () => {
     if (!validationResult) return null;
+    const isValid = validationResult.isValid;
 
     return (
-      <View style={{
-        backgroundColor: validationResult.isValid ? '#d4edda' : '#f8d7da',
-        padding: 12,
-        borderRadius: 8,
-        marginTop: 10,
-      }}>
-        <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
-          <Ionicons 
-            name={validationResult.isValid ? 'checkmark-circle' : 'warning'} 
-            size={20} 
-            color={validationResult.isValid ? '#155724' : '#721c24'} 
-          />
-          <Text style={{ 
-            marginLeft: 8, 
-            fontWeight: 'bold',
-            color: validationResult.isValid ? '#155724' : '#721c24'
-          }}>
-            {validationResult.isValid ? 'Documents Validated' : 'Validation Issues Found'}
-          </Text>
+      <View style={[scanStyles.validationCard, { borderLeftColor: isValid ? '#22C55E' : '#EF4444' }]}>
+        <View style={scanStyles.validationHeader}>
+          <View style={[scanStyles.validationIcon, { backgroundColor: isValid ? '#DCFCE7' : '#FEE2E2' }]}>
+            <Ionicons
+              name={isValid ? 'shield-checkmark' : 'shield-half'}
+              size={20}
+              color={isValid ? '#16A34A' : '#DC2626'}
+            />
+          </View>
+          <View style={{ flex: 1, marginLeft: 10 }}>
+            <Text style={[scanStyles.validationTitle, { color: isValid ? '#16A34A' : '#DC2626' }]}>
+              {isValid ? 'Documents Match' : 'Issues Found'}
+            </Text>
+            <Text style={scanStyles.validationSubtitle}>
+              {isValid ? 'CR and OR data are consistent' : 'Review mismatches below'}
+            </Text>
+          </View>
         </View>
-        
+
         {validationResult.errors?.length > 0 && (
-          <View style={{ marginTop: 5 }}>
+          <View style={{ marginTop: 10 }}>
             {validationResult.errors.map((error, idx) => (
-              <Text key={idx} style={{ color: '#721c24', fontSize: 12 }}>• {error}</Text>
+              <View key={idx} style={scanStyles.issueRow}>
+                <Ionicons name="close-circle" size={14} color="#DC2626" />
+                <Text style={[scanStyles.issueText, { color: '#991B1B' }]}>{error}</Text>
+              </View>
             ))}
           </View>
         )}
-        
+
         {validationResult.warnings?.length > 0 && (
-          <View style={{ marginTop: 5 }}>
+          <View style={{ marginTop: 8 }}>
             {validationResult.warnings.map((warning, idx) => (
-              <Text key={idx} style={{ color: '#856404', fontSize: 12 }}>⚠ {warning}</Text>
+              <View key={idx} style={scanStyles.issueRow}>
+                <Ionicons name="alert-circle" size={14} color="#D97706" />
+                <Text style={[scanStyles.issueText, { color: '#92400E' }]}>{warning}</Text>
+              </View>
             ))}
           </View>
         )}
@@ -414,67 +575,144 @@ export default function AddTricycleModal({
     );
   };
 
-  // Render CR details modal
-  const renderCRDetailsModal = () => (
-    <Modal visible={showCRDetails} animationType="slide" transparent>
-      <View style={styles.modalContainer}>
-        <View style={[styles.modalContent, { maxHeight: '80%' }]}>
-          <Text style={styles.modalTitle}>CR Details</Text>
-          <ScrollView style={{ width: '100%' }}>
-            {crData && Object.entries(crData).map(([key, value]) => {
-              if (key === 'rawText' || key === 'confidence' || !value) return null;
-              return (
-                <View key={key} style={{ marginBottom: 10 }}>
-                  <Text style={{ fontSize: 12, color: '#666', textTransform: 'capitalize' }}>
-                    {key.replace(/([A-Z])/g, ' $1').trim()}
-                  </Text>
-                  <Text style={{ fontSize: 14, color: '#333' }}>
-                    {typeof value === 'object' ? JSON.stringify(value) : String(value)}
-                  </Text>
-                </View>
-              );
-            })}
-          </ScrollView>
-          <TouchableOpacity
-            style={[styles.modalBtn, { backgroundColor: '#6c757d', marginTop: 10, width: '100%' }]}
-            onPress={() => setShowCRDetails(false)}
-          >
-            <Text style={styles.modalBtnText}>Close</Text>
-          </TouchableOpacity>
-        </View>
-      </View>
-    </Modal>
-  );
+  // Render a single document scan card (CR or OR)
+  const renderScanCard = (type) => {
+    const isCR = type === 'cr';
+    const image = isCR ? crImage : orImage;
+    const scanning = isCR ? scanningCR : scanningOR;
+    const data = isCR ? crData : orData;
+    const anim = isCR ? crScanAnim : orScanAnim;
+    const scanFn = isCR ? scanCRDocument : scanORDocument;
+    const title = isCR ? 'Certificate of Registration (CR)' : 'Official Receipt (OR)';
+    const icon = isCR ? 'document-text' : 'receipt';
+    const statusIcon = data ? 'checkmark-circle' : image ? 'image' : 'add-circle-outline';
+    const statusColor = data ? '#22C55E' : image ? colors.primary : '#9CA3AF';
+    const statusText = data ? 'Scanned' : image ? 'Ready to scan' : 'No image';
 
-  // Render OR details modal
-  const renderORDetailsModal = () => (
-    <Modal visible={showORDetails} animationType="slide" transparent>
-      <View style={styles.modalContainer}>
-        <View style={[styles.modalContent, { maxHeight: '80%' }]}>
-          <Text style={styles.modalTitle}>OR Details</Text>
-          <ScrollView style={{ width: '100%' }}>
-            {orData && Object.entries(orData).map(([key, value]) => {
-              if (key === 'rawText' || key === 'confidence' || !value) return null;
-              return (
-                <View key={key} style={{ marginBottom: 10 }}>
-                  <Text style={{ fontSize: 12, color: '#666', textTransform: 'capitalize' }}>
-                    {key.replace(/([A-Z])/g, ' $1').trim()}
-                  </Text>
-                  <Text style={{ fontSize: 14, color: '#333' }}>
-                    {typeof value === 'object' ? JSON.stringify(value) : String(value)}
-                  </Text>
-                </View>
-              );
-            })}
-          </ScrollView>
-          <TouchableOpacity
-            style={[styles.modalBtn, { backgroundColor: '#6c757d', marginTop: 10, width: '100%' }]}
-            onPress={() => setShowORDetails(false)}
-          >
-            <Text style={styles.modalBtnText}>Close</Text>
-          </TouchableOpacity>
+    return (
+      <View style={scanStyles.scanCard}>
+        {/* Card Header */}
+        <View style={scanStyles.scanCardHeader}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', flex: 1 }}>
+            <View style={[scanStyles.docIconWrap, { backgroundColor: isCR ? '#FFF7ED' : '#F0FDF4' }]}>
+              <Ionicons name={icon} size={20} color={isCR ? colors.primary : '#16A34A'} />
+            </View>
+            <View style={{ marginLeft: 10, flex: 1 }}>
+              <Text style={scanStyles.scanCardTitle}>{title}</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 2 }}>
+                <Ionicons name={statusIcon} size={12} color={statusColor} />
+                <Text style={[scanStyles.statusText, { color: statusColor }]}>{statusText}</Text>
+              </View>
+            </View>
+          </View>
         </View>
+
+        {/* Image Area */}
+        {image ? (
+          <View style={scanStyles.imageContainer}>
+            <Image source={{ uri: image }} style={scanStyles.previewImage} resizeMode="cover" />
+            
+            {/* Scanning Overlay */}
+            {scanning && (
+              <View style={scanStyles.scanOverlay}>
+                <Animated.View style={[scanStyles.scanLine, {
+                  opacity: anim.interpolate({ inputRange: [0, 0.5, 1], outputRange: [0.3, 1, 0.3] }),
+                  transform: [{
+                    translateY: anim.interpolate({ inputRange: [0, 1], outputRange: [-60, 60] }),
+                  }],
+                }]} />
+                <View style={scanStyles.scanOverlayContent}>
+                  <ActivityIndicator color="#fff" size="small" />
+                  <Text style={scanStyles.scanOverlayText}>Scanning document...</Text>
+                </View>
+              </View>
+            )}
+
+            {/* Action Buttons */}
+            <View style={scanStyles.imageActions}>
+              <TouchableOpacity
+                style={scanStyles.imageActionBtn}
+                onPress={() => showImageOptions(type)}
+                disabled={scanning}
+              >
+                <Ionicons name="camera-reverse-outline" size={16} color="#fff" />
+                <Text style={scanStyles.imageActionText}>Change</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={[scanStyles.imageActionBtn, scanStyles.scanBtn, scanning && { opacity: 0.6 }]}
+                onPress={scanFn}
+                disabled={scanning}
+              >
+                {scanning ? (
+                  <ActivityIndicator color="#fff" size={14} />
+                ) : (
+                  <Ionicons name="scan-outline" size={16} color="#fff" />
+                )}
+                <Text style={scanStyles.imageActionText}>{scanning ? 'Scanning...' : data ? 'Re-scan' : 'Scan'}</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        ) : (
+          <TouchableOpacity style={scanStyles.uploadArea} onPress={() => showImageOptions(type)}>
+            <View style={scanStyles.uploadIconWrap}>
+              <Ionicons name="cloud-upload-outline" size={28} color={colors.primary} />
+            </View>
+            <Text style={scanStyles.uploadTitle}>Add {isCR ? 'CR' : 'OR'} Document</Text>
+            <Text style={scanStyles.uploadSubtext}>Take a photo or choose from gallery</Text>
+          </TouchableOpacity>
+        )}
+
+        {/* Extracted Data (inline) */}
+        {renderExtractedData(data, type)}
       </View>
+    );
+  };
+
+  // Image Source Picker Modal
+  const renderImageSourceModal = () => (
+    <Modal visible={showImageSourceModal !== null} transparent animationType="fade" onRequestClose={() => setShowImageSourceModal(null)}>
+      <TouchableWithoutFeedback onPress={() => setShowImageSourceModal(null)}>
+        <View style={scanStyles.bottomSheetOverlay}>
+          <TouchableWithoutFeedback>
+            <View style={scanStyles.bottomSheet}>
+              <View style={scanStyles.bottomSheetHandle} />
+              <Text style={scanStyles.bottomSheetTitle}>
+                Select {showImageSourceModal === 'cr' ? 'CR' : 'OR'} Image
+              </Text>
+
+              <TouchableOpacity style={scanStyles.sourceOption} onPress={() => handleImageSourceSelect('camera')}>
+                <View style={[scanStyles.sourceIconWrap, { backgroundColor: '#EFF6FF' }]}>
+                  <Ionicons name="camera" size={22} color="#3B82F6" />
+                </View>
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                  <Text style={scanStyles.sourceOptionTitle}>Camera</Text>
+                  <Text style={scanStyles.sourceOptionDesc}>Take a photo of the document</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
+              </TouchableOpacity>
+
+              <TouchableOpacity style={scanStyles.sourceOption} onPress={() => handleImageSourceSelect('gallery')}>
+                <View style={[scanStyles.sourceIconWrap, { backgroundColor: '#F0FDF4' }]}>
+                  <Ionicons name="images" size={22} color="#22C55E" />
+                </View>
+                <View style={{ flex: 1, marginLeft: 12 }}>
+                  <Text style={scanStyles.sourceOptionTitle}>Gallery</Text>
+                  <Text style={scanStyles.sourceOptionDesc}>Choose from photo library</Text>
+                </View>
+                <Ionicons name="chevron-forward" size={18} color="#9CA3AF" />
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                style={scanStyles.bottomSheetCancel}
+                onPress={() => setShowImageSourceModal(null)}
+              >
+                <Text style={scanStyles.bottomSheetCancelText}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </TouchableWithoutFeedback>
+        </View>
+      </TouchableWithoutFeedback>
     </Modal>
   );
 
@@ -488,32 +726,39 @@ export default function AddTricycleModal({
         >
           <View style={[styles.modalContent, { maxHeight: '90%' }]}>
             {/* Tab Switcher */}
-            <View style={{ flexDirection: 'row', marginBottom: 15, borderRadius: 8, overflow: 'hidden' }}>
+            <View style={scanStyles.tabBar}>
               <TouchableOpacity
-                style={{
-                  flex: 1,
-                  padding: 10,
-                  backgroundColor: activeTab === 'basic' ? colors.primary : '#e9ecef',
-                  alignItems: 'center',
-                }}
+                style={[scanStyles.tab, activeTab === 'basic' && scanStyles.tabActive]}
                 onPress={() => setActiveTab('basic')}
               >
-                <Text style={{ color: activeTab === 'basic' ? '#fff' : '#333', fontWeight: 'bold' }}>
+                <Ionicons
+                  name="information-circle-outline"
+                  size={16}
+                  color={activeTab === 'basic' ? '#fff' : '#6B7280'}
+                  style={{ marginRight: 6 }}
+                />
+                <Text style={[scanStyles.tabText, activeTab === 'basic' && scanStyles.tabTextActive]}>
                   Basic Info
                 </Text>
               </TouchableOpacity>
               <TouchableOpacity
-                style={{
-                  flex: 1,
-                  padding: 10,
-                  backgroundColor: activeTab === 'documents' ? colors.primary : '#e9ecef',
-                  alignItems: 'center',
-                }}
+                style={[scanStyles.tab, activeTab === 'documents' && scanStyles.tabActive]}
                 onPress={() => setActiveTab('documents')}
               >
-                <Text style={{ color: activeTab === 'documents' ? '#fff' : '#333', fontWeight: 'bold' }}>
-                  CR / OR Scan
+                <Ionicons
+                  name="scan-outline"
+                  size={16}
+                  color={activeTab === 'documents' ? '#fff' : '#6B7280'}
+                  style={{ marginRight: 6 }}
+                />
+                <Text style={[scanStyles.tabText, activeTab === 'documents' && scanStyles.tabTextActive]}>
+                  Document Scan
                 </Text>
+                {(crData || orData) && (
+                  <View style={scanStyles.tabBadge}>
+                    <Text style={scanStyles.tabBadgeText}>{(crData ? 1 : 0) + (orData ? 1 : 0)}</Text>
+                  </View>
+                )}
               </TouchableOpacity>
             </View>
 
@@ -766,222 +1011,27 @@ export default function AddTricycleModal({
               ) : (
                 <>
                   {/* Documents Tab */}
-                  <Text style={{ fontSize: 12, color: '#666', marginBottom: 15, textAlign: 'center' }}>
-                    Scan CR & OR documents to auto-fill and validate information
-                  </Text>
-
-                  {/* CR Section */}
-                  <View style={{ 
-                    backgroundColor: '#f8f9fa', 
-                    padding: 12, 
-                    borderRadius: 8, 
-                    marginBottom: 15 
-                  }}>
-                    <Text style={{ fontWeight: 'bold', marginBottom: 10, color: colors.primary }}>
-                      Certificate of Registration (CR)
+                  <View style={scanStyles.docHint}>
+                    <Ionicons name="information-circle-outline" size={16} color={colors.primary} />
+                    <Text style={scanStyles.docHintText}>
+                      Upload and scan your CR & OR to auto-fill vehicle details and cross-validate documents.
                     </Text>
-                    
-                    {crImage ? (
-                      <View>
-                        <Image 
-                          source={{ uri: crImage }} 
-                          style={{ 
-                            width: '100%', 
-                            height: 150, 
-                            borderRadius: 8,
-                            marginBottom: 10 
-                          }} 
-                          resizeMode="cover"
-                        />
-                        <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                          <TouchableOpacity
-                            style={{
-                              flex: 1,
-                              backgroundColor: '#6c757d',
-                              padding: 10,
-                              borderRadius: 8,
-                              marginRight: 5,
-                              alignItems: 'center',
-                            }}
-                            onPress={() => showImageOptions('cr')}
-                          >
-                            <Text style={{ color: '#fff', fontSize: 12 }}>Change</Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            style={{
-                              flex: 1,
-                              backgroundColor: colors.primary,
-                              padding: 10,
-                              borderRadius: 8,
-                              marginLeft: 5,
-                              alignItems: 'center',
-                            }}
-                            onPress={scanCRDocument}
-                            disabled={scanningCR}
-                          >
-                            {scanningCR ? (
-                              <ActivityIndicator color="#fff" size="small" />
-                            ) : (
-                              <Text style={{ color: '#fff', fontSize: 12 }}>Scan OCR</Text>
-                            )}
-                          </TouchableOpacity>
-                        </View>
-                        
-                        {crData && (
-                          <TouchableOpacity
-                            style={{
-                              backgroundColor: '#28a745',
-                              padding: 8,
-                              borderRadius: 8,
-                              marginTop: 10,
-                              alignItems: 'center',
-                              flexDirection: 'row',
-                              justifyContent: 'center',
-                            }}
-                            onPress={() => setShowCRDetails(true)}
-                          >
-                            <Ionicons name="checkmark-circle" size={16} color="#fff" />
-                            <Text style={{ color: '#fff', marginLeft: 5, fontSize: 12 }}>
-                              View Extracted Data
-                            </Text>
-                          </TouchableOpacity>
-                        )}
-                      </View>
-                    ) : (
-                      <TouchableOpacity
-                        style={{
-                          borderWidth: 2,
-                          borderColor: '#dee2e6',
-                          borderStyle: 'dashed',
-                          borderRadius: 8,
-                          padding: 30,
-                          alignItems: 'center',
-                        }}
-                        onPress={() => showImageOptions('cr')}
-                      >
-                        <MaterialCommunityIcons name="file-document-outline" size={40} color="#adb5bd" />
-                        <Text style={{ color: '#6c757d', marginTop: 10 }}>
-                          Tap to add CR image
-                        </Text>
-                      </TouchableOpacity>
-                    )}
                   </View>
 
-                  {/* OR Section */}
-                  <View style={{ 
-                    backgroundColor: '#f8f9fa', 
-                    padding: 12, 
-                    borderRadius: 8, 
-                    marginBottom: 15 
-                  }}>
-                    <Text style={{ fontWeight: 'bold', marginBottom: 10, color: colors.primary }}>
-                      Official Receipt (OR)
-                    </Text>
-                    
-                    {orImage ? (
-                      <View>
-                        <Image 
-                          source={{ uri: orImage }} 
-                          style={{ 
-                            width: '100%', 
-                            height: 150, 
-                            borderRadius: 8,
-                            marginBottom: 10 
-                          }} 
-                          resizeMode="cover"
-                        />
-                        <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                          <TouchableOpacity
-                            style={{
-                              flex: 1,
-                              backgroundColor: '#6c757d',
-                              padding: 10,
-                              borderRadius: 8,
-                              marginRight: 5,
-                              alignItems: 'center',
-                            }}
-                            onPress={() => showImageOptions('or')}
-                          >
-                            <Text style={{ color: '#fff', fontSize: 12 }}>Change</Text>
-                          </TouchableOpacity>
-                          <TouchableOpacity
-                            style={{
-                              flex: 1,
-                              backgroundColor: colors.primary,
-                              padding: 10,
-                              borderRadius: 8,
-                              marginLeft: 5,
-                              alignItems: 'center',
-                            }}
-                            onPress={scanORDocument}
-                            disabled={scanningOR}
-                          >
-                            {scanningOR ? (
-                              <ActivityIndicator color="#fff" size="small" />
-                            ) : (
-                              <Text style={{ color: '#fff', fontSize: 12 }}>Scan OCR</Text>
-                            )}
-                          </TouchableOpacity>
-                        </View>
-                        
-                        {orData && (
-                          <TouchableOpacity
-                            style={{
-                              backgroundColor: '#28a745',
-                              padding: 8,
-                              borderRadius: 8,
-                              marginTop: 10,
-                              alignItems: 'center',
-                              flexDirection: 'row',
-                              justifyContent: 'center',
-                            }}
-                            onPress={() => setShowORDetails(true)}
-                          >
-                            <Ionicons name="checkmark-circle" size={16} color="#fff" />
-                            <Text style={{ color: '#fff', marginLeft: 5, fontSize: 12 }}>
-                              View Extracted Data
-                            </Text>
-                          </TouchableOpacity>
-                        )}
-                      </View>
-                    ) : (
-                      <TouchableOpacity
-                        style={{
-                          borderWidth: 2,
-                          borderColor: '#dee2e6',
-                          borderStyle: 'dashed',
-                          borderRadius: 8,
-                          padding: 30,
-                          alignItems: 'center',
-                        }}
-                        onPress={() => showImageOptions('or')}
-                      >
-                        <MaterialCommunityIcons name="receipt" size={40} color="#adb5bd" />
-                        <Text style={{ color: '#6c757d', marginTop: 10 }}>
-                          Tap to add OR image
-                        </Text>
-                      </TouchableOpacity>
-                    )}
-                  </View>
+                  {/* CR Scan Card */}
+                  {renderScanCard('cr')}
+
+                  {/* OR Scan Card */}
+                  {renderScanCard('or')}
 
                   {/* Validation Result */}
                   {renderValidationStatus()}
 
                   {/* Validate Button */}
                   {crData && orData && !validationResult && (
-                    <TouchableOpacity
-                      style={{
-                        backgroundColor: '#17a2b8',
-                        padding: 12,
-                        borderRadius: 8,
-                        marginTop: 10,
-                        alignItems: 'center',
-                      }}
-                      onPress={() => validateDocumentsData(crData, orData)}
-                    >
-                      <Text style={{ color: '#fff', fontWeight: 'bold' }}>
-                        Validate Documents
-                      </Text>
+                    <TouchableOpacity style={scanStyles.validateBtn} onPress={() => validateDocumentsData(crData, orData)}>
+                      <Ionicons name="shield-checkmark-outline" size={18} color="#fff" style={{ marginRight: 8 }} />
+                      <Text style={scanStyles.validateBtnText}>Cross-Validate Documents</Text>
                     </TouchableOpacity>
                   )}
                 </>
@@ -1013,11 +1063,406 @@ export default function AddTricycleModal({
         </KeyboardAvoidingView>
       </TouchableWithoutFeedback>
       
-      {/* CR Details Modal */}
-      {renderCRDetailsModal()}
-      
-      {/* OR Details Modal */}
-      {renderORDetailsModal()}
+      {/* Image Source Picker */}
+      {renderImageSourceModal()}
     </Modal>
   );
 }
+
+// ========== Scan-specific styles ==========
+const scanStyles = StyleSheet.create({
+  // Tab bar
+  tabBar: {
+    flexDirection: 'row',
+    marginBottom: 15,
+    backgroundColor: '#F3F4F6',
+    borderRadius: 12,
+    padding: 3,
+  },
+  tab: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 10,
+    borderRadius: 10,
+  },
+  tabActive: {
+    backgroundColor: colors.primary,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  tabText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#6B7280',
+  },
+  tabTextActive: {
+    color: '#fff',
+  },
+  tabBadge: {
+    backgroundColor: '#22C55E',
+    borderRadius: 10,
+    minWidth: 18,
+    height: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginLeft: 6,
+    paddingHorizontal: 4,
+  },
+  tabBadgeText: {
+    color: '#fff',
+    fontSize: 10,
+    fontWeight: 'bold',
+  },
+
+  // Document hint
+  docHint: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    backgroundColor: '#FFF7ED',
+    padding: 12,
+    borderRadius: 10,
+    marginBottom: 16,
+  },
+  docHintText: {
+    color: '#92400E',
+    fontSize: 12,
+    flex: 1,
+    marginLeft: 8,
+    lineHeight: 18,
+  },
+
+  // Scan card
+  scanCard: {
+    backgroundColor: '#fff',
+    borderRadius: 14,
+    marginBottom: 14,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.06,
+    shadowRadius: 6,
+    elevation: 2,
+    overflow: 'hidden',
+  },
+  scanCardHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    padding: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  docIconWrap: {
+    width: 38,
+    height: 38,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  scanCardTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#1F2937',
+  },
+  statusText: {
+    fontSize: 11,
+    fontWeight: '500',
+    marginLeft: 4,
+  },
+
+  // Image area
+  imageContainer: {
+    position: 'relative',
+    margin: 12,
+    borderRadius: 10,
+    overflow: 'hidden',
+  },
+  previewImage: {
+    width: '100%',
+    height: 160,
+    borderRadius: 10,
+  },
+  scanOverlay: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  scanLine: {
+    position: 'absolute',
+    left: 12,
+    right: 12,
+    height: 2,
+    backgroundColor: colors.primary,
+    borderRadius: 1,
+  },
+  scanOverlayContent: {
+    alignItems: 'center',
+  },
+  scanOverlayText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
+    marginTop: 8,
+  },
+  imageActions: {
+    flexDirection: 'row',
+    position: 'absolute',
+    bottom: 8,
+    left: 8,
+    right: 8,
+  },
+  imageActionBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    paddingVertical: 8,
+    borderRadius: 8,
+    marginHorizontal: 3,
+  },
+  scanBtn: {
+    backgroundColor: colors.primary,
+  },
+  imageActionText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
+    marginLeft: 5,
+  },
+
+  // Upload area (no image yet)
+  uploadArea: {
+    margin: 12,
+    borderWidth: 2,
+    borderColor: '#E5E7EB',
+    borderStyle: 'dashed',
+    borderRadius: 12,
+    paddingVertical: 28,
+    alignItems: 'center',
+    backgroundColor: '#FAFAFA',
+  },
+  uploadIconWrap: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+    backgroundColor: '#FFF7ED',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 10,
+  },
+  uploadTitle: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#374151',
+  },
+  uploadSubtext: {
+    fontSize: 11,
+    color: '#9CA3AF',
+    marginTop: 4,
+  },
+
+  // Extracted data
+  extractedCard: {
+    backgroundColor: '#F9FAFB',
+    margin: 12,
+    marginTop: 0,
+    padding: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#E5E7EB',
+  },
+  extractedHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  extractedTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#16A34A',
+    marginLeft: 6,
+  },
+  confidenceBadge: {
+    backgroundColor: '#DCFCE7',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+  },
+  confidenceText: {
+    fontSize: 10,
+    fontWeight: '700',
+    color: '#16A34A',
+  },
+  fieldRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingVertical: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: '#F3F4F6',
+  },
+  fieldLabel: {
+    fontSize: 11,
+    color: '#6B7280',
+    width: 95,
+    fontWeight: '500',
+  },
+  fieldValue: {
+    flex: 1,
+    fontSize: 13,
+    color: '#1F2937',
+    fontWeight: '600',
+    textAlign: 'right',
+  },
+  expandToggle: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingTop: 10,
+  },
+  expandText: {
+    fontSize: 12,
+    color: colors.primary,
+    fontWeight: '600',
+    marginRight: 4,
+  },
+
+  // Validation card
+  validationCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    padding: 14,
+    marginBottom: 14,
+    borderLeftWidth: 4,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 1,
+  },
+  validationHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  validationIcon: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  validationTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  validationSubtitle: {
+    fontSize: 11,
+    color: '#6B7280',
+    marginTop: 1,
+  },
+  issueRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 4,
+    paddingLeft: 4,
+  },
+  issueText: {
+    fontSize: 12,
+    marginLeft: 6,
+    flex: 1,
+    lineHeight: 18,
+  },
+
+  // Validate button
+  validateBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#0EA5E9',
+    paddingVertical: 14,
+    borderRadius: 12,
+    marginTop: 4,
+    marginBottom: 8,
+    shadowColor: '#0EA5E9',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  validateBtnText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+
+  // Bottom sheet (image source picker)
+  bottomSheetOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'flex-end',
+  },
+  bottomSheet: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 22,
+    borderTopRightRadius: 22,
+    padding: 20,
+    paddingBottom: Platform.OS === 'ios' ? 34 : 20,
+  },
+  bottomSheetHandle: {
+    width: 36,
+    height: 4,
+    backgroundColor: '#D1D5DB',
+    borderRadius: 2,
+    alignSelf: 'center',
+    marginBottom: 16,
+  },
+  bottomSheetTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: '#1F2937',
+    marginBottom: 16,
+    textAlign: 'center',
+  },
+  sourceOption: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    padding: 14,
+    backgroundColor: '#F9FAFB',
+    borderRadius: 12,
+    marginBottom: 10,
+  },
+  sourceIconWrap: {
+    width: 42,
+    height: 42,
+    borderRadius: 12,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  sourceOptionTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#1F2937',
+  },
+  sourceOptionDesc: {
+    fontSize: 12,
+    color: '#9CA3AF',
+    marginTop: 2,
+  },
+  bottomSheetCancel: {
+    alignItems: 'center',
+    paddingVertical: 14,
+    marginTop: 4,
+  },
+  bottomSheetCancelText: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: '#6B7280',
+  },
+});

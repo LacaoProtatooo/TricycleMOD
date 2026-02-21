@@ -230,7 +230,6 @@ const BookingScreen = ({ navigation }) => {
       BOOKING_STATUS.OFFERS_RECEIVED,  // Include OFFERS_RECEIVED to get new offers
       BOOKING_STATUS.OFFER_RECEIVED,
       BOOKING_STATUS.TRIP_ACTIVE,
-      BOOKING_STATUS.AWAITING_CONFIRMATION,
     ].includes(bookingStatus);
 
     if (shouldPoll && db && user) {
@@ -312,9 +311,6 @@ const BookingScreen = ({ navigation }) => {
           startLocationTracking();
           break;
         case 'awaiting_confirmation':
-          setBookingStatus(BOOKING_STATUS.AWAITING_CONFIRMATION);
-          setShowCompletionModal(true);
-          break;
         case 'completed':
           setBookingStatus(BOOKING_STATUS.TRIP_COMPLETED);
           setShowCompletionModal(false);

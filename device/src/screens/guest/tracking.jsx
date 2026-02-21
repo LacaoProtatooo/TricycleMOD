@@ -691,7 +691,16 @@ const GuestTracking = () => {
       });
       console.log(`Synced ${coordsToSync.length} coordinates`);
     } catch (error) {
-      console.error('Sync error:', error.message);
+      // If trip no longer exists (404), stop syncing to avoid repeated errors
+      if (error.response?.status === 404) {
+        console.log('Trip no longer active, stopping sync interval');
+        if (syncIntervalRef.current) {
+          clearInterval(syncIntervalRef.current);
+          syncIntervalRef.current = null;
+        }
+      } else {
+        console.error('Sync error:', error.message);
+      }
     } finally {
       setIsSyncing(false);
     }

@@ -285,46 +285,7 @@ const DriverBookingScreen = ({ navigation }) => {
     };
   }, [activeBooking?._id, activeBooking?.status, authToken]);
 
-  // Poll for status changes when awaiting confirmation
-  useEffect(() => {
-    let awaitingPollInterval = null;
-    
-    if (activeBooking?.status === 'awaiting_confirmation' && authToken) {
-      // Poll every 3 seconds to check if user confirmed
-      awaitingPollInterval = setInterval(async () => {
-        try {
-          const response = await axios.get(
-            `${API_URL}/driver?status=awaiting_confirmation,completed`,
-            { headers: { Authorization: `Bearer ${authToken}` } }
-          );
-          
-          if (response.data.success && response.data.bookings?.length > 0) {
-            const booking = response.data.bookings[0];
-            if (booking.status === 'completed') {
-              // User confirmed - reset state
-              Alert.alert(
-                'Trip Confirmed!',
-                'The passenger has confirmed the trip completion.',
-                [{ text: 'OK' }]
-              );
-              resetTripState();
-            }
-          } else {
-            // No awaiting confirmation booking found - might be completed or disputed
-            resetTripState();
-          }
-        } catch (error) {
-          console.error('Error polling awaiting confirmation:', error);
-        }
-      }, 3000);
-    }
-    
-    return () => {
-      if (awaitingPollInterval) {
-        clearInterval(awaitingPollInterval);
-      }
-    };
-  }, [activeBooking?.status, authToken]);
+  // No longer need to poll for awaiting_confirmation - trip completes directly
 
   const initializeScreen = async () => {
     try {
@@ -510,9 +471,9 @@ const DriverBookingScreen = ({ navigation }) => {
     if (!currentToken) return;
 
     try {
-      // Check for accepted, in_progress, or awaiting_confirmation bookings in one call
+      // Check for accepted or in_progress bookings in one call
       const response = await axios.get(
-        `${API_URL}/driver?status=accepted,in_progress,awaiting_confirmation`,
+        `${API_URL}/driver?status=accepted,in_progress`,
         getAuthHeaders(currentToken)
       );
 
@@ -520,8 +481,8 @@ const DriverBookingScreen = ({ navigation }) => {
         const booking = response.data.bookings[0];
         setActiveBooking(booking);
         setIsOnline(true);
-        // If status is in_progress or awaiting_confirmation, passenger is already picked up
-        if (booking.status === 'in_progress' || booking.status === 'awaiting_confirmation') {
+        // If status is in_progress, passenger is already picked up
+        if (booking.status === 'in_progress') {
           setIsPickedUp(true);
         }
         startLocationTracking();
@@ -715,6 +676,18 @@ const DriverBookingScreen = ({ navigation }) => {
         setIsPickedUp(false);
         startLocationTracking();
         fetchNearbyBookings();
+        
+        // Auto-start trip recording when booking is accepted
+        const passengerName = booking?.user?.firstname 
+          ? `${booking.user.firstname} ${booking.user.lastname || ''}`
+          : 'Passenger';
+          
+        await AsyncStorage.setItem('booking_trigger_recording_v1', JSON.stringify({
+          shouldStart: true,
+          bookingId: booking._id,
+          passengerName: passengerName.trim(),
+          timestamp: Date.now(),
+        }));
       }
     } catch (error) {
       Alert.alert('Error', error.response?.data?.message || 'Failed to accept booking');
@@ -851,7 +824,8 @@ const DriverBookingScreen = ({ navigation }) => {
         const fare = activeBooking.agreedFare || activeBooking.preferredFare;
         Alert.alert(
           'Trip Completed!',
-          `Fare collected: ₱${fare}${simulationCompleted ? '\n\n(Simulated trip)' : ''}\n\nRemember to stop recording on the Maps tab.`
+          `Fare collected: ₱${fare}${simulationCompleted ? '\n\n(Simulated trip)' : ''}\n\nRemember to stop recording on the Maps tab.`,
+          [{ text: 'OK' }]
         );
         resetTripState();
       }
@@ -1555,38 +1529,23 @@ const DriverBookingScreen = ({ navigation }) => {
   // ==================== ACTIVE TRIP VIEW ====================
 
   if (activeBooking) {
-    const isAwaitingConfirmation = activeBooking.status === 'awaiting_confirmation';
-    
     return (
       <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
         {/* Header */}
         <View style={styles.activeTripHeader}>
           <View style={styles.headerLeft}>
-            <View style={[
-              styles.tripStatusBadge,
-              isAwaitingConfirmation && styles.awaitingBadge
-            ]}>
-              <View style={[
-                styles.tripStatusDot,
-                isAwaitingConfirmation && styles.awaitingDot
-              ]} />
-              <Text style={[
-                styles.tripStatusText,
-                isAwaitingConfirmation && styles.awaitingText
-              ]}>
-                {isAwaitingConfirmation 
-                  ? 'Awaiting Confirmation' 
-                  : isPickedUp 
-                    ? 'In Progress' 
-                    : 'Pickup Passenger'}
+            <View style={styles.tripStatusBadge}>
+              <View style={styles.tripStatusDot} />
+              <Text style={styles.tripStatusText}>
+                {isPickedUp 
+                  ? 'In Progress' 
+                  : 'Pickup Passenger'}
               </Text>
             </View>
           </View>
-          {!isAwaitingConfirmation && (
-            <TouchableOpacity style={styles.cancelIcon} onPress={handleCancelTrip}>
-              <Ionicons name="close" size={24} color="#dc3545" />
-            </TouchableOpacity>
-          )}
+          <TouchableOpacity style={styles.cancelIcon} onPress={handleCancelTrip}>
+            <Ionicons name="close" size={24} color="#dc3545" />
+          </TouchableOpacity>
         </View>
 
         {/* Map */}
@@ -1717,7 +1676,7 @@ const DriverBookingScreen = ({ navigation }) => {
                 <Text style={styles.distanceValue}>{formatDistance(distanceToPickup)}</Text>
               </View>
             )}
-            {distanceToDestination !== null && !isAwaitingConfirmation && (
+            {distanceToDestination !== null && (
               <View style={styles.distanceItem}>
                 <Ionicons name="flag" size={16} color={colors.primary} />
                 <Text style={styles.distanceLabel}>To Destination:</Text>
@@ -1727,18 +1686,7 @@ const DriverBookingScreen = ({ navigation }) => {
           </View>
 
           {/* Action buttons */}
-          {isAwaitingConfirmation ? (
-            <View style={styles.awaitingSection}>
-              <View style={styles.awaitingIcon}>
-                <Ionicons name="hourglass-outline" size={32} color={colors.primary} />
-              </View>
-              <Text style={styles.awaitingTitle}>Waiting for Passenger</Text>
-              <Text style={styles.awaitingMessage}>
-                You have completed the trip. Waiting for {activeBooking.user?.firstname || 'the passenger'} to confirm arrival.
-              </Text>
-              <ActivityIndicator size="small" color={colors.primary} style={{ marginTop: 12 }} />
-            </View>
-          ) : !isPickedUp ? (
+          {!isPickedUp ? (
             <>
               <TouchableOpacity 
                 style={[
@@ -1802,14 +1750,14 @@ const DriverBookingScreen = ({ navigation }) => {
             </TouchableOpacity>
           )}
 
-          {isPickedUp && !isAwaitingConfirmation && distanceToDestination > COMPLETION_RADIUS_METERS && !simulationCompleted && (
+          {isPickedUp && distanceToDestination > COMPLETION_RADIUS_METERS && !simulationCompleted && (
             <Text style={styles.completionHint}>
               Navigate to destination to complete ({formatDistance(COMPLETION_RADIUS_METERS)} range)
             </Text>
           )}
 
           {/* Simulation Button - For Testing Only */}
-          {isPickedUp && !isAwaitingConfirmation && __DEV__ && !isSimulating && (
+          {isPickedUp && __DEV__ && !isSimulating && (
             <TouchableOpacity
               style={styles.simulateBtn}
               onPress={() => setShowSimulator(true)}
