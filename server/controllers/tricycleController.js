@@ -247,7 +247,16 @@ export const getTricycle = async (req, res) => {
     if (!tricycle)
       return res.status(404).json({ success: false, message: "Tricycle not found" });
 
-    res.status(200).json({ success: true, data: tricycle });
+    // Attach maintenance logs from the MaintenanceLog collection
+    const trikeObj = tricycle.toObject();
+    const maintenanceLogs = await MaintenanceLog.find({ tricycleId: tricycle._id })
+      .sort({ completedAt: -1 })
+      .limit(100)
+      .populate('completedBy', 'firstName lastName')
+      .lean();
+    trikeObj.maintenanceHistory = maintenanceLogs;
+
+    res.status(200).json({ success: true, data: trikeObj });
   } catch (error) {
     console.error("Error fetching tricycle:", error.message);
     res.status(500).json({ success: false, message: "Server Error" });
