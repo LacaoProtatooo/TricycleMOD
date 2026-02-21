@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import {
   View,
   Text,
@@ -12,12 +12,15 @@ import {
   TextInput,
   Image,
   Dimensions,
+  ScrollView,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing } from '../../../components/common/theme';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 const { width: screenWidth, height: screenHeight } = Dimensions.get('window');
+const TILE_GAP = 12;
+const TILE_WIDTH = (screenWidth - spacing.medium * 2 - TILE_GAP) / 2;
 
 const MaintenanceApprovalTab = ({ token, BACKEND }) => {
   const insets = useSafeAreaInsets();
@@ -31,6 +34,10 @@ const MaintenanceApprovalTab = ({ token, BACKEND }) => {
   const [rejectReason, setRejectReason] = useState('');
   const [imageModalVisible, setImageModalVisible] = useState(false);
   const [selectedImage, setSelectedImage] = useState(null);
+
+  // Tile detail modal
+  const [detailModalVisible, setDetailModalVisible] = useState(false);
+  const [selectedTricycle, setSelectedTricycle] = useState(null); // plate number key
 
   const fetchPendingApprovals = useCallback(async () => {
     if (!token) return;
@@ -63,6 +70,36 @@ const MaintenanceApprovalTab = ({ token, BACKEND }) => {
     setRefreshing(true);
     fetchPendingApprovals();
   };
+
+  // Group approvals by tricycle plate number
+  const groupedByTricycle = useMemo(() => {
+    const groups = {};
+    pendingApprovals.forEach(item => {
+      const plate = item.plateNumber || 'Unknown';
+      if (!groups[plate]) {
+        groups[plate] = {
+          plateNumber: plate,
+          driverName: item.completedBy
+            ? `${item.completedBy.firstName || ''} ${item.completedBy.lastName || ''}`.trim()
+            : 'Unknown Driver',
+          records: [],
+        };
+      }
+      groups[plate].records.push(item);
+    });
+    // Sort records within each group by date descending
+    Object.values(groups).forEach(g => {
+      g.records.sort((a, b) => new Date(b.completedAt) - new Date(a.completedAt));
+    });
+    return Object.values(groups);
+  }, [pendingApprovals]);
+
+  // Records for the currently selected tricycle
+  const selectedRecords = useMemo(() => {
+    if (!selectedTricycle) return [];
+    const group = groupedByTricycle.find(g => g.plateNumber === selectedTricycle);
+    return group ? group.records : [];
+  }, [selectedTricycle, groupedByTricycle]);
 
   const handleApprove = async (record) => {
     setApproving(record._id);
@@ -143,28 +180,100 @@ const MaintenanceApprovalTab = ({ token, BACKEND }) => {
     setImageModalVisible(true);
   };
 
-  const renderApprovalCard = ({ item }) => {
+  const openTricycleDetail = (plateNumber) => {
+    setSelectedTricycle(plateNumber);
+    setDetailModalVisible(true);
+  };
+
+  // Track previous pendingApprovals length to detect actual changes (approve/reject)
+  const prevApprovalCountRef = React.useRef(pendingApprovals.length);
+
+  // Close detail modal only after an approval/rejection causes all records for that tricycle to be removed
+  useEffect(() => {
+    if (detailModalVisible && selectedTricycle) {
+      // Only check for auto-close if pendingApprovals count actually decreased (an approve/reject happened)
+      if (pendingApprovals.length < prevApprovalCountRef.current) {
+        const remaining = pendingApprovals.filter(p => p.plateNumber === selectedTricycle);
+        if (remaining.length === 0) {
+          setDetailModalVisible(false);
+          setSelectedTricycle(null);
+        }
+      }
+    }
+    prevApprovalCountRef.current = pendingApprovals.length;
+  }, [pendingApprovals, detailModalVisible, selectedTricycle]);
+
+  // ── Tile for each tricycle ──
+  const renderTile = ({ item }) => {
+    const count = item.records.length;
+    const latestDate = item.records[0]?.completedAt;
+    // Collect unique group names for a preview
+    const uniqueGroups = [...new Set(item.records.map(r => r.groupName).filter(Boolean))];
+
+    return (
+      <TouchableOpacity
+        style={styles.tile}
+        activeOpacity={0.7}
+        onPress={() => openTricycleDetail(item.plateNumber)}
+      >
+        {/* Count badge */}
+        <View style={styles.tileBadge}>
+          <Text style={styles.tileBadgeText}>{count}</Text>
+        </View>
+
+        {/* Icon */}
+        <View style={styles.tileIconWrap}>
+          <Ionicons name="bicycle" size={28} color={colors.primary} />
+        </View>
+
+        {/* Plate */}
+        <Text style={styles.tilePlate} numberOfLines={1}>{item.plateNumber}</Text>
+
+        {/* Driver */}
+        <Text style={styles.tileDriver} numberOfLines={1}>{item.driverName}</Text>
+
+        {/* Group names preview */}
+        <View style={styles.tileChips}>
+          {uniqueGroups.slice(0, 2).map((g, i) => (
+            <View key={i} style={styles.tileChip}>
+              <Text style={styles.tileChipText} numberOfLines={1}>{g}</Text>
+            </View>
+          ))}
+          {uniqueGroups.length > 2 && (
+            <Text style={styles.tileMore}>+{uniqueGroups.length - 2}</Text>
+          )}
+        </View>
+
+        {/* Date */}
+        {latestDate && (
+          <Text style={styles.tileDate}>{formatDate(latestDate)}</Text>
+        )}
+      </TouchableOpacity>
+    );
+  };
+
+  // ── Record card inside the detail modal ──
+  const renderDetailRecord = (item) => {
     const isApproving = approving === item._id;
     const isRejecting = rejecting === item._id;
     const hasProofImage = item.proofImageUrl;
-    
+
     return (
-      <View style={styles.card}>
-        <View style={styles.cardHeader}>
-          <View style={styles.plateContainer}>
-            <Ionicons name="car" size={18} color={colors.primary} />
-            <Text style={styles.plateNumber}>{item.plateNumber}</Text>
+      <View key={item._id} style={styles.detailCard}>
+        {/* Item header */}
+        <View style={styles.detailCardHeader}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.detailItemName}>{item.itemName}</Text>
+            <Text style={styles.detailGroupName}>{item.groupName}</Text>
           </View>
           <View style={styles.statusBadge}>
             <Ionicons name="time" size={12} color="#f59e0b" />
             <Text style={styles.statusText}>Pending</Text>
           </View>
         </View>
-        
-        <View style={styles.cardBody}>
-          <Text style={styles.itemName}>{item.itemName}</Text>
-          <Text style={styles.groupName}>{item.groupName}</Text>
-          
+
+        {/* Details */}
+        <View style={styles.detailBody}>
           <View style={styles.detailsRow}>
             <View style={styles.detail}>
               <Ionicons name="speedometer-outline" size={14} color="#64748b" />
@@ -175,29 +284,29 @@ const MaintenanceApprovalTab = ({ token, BACKEND }) => {
               <Text style={styles.detailText}>{item.status}</Text>
             </View>
           </View>
-          
-          {item.notes && (
+
+          {item.notes ? (
             <View style={styles.notesContainer}>
               <Ionicons name="document-text-outline" size={14} color="#64748b" />
-              <Text style={styles.notesText} numberOfLines={2}>{item.notes}</Text>
+              <Text style={styles.notesText} numberOfLines={3}>{item.notes}</Text>
             </View>
-          )}
-          
-          {item.cost && (
+          ) : null}
+
+          {item.cost ? (
             <View style={styles.costContainer}>
               <Ionicons name="cash-outline" size={14} color="#22c55e" />
               <Text style={styles.costText}>₱{item.cost.toFixed(2)}</Text>
             </View>
-          )}
+          ) : null}
 
-          {/* Proof Image Section */}
+          {/* Proof Image */}
           {hasProofImage ? (
-            <TouchableOpacity 
+            <TouchableOpacity
               style={styles.proofImageSection}
               onPress={() => openImageModal(`${BACKEND}${item.proofImageUrl}`)}
             >
-              <Image 
-                source={{ uri: `${BACKEND}${item.proofImageUrl}` }} 
+              <Image
+                source={{ uri: `${BACKEND}${item.proofImageUrl}` }}
                 style={styles.proofThumbnail}
               />
               <View style={styles.proofBadge}>
@@ -211,10 +320,11 @@ const MaintenanceApprovalTab = ({ token, BACKEND }) => {
           ) : (
             <View style={styles.noProofContainer}>
               <Ionicons name="image-outline" size={16} color="#f59e0b" />
-              <Text style={styles.noProofText}>No proof photo provided</Text>
+              <Text style={styles.noProofText}>No proof photo</Text>
             </View>
           )}
-          
+
+          {/* Meta */}
           <View style={styles.metaRow}>
             <View style={styles.submittedBy}>
               <Ionicons name="person-outline" size={12} color="#94a3b8" />
@@ -225,9 +335,10 @@ const MaintenanceApprovalTab = ({ token, BACKEND }) => {
             <Text style={styles.dateText}>{formatDate(item.completedAt)}</Text>
           </View>
         </View>
-        
+
+        {/* Actions */}
         <View style={styles.cardActions}>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={[styles.actionBtn, styles.rejectBtn]}
             onPress={() => openRejectModal(item)}
             disabled={isApproving || isRejecting}
@@ -241,8 +352,8 @@ const MaintenanceApprovalTab = ({ token, BACKEND }) => {
               </>
             )}
           </TouchableOpacity>
-          
-          <TouchableOpacity 
+
+          <TouchableOpacity
             style={[styles.actionBtn, styles.approveBtn]}
             onPress={() => handleApprove(item)}
             disabled={isApproving || isRejecting}
@@ -261,6 +372,7 @@ const MaintenanceApprovalTab = ({ token, BACKEND }) => {
     );
   };
 
+  // ── Empty state ──
   const renderEmpty = () => (
     <View style={styles.emptyContainer}>
       <Ionicons name="checkmark-done-circle" size={64} color="#22c55e" />
@@ -280,20 +392,29 @@ const MaintenanceApprovalTab = ({ token, BACKEND }) => {
 
   return (
     <View style={[styles.container, { paddingTop: insets.top }]}>
+      {/* Header */}
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Maintenance Approvals</Text>
+        <View>
+          <Text style={styles.headerTitle}>Maintenance Approvals</Text>
+          <Text style={styles.headerSubtitle}>
+            {groupedByTricycle.length} tricycle{groupedByTricycle.length !== 1 ? 's' : ''} · {pendingApprovals.length} pending
+          </Text>
+        </View>
         <View style={styles.countBadge}>
           <Text style={styles.countText}>{pendingApprovals.length}</Text>
         </View>
       </View>
-      
+
+      {/* Tile Grid */}
       <FlatList
-        data={pendingApprovals}
-        renderItem={renderApprovalCard}
-        keyExtractor={(item) => item._id}
+        data={groupedByTricycle}
+        renderItem={renderTile}
+        keyExtractor={(item) => item.plateNumber}
+        numColumns={2}
+        columnWrapperStyle={styles.tileRow}
         contentContainerStyle={[
-          styles.listContent,
-          pendingApprovals.length === 0 && styles.emptyList
+          styles.tileGrid,
+          groupedByTricycle.length === 0 && styles.emptyList,
         ]}
         refreshControl={
           <RefreshControl
@@ -305,8 +426,57 @@ const MaintenanceApprovalTab = ({ token, BACKEND }) => {
         ListEmptyComponent={renderEmpty}
         showsVerticalScrollIndicator={false}
       />
-      
-      {/* Reject Modal */}
+
+      {/* ── Tricycle Detail Modal ── */}
+      <Modal
+        visible={detailModalVisible}
+        transparent
+        animationType="slide"
+        onRequestClose={() => { setDetailModalVisible(false); setSelectedTricycle(null); }}
+      >
+        <View style={styles.detailModalOverlay}>
+          <View style={styles.detailModalContent}>
+            {/* Modal handle */}
+            <View style={styles.modalHandle} />
+
+            {/* Modal header */}
+            <View style={styles.detailModalHeader}>
+              <View style={styles.detailModalPlateRow}>
+                <Ionicons name="bicycle" size={22} color={colors.primary} />
+                <Text style={styles.detailModalPlate}>{selectedTricycle}</Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => { setDetailModalVisible(false); setSelectedTricycle(null); }}
+                hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              >
+                <Ionicons name="close-circle" size={28} color="#94a3b8" />
+              </TouchableOpacity>
+            </View>
+
+            <Text style={styles.detailModalCount}>
+              {selectedRecords.length} pending maintenance record{selectedRecords.length !== 1 ? 's' : ''}
+            </Text>
+
+            {/* Scrollable record list */}
+            <ScrollView
+              style={styles.detailModalScroll}
+              contentContainerStyle={{ paddingBottom: 40 }}
+              showsVerticalScrollIndicator={false}
+            >
+              {selectedRecords.length > 0 ? (
+                selectedRecords.map(renderDetailRecord)
+              ) : (
+                <View style={{ alignItems: 'center', paddingVertical: 40 }}>
+                  <Ionicons name="document-text-outline" size={48} color="#cbd5e1" />
+                  <Text style={{ fontSize: 14, color: '#94a3b8', marginTop: 12 }}>No pending records found</Text>
+                </View>
+              )}
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
+      {/* ── Reject Modal ── */}
       <Modal
         visible={rejectModalVisible}
         transparent
@@ -319,7 +489,7 @@ const MaintenanceApprovalTab = ({ token, BACKEND }) => {
             <Text style={styles.modalSubtitle}>
               {selectedRecord?.itemName} - {selectedRecord?.plateNumber}
             </Text>
-            
+
             <TextInput
               style={styles.reasonInput}
               placeholder="Reason for rejection (optional)"
@@ -329,16 +499,16 @@ const MaintenanceApprovalTab = ({ token, BACKEND }) => {
               multiline
               numberOfLines={3}
             />
-            
+
             <View style={styles.modalActions}>
-              <TouchableOpacity 
+              <TouchableOpacity
                 style={styles.modalCancelBtn}
                 onPress={() => setRejectModalVisible(false)}
               >
                 <Text style={styles.modalCancelText}>Cancel</Text>
               </TouchableOpacity>
-              
-              <TouchableOpacity 
+
+              <TouchableOpacity
                 style={styles.modalRejectBtn}
                 onPress={handleReject}
                 disabled={rejecting}
@@ -354,7 +524,7 @@ const MaintenanceApprovalTab = ({ token, BACKEND }) => {
         </View>
       </Modal>
 
-      {/* Image Viewer Modal */}
+      {/* ── Image Viewer Modal ── */}
       <Modal
         visible={imageModalVisible}
         transparent
@@ -362,18 +532,18 @@ const MaintenanceApprovalTab = ({ token, BACKEND }) => {
         onRequestClose={() => setImageModalVisible(false)}
       >
         <View style={styles.imageModalOverlay}>
-          <TouchableOpacity 
+          <TouchableOpacity
             style={styles.imageModalClose}
             onPress={() => setImageModalVisible(false)}
           >
             <Ionicons name="close-circle" size={36} color="#fff" />
           </TouchableOpacity>
-          
+
           <View style={styles.imageModalHeader}>
             <Ionicons name="camera" size={20} color="#fff" />
             <Text style={styles.imageModalTitle}>Proof Photo</Text>
           </View>
-          
+
           {selectedImage && (
             <Image
               source={{ uri: selectedImage }}
@@ -381,7 +551,7 @@ const MaintenanceApprovalTab = ({ token, BACKEND }) => {
               resizeMode="contain"
             />
           )}
-          
+
           <Text style={styles.imageModalHint}>Tap X to close</Text>
         </View>
       </Modal>
@@ -389,6 +559,7 @@ const MaintenanceApprovalTab = ({ token, BACKEND }) => {
   );
 };
 
+// ─────────────── Styles ───────────────
 const styles = StyleSheet.create({
   container: {
     flex: 1,
@@ -413,6 +584,11 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     color: '#1e293b',
   },
+  headerSubtitle: {
+    fontSize: 12,
+    color: '#94a3b8',
+    marginTop: 2,
+  },
   countBadge: {
     backgroundColor: colors.primary,
     paddingHorizontal: 12,
@@ -424,42 +600,176 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     fontSize: 14,
   },
-  listContent: {
+
+  // ── Tile Grid ──
+  tileGrid: {
     padding: spacing.medium,
     paddingBottom: 100,
   },
-  emptyList: {
-    flex: 1,
+  tileRow: {
+    justifyContent: 'space-between',
+    marginBottom: TILE_GAP,
   },
-  card: {
+  tile: {
+    width: TILE_WIDTH,
     backgroundColor: '#fff',
-    borderRadius: 12,
-    marginBottom: spacing.medium,
-    overflow: 'hidden',
+    borderRadius: 14,
+    padding: 14,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.05,
+    shadowOpacity: 0.06,
     shadowRadius: 8,
-    elevation: 2,
+    elevation: 3,
+    position: 'relative',
   },
-  cardHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
+  tileBadge: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    backgroundColor: '#ef4444',
+    width: 24,
+    height: 24,
+    borderRadius: 12,
     alignItems: 'center',
-    padding: spacing.medium,
-    backgroundColor: '#f8fafc',
-    borderBottomWidth: 1,
-    borderBottomColor: '#e2e8f0',
+    justifyContent: 'center',
   },
-  plateContainer: {
+  tileBadgeText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  tileIconWrap: {
+    width: 52,
+    height: 52,
+    borderRadius: 26,
+    backgroundColor: colors.primary + '15',
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginBottom: 10,
+  },
+  tilePlate: {
+    fontSize: 15,
+    fontWeight: '800',
+    color: '#1e293b',
+    marginBottom: 2,
+    textAlign: 'center',
+  },
+  tileDriver: {
+    fontSize: 11,
+    color: '#64748b',
+    marginBottom: 8,
+    textAlign: 'center',
+  },
+  tileChips: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: 4,
+    marginBottom: 6,
+  },
+  tileChip: {
+    backgroundColor: '#f1f5f9',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  tileChipText: {
+    fontSize: 9,
+    color: '#475569',
+    fontWeight: '500',
+    maxWidth: 70,
+  },
+  tileMore: {
+    fontSize: 9,
+    color: '#94a3b8',
+    alignSelf: 'center',
+  },
+  tileDate: {
+    fontSize: 10,
+    color: '#94a3b8',
+    marginTop: 2,
+  },
+
+  // ── Detail Modal ──
+  detailModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.45)',
+    justifyContent: 'flex-end',
+  },
+  detailModalContent: {
+    backgroundColor: '#fff',
+    borderTopLeftRadius: 22,
+    borderTopRightRadius: 22,
+    paddingHorizontal: spacing.medium,
+    paddingTop: 10,
+    height: screenHeight * 0.8,
+  },
+  modalHandle: {
+    width: 40,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#cbd5e1',
+    alignSelf: 'center',
+    marginBottom: 10,
+  },
+  detailModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 4,
+  },
+  detailModalPlateRow: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: 8,
   },
-  plateNumber: {
-    fontSize: 16,
+  detailModalPlate: {
+    fontSize: 20,
+    fontWeight: '800',
+    color: '#1e293b',
+  },
+  detailModalCount: {
+    fontSize: 13,
+    color: '#64748b',
+    marginBottom: 14,
+  },
+  detailModalScroll: {
+    flex: 1,
+  },
+
+  // ── Detail Record Card ──
+  detailCard: {
+    backgroundColor: '#fff',
+    borderRadius: 12,
+    marginBottom: 14,
+    overflow: 'hidden',
+    borderWidth: 1,
+    borderColor: '#e2e8f0',
+  },
+  detailCardHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    padding: 12,
+    backgroundColor: '#f8fafc',
+    borderBottomWidth: 1,
+    borderBottomColor: '#e2e8f0',
+  },
+  detailItemName: {
+    fontSize: 15,
     fontWeight: '700',
     color: '#1e293b',
+  },
+  detailGroupName: {
+    fontSize: 11,
+    color: '#64748b',
+    marginTop: 2,
+  },
+  detailBody: {
+    padding: 12,
   },
   statusBadge: {
     flexDirection: 'row',
@@ -474,20 +784,6 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     color: '#f59e0b',
-  },
-  cardBody: {
-    padding: spacing.medium,
-  },
-  itemName: {
-    fontSize: 16,
-    fontWeight: '600',
-    color: '#1e293b',
-    marginBottom: 4,
-  },
-  groupName: {
-    fontSize: 12,
-    color: '#64748b',
-    marginBottom: 12,
   },
   detailsRow: {
     flexDirection: 'row',
@@ -580,11 +876,16 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#fff',
   },
+
+  // ── Empty / Loading ──
   emptyContainer: {
     flex: 1,
     justifyContent: 'center',
     alignItems: 'center',
     paddingVertical: 60,
+  },
+  emptyList: {
+    flex: 1,
   },
   emptyTitle: {
     fontSize: 20,
@@ -602,7 +903,8 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: '#64748b',
   },
-  // Modal styles
+
+  // ── Reject Modal ──
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.5)',
@@ -668,17 +970,18 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#fff',
   },
-  // Proof Image styles
+
+  // ── Proof Image ──
   proofImageSection: {
     position: 'relative',
-    marginTop: 12,
-    marginBottom: 12,
+    marginTop: 8,
+    marginBottom: 8,
     borderRadius: 10,
     overflow: 'hidden',
   },
   proofThumbnail: {
     width: '100%',
-    height: 150,
+    height: 140,
     borderRadius: 10,
     backgroundColor: '#f1f5f9',
   },
@@ -713,17 +1016,18 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     gap: 6,
     backgroundColor: '#fef3c7',
-    padding: 10,
+    padding: 8,
     borderRadius: 8,
-    marginTop: 12,
-    marginBottom: 12,
+    marginTop: 8,
+    marginBottom: 8,
   },
   noProofText: {
     fontSize: 12,
     color: '#f59e0b',
     fontWeight: '500',
   },
-  // Image Modal styles
+
+  // ── Image Viewer Modal ──
   imageModalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.95)',

@@ -62,6 +62,7 @@ const MaintenanceScheduleList = ({
 	anomalies = [],
 	healthScore = 100,
 	onMaintenanceNeeded,
+	maintenanceRecords = {},
 }) => {
 	const progressFor = (lastKm, intervalKm) => {
 		const cur = parseInt(odometerKm || currentKm || '0', 10);
@@ -502,9 +503,20 @@ const MaintenanceScheduleList = ({
 								</View>
 
 								<View style={styles.cardRight}>
-									<TouchableOpacity style={styles.doneBtn} onPress={() => onMarkDone(it.key)}>
-										<Ionicons name="checkmark-done-outline" size={18} color={colors.ivory1} />
-									</TouchableOpacity>
+									{(() => {
+										const latestRecord = maintenanceRecords[it.key]?.[0];
+										const isPending = latestRecord?.approvalStatus === 'pending';
+										return isPending ? (
+											<View style={[styles.doneBtn, { backgroundColor: '#9CA3AF', opacity: 0.7, alignItems: 'center' }]}>
+												<Ionicons name="hourglass-outline" size={16} color={colors.ivory1} />
+												<Text style={{ fontSize: 8, color: colors.ivory1, fontWeight: '600', marginTop: 2 }}>Pending</Text>
+											</View>
+										) : (
+											<TouchableOpacity style={styles.doneBtn} onPress={() => onMarkDone(it.key)}>
+												<Ionicons name="checkmark-done-outline" size={18} color={colors.ivory1} />
+											</TouchableOpacity>
+										);
+									})()}
 									{/* Show defer button for overdue items */}
 									{(daysRemaining !== null && daysRemaining < 0) || progress >= 100 ? (
 										<TouchableOpacity 

@@ -1595,6 +1595,7 @@ const MaintenanceTracker = ({ tricycleId, serverHistory }) => {
 						anomalies={aiAnomalies}
 						healthScore={healthScore}
 						onMaintenanceNeeded={handleMaintenanceNeeded}
+						maintenanceRecords={maintenanceRecords}
 					/>
 				</ScrollView>
 			)}
