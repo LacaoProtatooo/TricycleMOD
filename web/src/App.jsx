@@ -1,5 +1,5 @@
 import React from "react";
-import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
+import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
 import { Provider } from "react-redux";
 import store from "./redux/store";
 
@@ -49,10 +49,9 @@ export default function App() {
           <ScrollToTop />
 
           <Routes>
-            {/* Redirect root to landing page */}
-            <Route path="/" element={<Navigate to="/landing-page" />} />
             {/* Dashboard Layout - Protected Routes (Admin Only) */}
             <Route
+              path="/dashboard"
               element={
                 <ProtectedRoute>
                   <AppLayout />
@@ -100,8 +99,10 @@ export default function App() {
               <Route path="/bar-chart" element={<BarChart />} />
             </Route>
 
+            {/* Landing Page - Public Root */}
+            <Route path="/" element={<LandingPage />} />
+
             {/* Auth Pages - Public */}
-            <Route path="/landing-page" element={<LandingPage />} />
             <Route path="/signin" element={<SignIn />} />
             <Route path="/signup" element={<SignUp />} />
 
