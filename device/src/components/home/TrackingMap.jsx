@@ -20,6 +20,7 @@ const KM_KEY = 'vehicle_current_km_v1';
 const DEVICE_ID_KEY = 'driver_tracking_device_id_v1';
 const ACTIVE_TRIP_KEY = 'driver_tracking_active_trip_v1';
 const BOOKING_TRIGGER_RECORDING_KEY = 'booking_trigger_recording_v1';
+const SIM_BROADCAST_KEY = 'dev_sim_broadcast_v1'; // DEV: shared with DriverBookingScreen simulation
 
 // Sync settings
 const SYNC_INTERVAL_MS = 30000;
@@ -152,6 +153,8 @@ export default function TrackingMap({ follow = true, onEnterTerminalZone, odomet
   const tripStartRef = useRef(null);
   const distanceRef = useRef(0);
   const activeTripIdRef = useRef(null);
+  const lastSyncedIndexRef = useRef(0); // Track which coords have been synced to server
+  const isRecordingRef = useRef(false); // Ref mirror of isRecording to avoid stale closures
 
   // Trip history state
   const [showHistory, setShowHistory] = useState(false);
@@ -162,9 +165,68 @@ export default function TrackingMap({ follow = true, onEnterTerminalZone, odomet
   // Map ready state - prevents rendering children before map is initialized
   const [mapReady, setMapReady] = useState(false);
 
+  // DEV: Simulation broadcast listener state
+  const [simActive, setSimActive] = useState(false);
+  const simLastPosRef = useRef(null);
+
   useEffect(() => {
     onEnterRef.current = onEnterTerminalZone;
   }, [onEnterTerminalZone]);
+
+  // DEV: Poll for simulated positions broadcast from DriverBookingScreen
+  useEffect(() => {
+    let simPollInterval;
+    const pollSimBroadcast = async () => {
+      try {
+        const raw = await AsyncStorage.getItem(SIM_BROADCAST_KEY);
+        if (!raw) {
+          if (simActive) setSimActive(false);
+          return;
+        }
+        const data = JSON.parse(raw);
+        if (!data.isActive) {
+          if (simActive) setSimActive(false);
+          simLastPosRef.current = null;
+          return;
+        }
+
+        setSimActive(true);
+        const newPoint = { latitude: data.latitude, longitude: data.longitude };
+
+        // Add to positions array so polyline trail and relive data build up
+        setPositions(prev => {
+          const next = [...prev, newPoint].slice(-5000);
+          return next;
+        });
+
+        // Update odometer from simulated movement
+        if (simLastPosRef.current) {
+          const meters = haversineMeters(simLastPosRef.current, newPoint);
+          if (meters > 0.5 && meters < 500) {
+            setOdometerKm(prev => {
+              const nextKm = prev + meters / 1000;
+              AsyncStorage.setItem(KM_KEY, String(nextKm)).catch(() => {});
+              return nextKm;
+            });
+          }
+        }
+        simLastPosRef.current = newPoint;
+
+        // Update speed display
+        if (data.speed) {
+          setSpeedKph(Math.round(data.speed * 3.6 * 10) / 10);
+        }
+
+        // Move camera to follow simulated position
+        if (mapRef.current && !reliveActiveRef.current) {
+          mapRef.current.animateCamera({ center: newPoint }, { duration: 200 });
+        }
+      } catch (_) {}
+    };
+
+    simPollInterval = setInterval(pollSimBroadcast, 300); // poll every 300ms for smooth movement
+    return () => clearInterval(simPollInterval);
+  }, [simActive]);
 
   // Toggle stats panel animation
   useEffect(() => {
@@ -174,6 +236,11 @@ export default function TrackingMap({ follow = true, onEnterTerminalZone, odomet
       useNativeDriver: false,
     }).start();
   }, [statsExpanded]);
+
+  // Keep isRecordingRef in sync with isRecording state
+  useEffect(() => {
+    isRecordingRef.current = isRecording;
+  }, [isRecording]);
 
   // Initialize device ID and check for active trip
   useEffect(() => {
@@ -186,8 +253,12 @@ export default function TrackingMap({ follow = true, onEnterTerminalZone, odomet
     
     const checkBookingTrigger = async () => {
       try {
+        // Wait until device tracking is initialized (deviceId is set)
+        if (!deviceId) return;
+
         const triggerData = await AsyncStorage.getItem(BOOKING_TRIGGER_RECORDING_KEY);
-        if (triggerData && !isRecording) {
+        // Use BOTH state and ref to guard against stale closures
+        if (triggerData && !isRecording && !isRecordingRef.current && !activeTripIdRef.current) {
           const { shouldStart, bookingId, passengerName, timestamp } = JSON.parse(triggerData);
           
           // Only trigger if the request is recent (within 30 seconds)
@@ -248,6 +319,7 @@ export default function TrackingMap({ follow = true, onEnterTerminalZone, odomet
         setActiveTripId(tripId);
         activeTripIdRef.current = tripId;
         setIsRecording(true);
+        isRecordingRef.current = true;
         tripStartRef.current = startTime;
         recordedPosRef.current = savedPositions || [];
         setRecordedPositions(savedPositions || []);
@@ -259,6 +331,9 @@ export default function TrackingMap({ follow = true, onEnterTerminalZone, odomet
         }
         distanceRef.current = dist;
         setTripDistance(dist);
+        // When resuming a trip, we don't know exactly what was synced before, 
+        // so start fresh — coords may get re-synced but that's safer than missing data
+        lastSyncedIndexRef.current = 0;
 
         // Start sync interval
         syncIntervalRef.current = setInterval(syncToServer, SYNC_INTERVAL_MS);
@@ -521,15 +596,19 @@ export default function TrackingMap({ follow = true, onEnterTerminalZone, odomet
   const syncToServer = async () => {
     if (!activeTripIdRef.current || isSyncing) return;
 
-    const coordsToSync = recordedPosRef.current.slice(-SYNC_BATCH_SIZE);
-    if (coordsToSync.length < 5) return;
+    // Only sync coordinates that haven't been sent yet
+    const startIdx = lastSyncedIndexRef.current;
+    const allCoords = recordedPosRef.current;
+    const coordsToSync = allCoords.slice(startIdx, startIdx + SYNC_BATCH_SIZE);
+    if (coordsToSync.length < 3) return;
 
     setIsSyncing(true);
     try {
       await axios.post(`${BASE_URL}/api/tracking/${activeTripIdRef.current}/sync`, {
         coordinates: coordsToSync,
       });
-      console.log(`Synced ${coordsToSync.length} coordinates`);
+      lastSyncedIndexRef.current = startIdx + coordsToSync.length;
+      console.log(`Synced ${coordsToSync.length} coordinates (index ${startIdx}→${lastSyncedIndexRef.current})`);
     } catch (error) {
       // If trip no longer exists (404), stop syncing to avoid repeated errors
       if (error.response?.status === 404) {
@@ -594,9 +673,11 @@ export default function TrackingMap({ follow = true, onEnterTerminalZone, odomet
       setActiveTripId(tripId);
       activeTripIdRef.current = tripId;
       setIsRecording(true);
+      isRecordingRef.current = true;
       tripStartRef.current = new Date(startTime).getTime();
       recordedPosRef.current = [initialCoord];
       distanceRef.current = 0;
+      lastSyncedIndexRef.current = 0;
       setRecordedPositions([initialCoord]);
       setTripDistance(0);
       setTripDuration(0);
@@ -655,6 +736,7 @@ export default function TrackingMap({ follow = true, onEnterTerminalZone, odomet
                 tripStartRef.current = Date.now();
                 recordedPosRef.current = [];
                 distanceRef.current = 0;
+                lastSyncedIndexRef.current = 0;
                 setRecordedPositions([]);
                 setTripDistance(0);
                 setTripDuration(0);
@@ -686,6 +768,12 @@ export default function TrackingMap({ follow = true, onEnterTerminalZone, odomet
 
     if (isRecording) {
       console.log('Recording already active, skipping auto-start');
+      return;
+    }
+
+    // Guard: if already recording, skip
+    if (isRecordingRef.current && activeTripIdRef.current) {
+      console.log('Already recording trip', activeTripIdRef.current, '— skipping auto-start from booking');
       return;
     }
 
@@ -731,9 +819,11 @@ export default function TrackingMap({ follow = true, onEnterTerminalZone, odomet
       setActiveTripId(tripId);
       activeTripIdRef.current = tripId;
       setIsRecording(true);
+      isRecordingRef.current = true;
       tripStartRef.current = new Date(startTime).getTime();
       recordedPosRef.current = [initialCoord];
       distanceRef.current = 0;
+      lastSyncedIndexRef.current = 0;
       setRecordedPositions([initialCoord]);
       setTripDistance(0);
       setTripDuration(0);
@@ -753,26 +843,39 @@ export default function TrackingMap({ follow = true, onEnterTerminalZone, odomet
     } catch (error) {
       console.error('Error auto-starting recording from booking:', error);
       
-      // If there's an existing active trip, cancel it and retry
+      // If server says there's already an active trip, RESUME it instead of cancelling
       const errorData = error.response?.data;
-      if (errorData?.tripId) {
+      if (errorData?.tripId && error.response?.status === 400) {
+        console.log('Resuming existing active trip from booking trigger:', errorData.tripId);
         try {
-          console.log('Cancelling stale trip before auto-start:', errorData.tripId);
-          await axios.post(`${BASE_URL}/api/tracking/${errorData.tripId}/cancel`);
-          await AsyncStorage.removeItem(ACTIVE_TRIP_KEY);
-          
-          // Reset state and retry after a short delay
-          setIsRecording(false);
-          setActiveTripId(null);
-          activeTripIdRef.current = null;
+          // Adopt the existing server-side trip as our current recording
+          setActiveTripId(errorData.tripId);
+          activeTripIdRef.current = errorData.tripId;
+          setIsRecording(true);
+          isRecordingRef.current = true;
+          tripStartRef.current = Date.now();
           recordedPosRef.current = [];
           distanceRef.current = 0;
-          tripStartRef.current = null;
-          
-          // Retry starting recording
-          setTimeout(() => startRecordingFromBooking(bookingId, passengerName), 1000);
-        } catch (cancelErr) {
-          console.error('Failed to cancel stale trip:', cancelErr);
+          lastSyncedIndexRef.current = 0;
+          setRecordedPositions([]);
+          setTripDistance(0);
+          setTripDuration(0);
+
+          // Save to AsyncStorage
+          await AsyncStorage.setItem(ACTIVE_TRIP_KEY, JSON.stringify({
+            tripId: errorData.tripId,
+            startTime: tripStartRef.current,
+            positions: [],
+            bookingId,
+          }));
+
+          // Start sync interval for the resumed trip
+          if (syncIntervalRef.current) clearInterval(syncIntervalRef.current);
+          syncIntervalRef.current = setInterval(syncToServer, SYNC_INTERVAL_MS);
+
+          console.log('Resumed existing trip:', errorData.tripId);
+        } catch (resumeErr) {
+          console.error('Failed to resume existing trip:', resumeErr);
         }
       }
     }
@@ -809,9 +912,18 @@ export default function TrackingMap({ follow = true, onEnterTerminalZone, odomet
         syncIntervalRef.current = null;
       }
 
-      // Final sync
-      const response = await axios.post(`${BASE_URL}/api/tracking/${activeTripIdRef.current}/end`, {
-        finalCoordinates: recordedPosRef.current,
+      const tripId = activeTripIdRef.current;
+      if (!tripId) {
+        Alert.alert('Error', 'No active trip ID found. Trip may have already been saved or discarded.');
+        return;
+      }
+
+      // Only send coordinates that haven't been synced yet (avoid sending duplicates)
+      const unsynced = recordedPosRef.current.slice(lastSyncedIndexRef.current);
+      console.log(`Ending trip ${tripId} with ${unsynced.length} unsent coords (total recorded: ${recordedPosRef.current.length}, already synced: ${lastSyncedIndexRef.current})`);
+
+      const response = await axios.post(`${BASE_URL}/api/tracking/${tripId}/end`, {
+        finalCoordinates: unsynced.length > 0 ? unsynced : undefined,
       });
 
       if (response.data.success) {
@@ -852,10 +964,62 @@ export default function TrackingMap({ follow = true, onEnterTerminalZone, odomet
       recordedPosRef.current = [];
       tripStartRef.current = null;
       distanceRef.current = 0;
+      lastSyncedIndexRef.current = 0;
 
     } catch (error) {
-      console.error('Error saving trip:', error);
-      Alert.alert('Error', 'Failed to save trip. Your data is saved locally.');
+      const status = error.response?.status;
+      const serverMsg = error.response?.data?.message;
+      console.error('Error saving trip:', status, serverMsg, error.message);
+
+      if (status === 404) {
+        Alert.alert(
+          'Trip Not Found',
+          'The trip was not found on the server (it may have been cancelled or already saved). Clearing local state.',
+          [{
+            text: 'OK',
+            onPress: async () => {
+              await AsyncStorage.removeItem(ACTIVE_TRIP_KEY);
+              setIsRecording(false);
+              isRecordingRef.current = false;
+              setActiveTripId(null);
+              activeTripIdRef.current = null;
+              setRecordedPositions([]);
+              setTripDistance(0);
+              setTripDuration(0);
+              recordedPosRef.current = [];
+              tripStartRef.current = null;
+              distanceRef.current = 0;
+              lastSyncedIndexRef.current = 0;
+            },
+          }]
+        );
+      } else if (status === 409) {
+        // Trip was cancelled by something else (booking auto-start, etc.)
+        const currentStatus = error.response?.data?.currentStatus || 'unknown';
+        Alert.alert(
+          'Trip Was Cancelled',
+          `This trip was '${currentStatus}' and could not be saved. This can happen if a booking auto-start cancelled a previous recording. Clearing local state.`,
+          [{
+            text: 'OK',
+            onPress: async () => {
+              await AsyncStorage.removeItem(ACTIVE_TRIP_KEY);
+              setIsRecording(false);
+              isRecordingRef.current = false;
+              setActiveTripId(null);
+              activeTripIdRef.current = null;
+              setRecordedPositions([]);
+              setTripDistance(0);
+              setTripDuration(0);
+              recordedPosRef.current = [];
+              tripStartRef.current = null;
+              distanceRef.current = 0;
+              lastSyncedIndexRef.current = 0;
+            },
+          }]
+        );
+      } else {
+        Alert.alert('Error', `Failed to save trip: ${serverMsg || error.message}`);
+      }
     }
   };
 
@@ -882,6 +1046,7 @@ export default function TrackingMap({ follow = true, onEnterTerminalZone, odomet
       recordedPosRef.current = [];
       tripStartRef.current = null;
       distanceRef.current = 0;
+      lastSyncedIndexRef.current = 0;
 
       Alert.alert('Discarded', 'Trip recording has been discarded');
     } catch (error) {
@@ -1502,6 +1667,14 @@ ${trackPoints}
           <Text style={styles.hudValue}>{Math.round(odometerKm)} km</Text>
         </View>
 
+        {/* DEV: Simulation active indicator */}
+        {simActive && (
+          <View style={styles.simBanner}>
+            <Ionicons name="flask" size={14} color="#fff" />
+            <Text style={styles.simBannerText}>DEV Simulation Active — trip recording for relive</Text>
+          </View>
+        )}
+
         {/* Trip Recording Controls */}
         <View style={styles.recordingControls}>
           <TouchableOpacity
@@ -1771,6 +1944,21 @@ const styles = StyleSheet.create({
   hudRow: { flexDirection: 'row', justifyContent: 'flex-start', marginBottom: 6 },
   hudLabel: { color: colors.orangeShade5, marginRight: 8 },
   hudValue: { fontWeight: '700', color: colors.orangeShade7 },
+  simBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#6f42c1',
+    borderRadius: 6,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    marginBottom: 6,
+  },
+  simBannerText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '600',
+    marginLeft: 6,
+  },
   centerBtn: {
     position: 'absolute',
     right: spacing.small,
