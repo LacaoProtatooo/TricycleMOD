@@ -102,7 +102,7 @@ function generateSimulatedRoute(start, end, numPoints = 30) {
   return points;
 }
 
-export default function TrackingMap({ follow = true, onEnterTerminalZone, odometerSeed, codingDayRestricted = false }) {
+export default function TrackingMap({ follow = true, onEnterTerminalZone, odometerSeed, codingDayRestricted = false, isVisible = true }) {
   const mapRef = useRef(null);
   const [region, setRegion] = useState(null);
   const [positions, setPositions] = useState([]);
@@ -323,6 +323,14 @@ export default function TrackingMap({ follow = true, onEnterTerminalZone, odomet
           const { latitude, longitude, speed, altitude: alt, accuracy: acc, heading: hdg } = loc.coords;
           const newPoint = { latitude, longitude };
           setPositions((p) => {
+            // Filter out inaccurate GPS readings to prevent ghost lines
+            if (acc && acc > 50) return p;
+            if (p.length > 0) {
+              const lastDisplayed = p[p.length - 1];
+              const jumpDist = haversineMeters(lastDisplayed, newPoint);
+              // Skip teleportation jumps (GPS glitch drawing lines far away)
+              if (jumpDist > 500) return p;
+            }
             const next = [...p, newPoint].slice(-5000);
             return next;
           });
@@ -351,9 +359,10 @@ export default function TrackingMap({ follow = true, onEnterTerminalZone, odomet
               { latitude: last.coords.latitude, longitude: last.coords.longitude },
               { latitude, longitude }
             );
-            if (meters > 0.2) {
+            // Use meters > 0.5 to filter micro-jitter; keep decimal precision (no Math.round)
+            if (meters > 0.5 && meters < 500) {
               setOdometerKm((prev) => {
-                const nextKm = Math.round(prev + meters / 1000);
+                const nextKm = prev + meters / 1000;
                 AsyncStorage.setItem(KM_KEY, String(nextKm)).catch(() => {});
                 return nextKm;
               });
@@ -379,12 +388,14 @@ export default function TrackingMap({ follow = true, onEnterTerminalZone, odomet
               timestamp: loc.timestamp || Date.now(),
             };
 
-            // Calculate distance from last recorded position
-            if (recordedPosRef.current.length > 0) {
+            // Skip recording points with very poor GPS accuracy (prevents ghost distance)
+            if (acc && acc > 30) {
+              // Accuracy > 30m is unreliable — skip this point
+            } else if (recordedPosRef.current.length > 0) {
               const lastRecorded = recordedPosRef.current[recordedPosRef.current.length - 1];
               const meters = haversineMeters(lastRecorded, newCoord);
 
-              // Filter GPS jitter
+              // Filter GPS jitter and teleportation
               if (meters >= 1 && meters <= 500) {
                 distanceRef.current += meters;
                 setTripDistance(distanceRef.current);
@@ -392,6 +403,11 @@ export default function TrackingMap({ follow = true, onEnterTerminalZone, odomet
                 setRecordedPositions([...recordedPosRef.current]);
                 updateLocalStorage();
               }
+            } else {
+              // First point — only record if accuracy is reasonable
+              recordedPosRef.current.push(newCoord);
+              setRecordedPositions([...recordedPosRef.current]);
+              updateLocalStorage();
             }
           }
 
@@ -800,6 +816,24 @@ export default function TrackingMap({ follow = true, onEnterTerminalZone, odomet
 
       if (response.data.success) {
         const { trip } = response.data;
+
+        // Sync odometer to server after trip ends
+        try {
+          const trikeId = await AsyncStorage.getItem('active_tricycle_id');
+          if (trikeId) {
+            const currentKmStr = await AsyncStorage.getItem(KM_KEY);
+            const currentKm = currentKmStr ? parseFloat(currentKmStr) : 0;
+            if (currentKm > 0) {
+              await axios.put(`${BASE_URL}/api/tricycles/${trikeId}/odometer`, {
+                odometer: Math.round(currentKm),
+              });
+              console.log('Odometer synced to server:', Math.round(currentKm));
+            }
+          }
+        } catch (syncErr) {
+          console.warn('Failed to sync odometer after trip:', syncErr);
+        }
+
         Alert.alert(
           'Trip Saved!',
           `Distance: ${(trip.totalDistance / 1000).toFixed(2)} km\nDuration: ${trip.formattedDuration}`,
@@ -1271,6 +1305,10 @@ ${trackPoints}
   const handleMapReady = useCallback(() => {
     setMapReady(true);
   }, []);
+
+  // When not visible (tab not focused), keep hooks alive but skip rendering
+  // This keeps recording and location tracking alive across tab switches
+  if (!isVisible) return null;
 
   return (
     <View style={styles.container}>

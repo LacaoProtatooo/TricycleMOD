@@ -109,6 +109,11 @@ const DriverBookingScreen = ({ navigation }) => {
   const [previewPickupRoute, setPreviewPickupRoute] = useState([]);
   const [isCalculatingRoute, setIsCalculatingRoute] = useState(false);
 
+  // Rerouting refs
+  const activeRouteRef = useRef([]);
+  const lastRerouteTimeRef = useRef(0);
+  const isReroutingRef = useRef(false);
+
   // UI state
   const [viewMode, setViewMode] = useState(VIEW_MODE.LIST);
   const [showOfferModal, setShowOfferModal] = useState(false);
@@ -206,6 +211,56 @@ const DriverBookingScreen = ({ navigation }) => {
     
     calculateActiveRoute();
   }, [activeBooking?.pickup, activeBooking?.destination]);
+
+  // Keep activeRouteRef in sync with state
+  useEffect(() => {
+    activeRouteRef.current = activeRouteCoordinates;
+  }, [activeRouteCoordinates]);
+
+  // Rerouting: recalculate route when driver deviates significantly from planned route
+  useEffect(() => {
+    if (!activeBooking || !userLocation) return;
+    if (isReroutingRef.current) return;
+
+    const routeCoords = activeRouteRef.current;
+    if (!routeCoords || routeCoords.length < 2) return;
+
+    // Don't reroute more often than every 15 seconds
+    const now = Date.now();
+    if (now - lastRerouteTimeRef.current < 15000) return;
+
+    // Find minimum distance from current position to any point on the route
+    let minDist = Infinity;
+    for (const coord of routeCoords) {
+      const dist = calculateDistance(
+        userLocation.latitude, userLocation.longitude,
+        coord.latitude, coord.longitude
+      );
+      if (dist < minDist) minDist = dist;
+      if (minDist < 80) return; // Still on route (within 80m)
+    }
+
+    // Driver is off route — recalculate from current position to target
+    console.log('Driver off route by', Math.round(minDist), 'm — rerouting...');
+    lastRerouteTimeRef.current = now;
+    isReroutingRef.current = true;
+
+    const target = isPickedUp ? activeBooking.destination : activeBooking.pickup;
+
+    (async () => {
+      try {
+        const result = await getRoute(userLocation, target);
+        if (result.success && result.route) {
+          setActiveRouteCoordinates(result.route.coordinates);
+          setActiveRouteInfo(result.route);
+        }
+      } catch (err) {
+        console.warn('Reroute failed:', err);
+      } finally {
+        isReroutingRef.current = false;
+      }
+    })();
+  }, [userLocation?.latitude, userLocation?.longitude, activeBooking?._id, isPickedUp]);
 
   // Calculate distances when active booking or user location changes
   useEffect(() => {
@@ -673,7 +728,6 @@ const DriverBookingScreen = ({ navigation }) => {
       );
 
       if (response.data.success) {
-        Alert.alert('Success', 'Booking accepted! Navigate to pickup location.');
         setActiveBooking(response.data.booking);
         setIsPickedUp(false);
         startLocationTracking();
@@ -690,6 +744,16 @@ const DriverBookingScreen = ({ navigation }) => {
           passengerName: passengerName.trim(),
           timestamp: Date.now(),
         }));
+
+        // Navigate to Maps tab so recording auto-starts immediately
+        Alert.alert('Success', 'Booking accepted! Navigating to Maps for trip recording.', [
+          {
+            text: 'OK',
+            onPress: () => {
+              if (navigation) navigation.navigate('Maps');
+            },
+          },
+        ]);
       }
     } catch (error) {
       Alert.alert('Error', error.response?.data?.message || 'Failed to accept booking');
@@ -771,10 +835,16 @@ const DriverBookingScreen = ({ navigation }) => {
                   timestamp: Date.now(),
                 }));
                 
+                // Navigate to Maps tab so recording auto-starts
                 Alert.alert(
                   'Trip Started', 
-                  'Navigate to the destination. Go to the Maps tab to see trip recording.',
-                  [{ text: 'OK' }]
+                  'Navigate to the destination. Switching to Maps tab for trip recording.',
+                  [{
+                    text: 'OK',
+                    onPress: () => {
+                      if (navigation) navigation.navigate('Maps');
+                    },
+                  }]
                 );
               }
             } catch (error) {
@@ -826,7 +896,7 @@ const DriverBookingScreen = ({ navigation }) => {
         const fare = activeBooking.agreedFare || activeBooking.preferredFare;
         Alert.alert(
           'Trip Completed!',
-          `Fare collected: ₱${fare}${simulationCompleted ? '\n\n(Simulated trip)' : ''}\n\nRemember to stop recording on the Maps tab.`,
+          `Fare collected: ₱${fare}${simulationCompleted ? '\n\n(Simulated trip)' : ''}\n\nTrip recording on the Maps tab is still running. Stop it manually when you are ready.`,
           [{ text: 'OK' }]
         );
         resetTripState();
