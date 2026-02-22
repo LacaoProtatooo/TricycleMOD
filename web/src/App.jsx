@@ -61,42 +61,42 @@ export default function App() {
               <Route index element={<Home />} />
 
               {/* Other Pages */}
-              <Route path="/profile" element={<UserProfiles />} />
-              <Route path="/users" element={<Users />} />
-              <Route path="/drivers" element={<Drivers />} />
-              <Route path="/operators" element={<Operators />} />
-              <Route path="/bookings" element={<Bookings />} />
-              <Route path="/notifications" element={<Notifications />} />
-              <Route path="/admin-logs" element={<AdminLogs />} />
-              <Route path="/lost-found" element={<LostFound />} />
-              <Route path="/complaints" element={<Complaints />} />
-              <Route path="/violations" element={<Violations />} />
-              <Route path="/leaderboard" element={<Leaderboard />} />
-              <Route path="/rules-regulations" element={<RulesRegulations />} />
-              <Route path="/coding" element={<Coding />} />
-              <Route path="/calendar" element={<Calendar />} />
-              <Route path="/announcements" element={<Announcements />} />
-              <Route path="/live-tracking" element={<LiveDriversMap />} />
-              <Route path="/blank" element={<Blank />} />
-              <Route path="/about" element={<About />} />
+              <Route path="profile" element={<UserProfiles />} />
+              <Route path="users" element={<Users />} />
+              <Route path="drivers" element={<Drivers />} />
+              <Route path="operators" element={<Operators />} />
+              <Route path="bookings" element={<Bookings />} />
+              <Route path="notifications" element={<Notifications />} />
+              <Route path="admin-logs" element={<AdminLogs />} />
+              <Route path="lost-found" element={<LostFound />} />
+              <Route path="complaints" element={<Complaints />} />
+              <Route path="violations" element={<Violations />} />
+              <Route path="leaderboard" element={<Leaderboard />} />
+              <Route path="rules-regulations" element={<RulesRegulations />} />
+              <Route path="coding" element={<Coding />} />
+              <Route path="calendar" element={<Calendar />} />
+              <Route path="announcements" element={<Announcements />} />
+              <Route path="live-tracking" element={<LiveDriversMap />} />
+              <Route path="blank" element={<Blank />} />
+              <Route path="about" element={<About />} />
               
               {/* Forms */}
-              <Route path="/form-elements" element={<FormElements />} />
+              <Route path="form-elements" element={<FormElements />} />
 
               {/* Tables */}
-              <Route path="/basic-tables" element={<BasicTables />} />
+              <Route path="basic-tables" element={<BasicTables />} />
 
               {/* UI Elements */}
-              <Route path="/alerts" element={<Alerts />} />
-              <Route path="/avatars" element={<Avatars />} />
-              <Route path="/badge" element={<Badges />} />
-              <Route path="/buttons" element={<Buttons />} />
-              <Route path="/images" element={<Images />} />
-              <Route path="/videos" element={<Videos />} />
+              <Route path="alerts" element={<Alerts />} />
+              <Route path="avatars" element={<Avatars />} />
+              <Route path="badge" element={<Badges />} />
+              <Route path="buttons" element={<Buttons />} />
+              <Route path="images" element={<Images />} />
+              <Route path="videos" element={<Videos />} />
 
               {/* Charts */}
-              <Route path="/line-chart" element={<LineChart />} />
-              <Route path="/bar-chart" element={<BarChart />} />
+              <Route path="line-chart" element={<LineChart />} />
+              <Route path="bar-chart" element={<BarChart />} />
             </Route>
 
             {/* Landing Page - Public Root */}
