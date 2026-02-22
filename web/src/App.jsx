@@ -1,5 +1,5 @@
 import React from "react";
-import { BrowserRouter as Router, Routes, Route } from "react-router-dom";
+import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
 import { Provider } from "react-redux";
 import store from "./redux/store";
 
@@ -49,6 +49,8 @@ export default function App() {
           <ScrollToTop />
 
           <Routes>
+            {/* Redirect root to landing page */}
+            <Route path="/" element={<Navigate to="/landing-page" />} />
             {/* Dashboard Layout - Protected Routes (Admin Only) */}
             <Route
               element={
