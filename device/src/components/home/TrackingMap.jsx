@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Alert, Easing, PanResponder, Modal, FlatList, ActivityIndicator, Share, Linking, Animated as RNAnimated, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Alert, Easing, PanResponder, Modal, FlatList, ActivityIndicator, Share, Linking, Animated as RNAnimated, Platform, AppState } from 'react-native';
 import MapView, { Polyline, Marker, PROVIDER_GOOGLE, AnimatedRegion, Circle } from 'react-native-maps';
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
@@ -20,6 +20,8 @@ const KM_KEY = 'vehicle_current_km_v1';
 const DEVICE_ID_KEY = 'driver_tracking_device_id_v1';
 const ACTIVE_TRIP_KEY = 'driver_tracking_active_trip_v1';
 const BOOKING_TRIGGER_RECORDING_KEY = 'booking_trigger_recording_v1';
+const BG_COORDS_KEY = 'bg_trip_coords_v1'; // coordinates accumulated in background task
+const BG_DISTANCE_KEY = 'bg_trip_distance_v1'; // distance accumulated in background task
 const SIM_BROADCAST_KEY = 'dev_sim_broadcast_v1'; // DEV: shared with DriverBookingScreen simulation
 
 // Sync settings
@@ -124,6 +126,10 @@ export default function TrackingMap({ follow = true, onEnterTerminalZone, odomet
   const reliveSpeedRef = useRef(1);
   const [scrubTooltip, setScrubTooltip] = useState(null);
   const [reliveTraversedPath, setReliveTraversedPath] = useState([]);
+  const [reliveCurrentSpeed, setReliveCurrentSpeed] = useState(0); // km/h during relive
+  const [reliveCurrentAltitude, setReliveCurrentAltitude] = useState(0);
+  const [reliveDistanceCovered, setReliveDistanceCovered] = useState(0); // meters
+  const [reliveStats, setReliveStats] = useState(null); // trip-level stats for overlay
   const [mapType, setMapType] = useState(Platform.OS === 'ios' ? 'mutedStandard' : 'standard');
   const progressBarRef = useRef(null);
   const progressBarWidth = useRef(0);
@@ -241,6 +247,74 @@ export default function TrackingMap({ follow = true, onEnterTerminalZone, odomet
   useEffect(() => {
     isRecordingRef.current = isRecording;
   }, [isRecording]);
+
+  // AppState handling: auto-start background tracking when app goes to background,
+  // and merge background-collected coordinates when returning to foreground
+  useEffect(() => {
+    const appStateSubscription = AppState.addEventListener('change', async (nextAppState) => {
+      if (nextAppState === 'background' || nextAppState === 'inactive') {
+        // App going to background — start background location task if recording
+        if (isRecordingRef.current && activeTripIdRef.current) {
+          console.log('App going to background while recording — starting background tracking');
+          try {
+            const bgPermission = await Location.requestBackgroundPermissionsAsync();
+            if (bgPermission.status === 'granted') {
+              const isRegistered = await TaskManager.isTaskRegisteredAsync(BG_TASK_NAME);
+              if (!isRegistered) {
+                await Location.startLocationUpdatesAsync(BG_TASK_NAME, {
+                  accuracy: Location.Accuracy.BestForNavigation,
+                  timeInterval: 2000,
+                  distanceInterval: 1,
+                  foregroundService: {
+                    notificationTitle: 'Trip Recording Active',
+                    notificationBody: 'Your trip is being recorded in the background',
+                    notificationColor: '#FF0000',
+                  },
+                  pausesUpdatesAutomatically: false,
+                  activityType: Location.ActivityType.AutomotiveNavigation,
+                });
+              }
+            }
+          } catch (e) {
+            console.warn('Failed to start background tracking on app background:', e);
+          }
+        }
+      } else if (nextAppState === 'active') {
+        // App returning to foreground — merge any coordinates collected in background
+        if (isRecordingRef.current && activeTripIdRef.current) {
+          console.log('App returning to foreground — merging background coordinates');
+          try {
+            const [bgCoordsRaw, bgDistRaw] = await Promise.all([
+              AsyncStorage.getItem(BG_COORDS_KEY),
+              AsyncStorage.getItem(BG_DISTANCE_KEY),
+            ]);
+            const bgCoords = bgCoordsRaw ? JSON.parse(bgCoordsRaw) : [];
+            const bgDist = bgDistRaw ? Number(bgDistRaw) || 0 : 0;
+
+            if (bgCoords.length > 0) {
+              console.log(`Merging ${bgCoords.length} background coordinates (${(bgDist/1000).toFixed(2)} km)`);
+              // Append background coords to recorded positions
+              recordedPosRef.current = [...recordedPosRef.current, ...bgCoords];
+              distanceRef.current += bgDist;
+              setRecordedPositions([...recordedPosRef.current]);
+              setTripDistance(distanceRef.current);
+              updateLocalStorage();
+
+              // Clear background coords
+              await AsyncStorage.setItem(BG_COORDS_KEY, '[]');
+              await AsyncStorage.setItem(BG_DISTANCE_KEY, '0');
+            }
+          } catch (e) {
+            console.warn('Error merging background coordinates:', e);
+          }
+        }
+      }
+    });
+
+    return () => {
+      appStateSubscription.remove();
+    };
+  }, []);
 
   // Initialize device ID and check for active trip
   useEffect(() => {
@@ -692,6 +766,34 @@ export default function TrackingMap({ follow = true, onEnterTerminalZone, odomet
       // Start sync interval
       syncIntervalRef.current = setInterval(syncToServer, SYNC_INTERVAL_MS);
 
+      // Clear any stale background coordinates and ensure background tracking is ready
+      await AsyncStorage.setItem(BG_COORDS_KEY, '[]');
+      await AsyncStorage.setItem(BG_DISTANCE_KEY, '0');
+      
+      // Auto-start background tracking so recording survives screen-off
+      try {
+        const bgPermission = await Location.requestBackgroundPermissionsAsync();
+        if (bgPermission.status === 'granted') {
+          const isRegistered = await TaskManager.isTaskRegisteredAsync(BG_TASK_NAME);
+          if (!isRegistered) {
+            await Location.startLocationUpdatesAsync(BG_TASK_NAME, {
+              accuracy: Location.Accuracy.BestForNavigation,
+              timeInterval: 2000,
+              distanceInterval: 1,
+              foregroundService: {
+                notificationTitle: 'Trip Recording Active',
+                notificationBody: 'Your trip is being recorded',
+                notificationColor: '#FF0000',
+              },
+              pausesUpdatesAutomatically: false,
+              activityType: Location.ActivityType.AutomotiveNavigation,
+            });
+          }
+        }
+      } catch (bgErr) {
+        console.warn('Could not start background tracking:', bgErr);
+      }
+
       Alert.alert('Recording Started', 'Your trip is being recorded');
     } catch (error) {
       console.error('Error starting recording:', error);
@@ -838,6 +940,34 @@ export default function TrackingMap({ follow = true, onEnterTerminalZone, odomet
 
       // Start sync interval
       syncIntervalRef.current = setInterval(syncToServer, SYNC_INTERVAL_MS);
+
+      // Clear any stale background coordinates and ensure background tracking is ready
+      await AsyncStorage.setItem(BG_COORDS_KEY, '[]');
+      await AsyncStorage.setItem(BG_DISTANCE_KEY, '0');
+
+      // Auto-start background tracking so recording survives screen-off
+      try {
+        const bgPermission = await Location.requestBackgroundPermissionsAsync();
+        if (bgPermission.status === 'granted') {
+          const isRegistered = await TaskManager.isTaskRegisteredAsync(BG_TASK_NAME);
+          if (!isRegistered) {
+            await Location.startLocationUpdatesAsync(BG_TASK_NAME, {
+              accuracy: Location.Accuracy.BestForNavigation,
+              timeInterval: 2000,
+              distanceInterval: 1,
+              foregroundService: {
+                notificationTitle: 'Trip Recording Active',
+                notificationBody: 'Your trip is being recorded',
+                notificationColor: '#FF0000',
+              },
+              pausesUpdatesAutomatically: false,
+              activityType: Location.ActivityType.AutomotiveNavigation,
+            });
+          }
+        }
+      } catch (bgErr) {
+        console.warn('Could not start background tracking for booking:', bgErr);
+      }
 
       console.log('Auto-started recording from booking:', tripId);
     } catch (error) {
@@ -1083,14 +1213,28 @@ export default function TrackingMap({ follow = true, onEnterTerminalZone, odomet
     try {
       const response = await axios.get(`${BASE_URL}/api/tracking/${trip.tripId}`);
       if (response.data.success && response.data.trip.coordinates?.length >= 2) {
-        // Set positions from trip data
-        const coords = response.data.trip.coordinates.map(c => ({
+        const tripData = response.data.trip;
+        // Set positions from trip data — include speed, heading, altitude for stats overlay
+        const coords = tripData.coordinates.map(c => ({
           latitude: c.latitude,
           longitude: c.longitude,
           timestamp: c.timestamp,
-          altitude: c.altitude,
+          altitude: c.altitude || 0,
+          speed: c.speed || 0,
+          heading: c.heading || 0,
+          accuracy: c.accuracy || 0,
         }));
         setPositions(coords);
+
+        // Store trip-level stats for relive overlay
+        setReliveStats({
+          totalDistance: tripData.totalDistance || 0,
+          duration: tripData.duration || 0,
+          avgSpeed: tripData.avgSpeed || 0,
+          maxSpeed: tripData.maxSpeed || 0,
+          elevationGain: tripData.elevationGain || 0,
+          name: tripData.name || trip.name || 'Trip',
+        });
         
         // Start relive mode after short delay
         setTimeout(() => {
@@ -1227,6 +1371,10 @@ ${trackPoints}
     setReliveTimestamp(null);
     setReliveSpeed(1);
     setReliveTraversedPath([]);
+    setReliveCurrentSpeed(0);
+    setReliveCurrentAltitude(0);
+    setReliveDistanceCovered(0);
+    setReliveStats(null);
     reliveSpeedRef.current = 1;
     reliveIndexRef.current = 0;
     if (restoreCamera && positions.length) {
@@ -1262,6 +1410,29 @@ ${trackPoints}
       const currentTime = new Date(startTime.getTime() + (idx / (path.length - 1)) * totalDuration);
       setReliveTimestamp(currentTime);
     }
+
+    // Update speed from coordinate data (speed is in m/s, convert to km/h)
+    if (typeof end.speed === 'number' && end.speed > 0) {
+      setReliveCurrentSpeed(Math.round(end.speed * 3.6 * 10) / 10);
+    } else if (start.timestamp && end.timestamp) {
+      // Calculate speed from distance/time
+      const dt = (new Date(end.timestamp).getTime() - new Date(start.timestamp).getTime()) / 1000;
+      if (dt > 0) {
+        setReliveCurrentSpeed(Math.round((meters / dt) * 3.6 * 10) / 10);
+      }
+    }
+
+    // Update altitude
+    if (typeof end.altitude === 'number') {
+      setReliveCurrentAltitude(Math.round(end.altitude * 10) / 10);
+    }
+
+    // Calculate cumulative distance covered
+    let distCovered = 0;
+    for (let i = 1; i <= idx + 1 && i < path.length; i++) {
+      distCovered += haversineMeters(path[i-1], path[i]);
+    }
+    setReliveDistanceCovered(distCovered);
 
     reliveMarker.timing({
       latitude: end.latitude,
@@ -1361,6 +1532,20 @@ ${trackPoints}
       setReliveTimestamp(new Date(pos.timestamp));
     }
 
+    // Update speed/altitude at seek position
+    if (typeof pos.speed === 'number' && pos.speed > 0) {
+      setReliveCurrentSpeed(Math.round(pos.speed * 3.6 * 10) / 10);
+    }
+    if (typeof pos.altitude === 'number') {
+      setReliveCurrentAltitude(Math.round(pos.altitude * 10) / 10);
+    }
+    // Recalculate cumulative distance
+    let distCovered = 0;
+    for (let i = 1; i <= newIdx && i < path.length; i++) {
+      distCovered += haversineMeters(path[i-1], path[i]);
+    }
+    setReliveDistanceCovered(distCovered);
+
     const nextIdx = Math.min(newIdx + 1, path.length - 1);
     const heading = headingBetween(pos, path[nextIdx]);
     mapRef.current?.animateCamera(
@@ -1406,6 +1591,20 @@ ${trackPoints}
       const currentTime = new Date(startTime.getTime() + clampedPct * totalDuration);
       setReliveTimestamp(currentTime);
     }
+
+    // Update speed/altitude at seek position
+    if (typeof pos.speed === 'number' && pos.speed > 0) {
+      setReliveCurrentSpeed(Math.round(pos.speed * 3.6 * 10) / 10);
+    }
+    if (typeof pos.altitude === 'number') {
+      setReliveCurrentAltitude(Math.round(pos.altitude * 10) / 10);
+    }
+    // Recalculate cumulative distance
+    let distCovered = 0;
+    for (let i = 1; i <= newIdx && i < path.length; i++) {
+      distCovered += haversineMeters(path[i-1], path[i]);
+    }
+    setReliveDistanceCovered(distCovered);
 
     const nextIdx = Math.min(newIdx + 1, path.length - 1);
     const heading = headingBetween(pos, path[nextIdx]);
@@ -1733,10 +1932,49 @@ ${trackPoints}
         </TouchableOpacity>
       </View>
 
-      {/* Relive Panel - Compact bottom bar */}
+      {/* Relive Panel - Compact bottom bar with stats */}
       {reliveActive && (
         <View style={styles.relivePanel}>
-          {/* Top Row: Progress bar with timestamp */}
+          {/* Stats Row */}
+          <View style={styles.reliveStatsRow}>
+            <View style={styles.reliveStatItem}>
+              <Ionicons name="speedometer-outline" size={14} color={colors.primary} />
+              <Text style={styles.reliveStatValue}>{reliveCurrentSpeed}</Text>
+              <Text style={styles.reliveStatUnit}>km/h</Text>
+            </View>
+            <View style={styles.reliveStatItem}>
+              <Ionicons name="navigate-outline" size={14} color={colors.primary} />
+              <Text style={styles.reliveStatValue}>
+                {reliveDistanceCovered >= 1000
+                  ? `${(reliveDistanceCovered / 1000).toFixed(2)}`
+                  : `${Math.round(reliveDistanceCovered)}`}
+              </Text>
+              <Text style={styles.reliveStatUnit}>
+                {reliveDistanceCovered >= 1000 ? 'km' : 'm'}
+              </Text>
+            </View>
+            <View style={styles.reliveStatItem}>
+              <Ionicons name="arrow-up-outline" size={14} color={colors.primary} />
+              <Text style={styles.reliveStatValue}>{reliveCurrentAltitude}</Text>
+              <Text style={styles.reliveStatUnit}>m alt</Text>
+            </View>
+            {reliveStats ? (
+              <>
+                <View style={styles.reliveStatItem}>
+                  <Ionicons name="trending-up-outline" size={14} color="#28a745" />
+                  <Text style={styles.reliveStatValue}>{reliveStats.avgSpeed?.toFixed(1) || '0'}</Text>
+                  <Text style={styles.reliveStatUnit}>avg</Text>
+                </View>
+                <View style={styles.reliveStatItem}>
+                  <Ionicons name="flash-outline" size={14} color="#dc3545" />
+                  <Text style={styles.reliveStatValue}>{reliveStats.maxSpeed?.toFixed(1) || '0'}</Text>
+                  <Text style={styles.reliveStatUnit}>max</Text>
+                </View>
+              </>
+            ) : null}
+          </View>
+
+          {/* Progress Row: Progress bar with timestamp */}
           <View style={styles.reliveProgressRow}>
             <Text style={styles.reliveTimestamp}>
               {reliveTimestamp?.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }) || '--:--'}
@@ -2313,6 +2551,31 @@ const styles = StyleSheet.create({
     paddingBottom: 20,
     borderTopLeftRadius: 16,
     borderTopRightRadius: 16,
+  },
+  reliveStatsRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-around',
+    alignItems: 'center',
+    paddingVertical: 6,
+    marginBottom: 6,
+    borderBottomWidth: 1,
+    borderBottomColor: 'rgba(255,255,255,0.15)',
+  },
+  reliveStatItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
+  reliveStatValue: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#fff',
+    fontFamily: 'monospace',
+  },
+  reliveStatUnit: {
+    fontSize: 10,
+    color: 'rgba(255,255,255,0.6)',
+    fontWeight: '500',
   },
   reliveProgressRow: {
     flexDirection: 'row',

@@ -424,6 +424,46 @@ export const getTripDetails = async (req, res) => {
 };
 
 /**
+ * Get tracking record by booking ID
+ * GET /api/tracking/by-booking/:bookingId
+ */
+export const getTripByBookingId = async (req, res) => {
+  try {
+    const { bookingId } = req.params;
+    const { includeCoordinates = 'true' } = req.query;
+
+    const projection = includeCoordinates === 'false' 
+      ? { coordinates: 0 }
+      : {};
+
+    const trip = await TrackingRecord.findOne({ bookingId }, projection)
+      .sort({ startTime: -1 })
+      .populate('userId', 'name email')
+      .populate('driverId', 'name email');
+
+    if (!trip) {
+      return res.status(404).json({
+        success: false,
+        message: 'No tracking record found for this booking',
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      trip,
+    });
+
+  } catch (error) {
+    console.error('Error getting trip by booking ID:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to get trip by booking ID',
+      error: error.message,
+    });
+  }
+};
+
+/**
  * Get trip history for user or device
  * GET /api/tracking/history
  */

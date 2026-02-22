@@ -12,6 +12,7 @@ import {
   exportGeoJSON,
   deleteTrip,
   exportReliveGPX,
+  getTripByBookingId,
 } from '../controllers/trackingController.js';
 import { protect, optionalVerified, requireVerified } from '../middleware/authMiddleware.js';
 
@@ -37,6 +38,7 @@ router.post('/:tripId/cancel', optionalVerified, cancelTrip);
 // Query routes
 router.get('/active', optionalVerified, getActiveTrip);
 router.get('/history', optionalVerified, getTripHistory);
+router.get('/by-booking/:bookingId', protect, getTripByBookingId);
 router.get('/:tripId', optionalVerified, getTripDetails);
 
 // Export routes
