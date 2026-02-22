@@ -40,7 +40,7 @@ import LiveDriversMap from "./pages/LiveDriversMap";
 import AppLayout from "./layout/AppLayout";
 import { ScrollToTop } from "./components/common/ScrollToTop";
 import Home from "./pages/Dashboard/Home";
-
+import LandingPage from "./pages/landingPage";
 export default function App() {
   return (
     <Provider store={store}>
@@ -78,7 +78,7 @@ export default function App() {
               <Route path="/live-tracking" element={<LiveDriversMap />} />
               <Route path="/blank" element={<Blank />} />
               <Route path="/about" element={<About />} />
-
+              
               {/* Forms */}
               <Route path="/form-elements" element={<FormElements />} />
 
@@ -99,6 +99,7 @@ export default function App() {
             </Route>
 
             {/* Auth Pages - Public */}
+            <Route path="/landing-page" element={<LandingPage />} />
             <Route path="/signin" element={<SignIn />} />
             <Route path="/signup" element={<SignUp />} />
 

@@ -109,6 +109,11 @@ const DriverBookingScreen = ({ navigation }) => {
   const [previewPickupRoute, setPreviewPickupRoute] = useState([]);
   const [isCalculatingRoute, setIsCalculatingRoute] = useState(false);
 
+  // Rerouting refs
+  const activeRouteRef = useRef([]);
+  const lastRerouteTimeRef = useRef(0);
+  const isReroutingRef = useRef(false);
+
   // UI state
   const [viewMode, setViewMode] = useState(VIEW_MODE.LIST);
   const [showOfferModal, setShowOfferModal] = useState(false);
@@ -138,6 +143,13 @@ const DriverBookingScreen = ({ navigation }) => {
   const simulationSpeedRef = useRef(1);
   const simulationPausedRef = useRef(false);
   const simulatedDistanceRef = useRef(0); // Ref for accessing in callbacks
+
+  // DEV: Tracking API integration for simulation (records trip for relive + map movement)
+  const simTripIdRef = useRef(null); // server-side tracking tripId
+  const simCoordsBufferRef = useRef([]); // accumulated coords to sync
+  const simSyncIntervalRef = useRef(null);
+  const SIM_BROADCAST_KEY = 'dev_sim_broadcast_v1'; // shared with TrackingMap
+  const SIM_SYNC_INTERVAL = 5000; // sync every 5s during sim
 
   // Calculate coding day status
   const codingDayStatus = useMemo(() => {
@@ -206,6 +218,56 @@ const DriverBookingScreen = ({ navigation }) => {
     
     calculateActiveRoute();
   }, [activeBooking?.pickup, activeBooking?.destination]);
+
+  // Keep activeRouteRef in sync with state
+  useEffect(() => {
+    activeRouteRef.current = activeRouteCoordinates;
+  }, [activeRouteCoordinates]);
+
+  // Rerouting: recalculate route when driver deviates significantly from planned route
+  useEffect(() => {
+    if (!activeBooking || !userLocation) return;
+    if (isReroutingRef.current) return;
+
+    const routeCoords = activeRouteRef.current;
+    if (!routeCoords || routeCoords.length < 2) return;
+
+    // Don't reroute more often than every 15 seconds
+    const now = Date.now();
+    if (now - lastRerouteTimeRef.current < 15000) return;
+
+    // Find minimum distance from current position to any point on the route
+    let minDist = Infinity;
+    for (const coord of routeCoords) {
+      const dist = calculateDistance(
+        userLocation.latitude, userLocation.longitude,
+        coord.latitude, coord.longitude
+      );
+      if (dist < minDist) minDist = dist;
+      if (minDist < 80) return; // Still on route (within 80m)
+    }
+
+    // Driver is off route — recalculate from current position to target
+    console.log('Driver off route by', Math.round(minDist), 'm — rerouting...');
+    lastRerouteTimeRef.current = now;
+    isReroutingRef.current = true;
+
+    const target = isPickedUp ? activeBooking.destination : activeBooking.pickup;
+
+    (async () => {
+      try {
+        const result = await getRoute(userLocation, target);
+        if (result.success && result.route) {
+          setActiveRouteCoordinates(result.route.coordinates);
+          setActiveRouteInfo(result.route);
+        }
+      } catch (err) {
+        console.warn('Reroute failed:', err);
+      } finally {
+        isReroutingRef.current = false;
+      }
+    })();
+  }, [userLocation?.latitude, userLocation?.longitude, activeBooking?._id, isPickedUp]);
 
   // Calculate distances when active booking or user location changes
   useEffect(() => {
@@ -673,7 +735,6 @@ const DriverBookingScreen = ({ navigation }) => {
       );
 
       if (response.data.success) {
-        Alert.alert('Success', 'Booking accepted! Navigate to pickup location.');
         setActiveBooking(response.data.booking);
         setIsPickedUp(false);
         startLocationTracking();
@@ -690,6 +751,16 @@ const DriverBookingScreen = ({ navigation }) => {
           passengerName: passengerName.trim(),
           timestamp: Date.now(),
         }));
+
+        // Navigate to Maps tab so recording auto-starts immediately
+        Alert.alert('Success', 'Booking accepted! Navigating to Maps for trip recording.', [
+          {
+            text: 'OK',
+            onPress: () => {
+              if (navigation) navigation.navigate('Maps');
+            },
+          },
+        ]);
       }
     } catch (error) {
       Alert.alert('Error', error.response?.data?.message || 'Failed to accept booking');
@@ -771,10 +842,16 @@ const DriverBookingScreen = ({ navigation }) => {
                   timestamp: Date.now(),
                 }));
                 
+                // Navigate to Maps tab so recording auto-starts
                 Alert.alert(
                   'Trip Started', 
-                  'Navigate to the destination. Go to the Maps tab to see trip recording.',
-                  [{ text: 'OK' }]
+                  'Navigate to the destination. Switching to Maps tab for trip recording.',
+                  [{
+                    text: 'OK',
+                    onPress: () => {
+                      if (navigation) navigation.navigate('Maps');
+                    },
+                  }]
                 );
               }
             } catch (error) {
@@ -826,7 +903,7 @@ const DriverBookingScreen = ({ navigation }) => {
         const fare = activeBooking.agreedFare || activeBooking.preferredFare;
         Alert.alert(
           'Trip Completed!',
-          `Fare collected: ₱${fare}${simulationCompleted ? '\n\n(Simulated trip)' : ''}\n\nRemember to stop recording on the Maps tab.`,
+          `Fare collected: ₱${fare}${simulationCompleted ? '\n\n(Simulated trip)' : ''}\n\nTrip recording on the Maps tab is still running. Stop it manually when you are ready.`,
           [{ text: 'OK' }]
         );
         resetTripState();
@@ -990,8 +1067,87 @@ const DriverBookingScreen = ({ navigation }) => {
     return points;
   }, []);
 
+  // DEV: Sync accumulated simulated coords to tracking server
+  const syncSimCoordsToServer = useCallback(async () => {
+    const tripId = simTripIdRef.current;
+    const buffer = simCoordsBufferRef.current;
+    if (!tripId || buffer.length === 0) return;
+    try {
+      const toSync = [...buffer];
+      simCoordsBufferRef.current = [];
+      await axios.post(`${BACKEND_URL}/api/tracking/${tripId}/sync`, { coordinates: toSync });
+      console.log(`[DEV SIM] Synced ${toSync.length} coords to trip ${tripId}`);
+    } catch (err) {
+      console.warn('[DEV SIM] Sync error:', err.message);
+    }
+  }, []);
+
+  // DEV: Start a tracking record on the server for the simulation
+  const startSimTrackingRecord = useCallback(async (initialCoord) => {
+    try {
+      // Use a SEPARATE device ID for simulations so it doesn't conflict with real trip recording
+      const SIM_DEVICE_ID_KEY = 'dev_sim_device_id_v1';
+      let simDevId = await AsyncStorage.getItem(SIM_DEVICE_ID_KEY);
+      if (!simDevId) {
+        simDevId = `sim_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+        await AsyncStorage.setItem(SIM_DEVICE_ID_KEY, simDevId);
+      }
+
+      // Cancel any existing active SIMULATION trip (not real trips)
+      try {
+        const activeRes = await axios.get(`${BACKEND_URL}/api/tracking/active`, {
+          params: { deviceId: simDevId },
+        });
+        if (activeRes.data?.success && activeRes.data?.trip) {
+          await axios.post(`${BACKEND_URL}/api/tracking/${activeRes.data.trip.tripId}/cancel`);
+          console.log('[DEV SIM] Cancelled previous simulation trip');
+        }
+      } catch (_) { /* no active sim trip - fine */ }
+
+      const response = await axios.post(`${BACKEND_URL}/api/tracking/start`, {
+        deviceId: simDevId,
+        name: `Simulated Trip ${new Date().toLocaleDateString()} (DEV)`,
+        initialCoordinate: initialCoord,
+      });
+
+      if (response.data.success) {
+        simTripIdRef.current = response.data.tripId;
+        simCoordsBufferRef.current = [];
+        // Start periodic sync
+        simSyncIntervalRef.current = setInterval(syncSimCoordsToServer, SIM_SYNC_INTERVAL);
+        console.log('[DEV SIM] Started tracking record:', response.data.tripId);
+      }
+    } catch (err) {
+      console.warn('[DEV SIM] Failed to start tracking record:', err.message);
+    }
+  }, [syncSimCoordsToServer]);
+
+  // DEV: Broadcast simulated position to TrackingMap via AsyncStorage
+  const broadcastSimPosition = useCallback(async (point, routePoints, index) => {
+    try {
+      await AsyncStorage.setItem(SIM_BROADCAST_KEY, JSON.stringify({
+        latitude: point.latitude,
+        longitude: point.longitude,
+        altitude: 0,
+        speed: 6.9, // ~25 kph simulated
+        heading: 0,
+        accuracy: 5,
+        timestamp: Date.now(),
+        isActive: true,
+        progress: index / Math.max(routePoints.length - 1, 1),
+      }));
+    } catch (_) {}
+  }, []);
+
+  // DEV: Clear simulation broadcast
+  const clearSimBroadcast = useCallback(async () => {
+    try {
+      await AsyncStorage.setItem(SIM_BROADCAST_KEY, JSON.stringify({ isActive: false }));
+    } catch (_) {}
+  }, []);
+
   // Start simulation - called from TripSimulator modal
-  const startSimulation = useCallback((speed = 1) => {
+  const startSimulation = useCallback(async (speed = 1) => {
     if (!activeBooking?.pickup || !activeBooking?.destination) return;
     
     // Prepare route points
@@ -1025,10 +1181,25 @@ const DriverBookingScreen = ({ navigation }) => {
     setIsSimulating(true);
     setSimulatedPosition(routePoints[0]);
     setSimulatedPath([routePoints[0]]);
+
+    // DEV: Start server-side tracking record so trip appears in history/relive
+    const initialCoord = {
+      latitude: routePoints[0].latitude,
+      longitude: routePoints[0].longitude,
+      altitude: 0,
+      accuracy: 5,
+      speed: 0,
+      heading: 0,
+      timestamp: Date.now(),
+    };
+    await startSimTrackingRecord(initialCoord);
+
+    // DEV: Broadcast initial position to TrackingMap
+    await broadcastSimPosition(routePoints[0], routePoints, 0);
     
     // Start the animation loop
     runSimulationStep();
-  }, [activeBooking, activeRouteCoordinates, interpolateRoutePoints]);
+  }, [activeBooking, activeRouteCoordinates, interpolateRoutePoints, startSimTrackingRecord, broadcastSimPosition]);
 
   // Run a single simulation step
   const runSimulationStep = useCallback(() => {
@@ -1079,6 +1250,19 @@ const DriverBookingScreen = ({ navigation }) => {
         zoom: 17,
       }, { duration: 200 });
     }
+
+    // DEV: Buffer coordinate for server sync and broadcast to TrackingMap
+    const simCoord = {
+      latitude: currentPoint.latitude,
+      longitude: currentPoint.longitude,
+      altitude: 0,
+      accuracy: 5,
+      speed: 6.9,
+      heading: 0,
+      timestamp: Date.now(),
+    };
+    simCoordsBufferRef.current.push(simCoord);
+    broadcastSimPosition(currentPoint, route, index);
     
     // Schedule next step
     simulationIndexRef.current = index + 1;
@@ -1086,7 +1270,7 @@ const DriverBookingScreen = ({ navigation }) => {
     const delay = baseDelay / simulationSpeedRef.current;
     
     simulationRef.current = setTimeout(runSimulationStep, delay);
-  }, [activeBooking]);
+  }, [activeBooking, broadcastSimPosition]);
 
   // Update odometer during simulation
   const updateSimulatedOdometer = async (distanceMeters) => {
@@ -1102,7 +1286,7 @@ const DriverBookingScreen = ({ navigation }) => {
   };
 
   // Finish simulation
-  const finishSimulation = useCallback(() => {
+  const finishSimulation = useCallback(async () => {
     if (simulationRef.current) {
       clearTimeout(simulationRef.current);
     }
@@ -1115,14 +1299,65 @@ const DriverBookingScreen = ({ navigation }) => {
       setSimulatedPosition(activeBooking.destination);
       setDistanceToDestination(0);
     }
+
+    // DEV: Finalize server-side tracking record
+    if (simSyncIntervalRef.current) {
+      clearInterval(simSyncIntervalRef.current);
+      simSyncIntervalRef.current = null;
+    }
+    // Final sync of remaining coords
+    await syncSimCoordsToServer();
+    // End the trip on server so it appears in history/relive
+    if (simTripIdRef.current) {
+      try {
+        const route = simulationRouteRef.current || [];
+        const finalCoords = route.map((pt, i) => ({
+          latitude: pt.latitude,
+          longitude: pt.longitude,
+          altitude: 0,
+          accuracy: 5,
+          speed: 6.9,
+          heading: 0,
+          timestamp: Date.now() - ((route.length - i) * 2000),
+        }));
+        await axios.post(`${BACKEND_URL}/api/tracking/${simTripIdRef.current}/end`, {
+          finalCoordinates: finalCoords,
+          name: `Simulated Trip ${new Date().toLocaleDateString()} (DEV)`,
+        });
+        console.log('[DEV SIM] Trip ended on server:', simTripIdRef.current);
+      } catch (err) {
+        console.warn('[DEV SIM] Failed to end trip:', err.message);
+      }
+      simTripIdRef.current = null;
+    }
+
+    // DEV: Sync odometer to server
+    try {
+      const trikeId = await AsyncStorage.getItem('active_tricycle_id');
+      if (trikeId) {
+        const currentKmStr = await AsyncStorage.getItem('vehicle_current_km_v1');
+        const currentKm = currentKmStr ? parseFloat(currentKmStr) : 0;
+        if (currentKm > 0) {
+          await axios.put(`${BACKEND_URL}/api/tricycles/${trikeId}/odometer`, {
+            odometer: Math.round(currentKm),
+          });
+          console.log('[DEV SIM] Odometer synced to server:', Math.round(currentKm));
+        }
+      }
+    } catch (syncErr) {
+      console.warn('[DEV SIM] Failed to sync odometer:', syncErr.message);
+    }
+
+    // DEV: Clear broadcast
+    await clearSimBroadcast();
     
     const finalDistance = simulatedDistanceRef.current;
     Alert.alert(
       '✅ Simulation Complete!',
-      `Trip simulated successfully!\n\nDistance: ${(finalDistance / 1000).toFixed(2)} km\nOdometer updated.\n\nYou can now complete the trip.`,
+      `Trip simulated successfully!\n\nDistance: ${(finalDistance / 1000).toFixed(2)} km\nOdometer updated.\nTrip recorded for relive.\n\nYou can now complete the trip.`,
       [{ text: 'OK' }]
     );
-  }, [activeBooking]);
+  }, [activeBooking, syncSimCoordsToServer, clearSimBroadcast]);
 
   // Pause simulation
   const pauseSimulation = useCallback(() => {
@@ -1141,7 +1376,7 @@ const DriverBookingScreen = ({ navigation }) => {
   }, [runSimulationStep]);
 
   // Stop simulation
-  const stopSimulation = useCallback(() => {
+  const stopSimulation = useCallback(async () => {
     if (simulationRef.current) {
       clearTimeout(simulationRef.current);
     }
@@ -1154,7 +1389,22 @@ const DriverBookingScreen = ({ navigation }) => {
     setSimulatedDistance(0);
     setSimulatedPath([]);
     simulationIndexRef.current = 0;
-  }, []);
+
+    // DEV: Cancel server-side tracking record
+    if (simSyncIntervalRef.current) {
+      clearInterval(simSyncIntervalRef.current);
+      simSyncIntervalRef.current = null;
+    }
+    if (simTripIdRef.current) {
+      try {
+        await axios.post(`${BACKEND_URL}/api/tracking/${simTripIdRef.current}/cancel`);
+        console.log('[DEV SIM] Cancelled tracking record:', simTripIdRef.current);
+      } catch (_) {}
+      simTripIdRef.current = null;
+    }
+    simCoordsBufferRef.current = [];
+    await clearSimBroadcast();
+  }, [clearSimBroadcast]);
 
   // Change simulation speed
   const changeSimulationSpeed = useCallback((speed) => {
@@ -1168,6 +1418,11 @@ const DriverBookingScreen = ({ navigation }) => {
       if (simulationRef.current) {
         clearTimeout(simulationRef.current);
       }
+      // DEV: cleanup server sync interval and broadcast
+      if (simSyncIntervalRef.current) {
+        clearInterval(simSyncIntervalRef.current);
+      }
+      AsyncStorage.setItem(SIM_BROADCAST_KEY, JSON.stringify({ isActive: false })).catch(() => {});
     };
   }, []);
 
@@ -1855,7 +2110,13 @@ const DriverBookingScreen = ({ navigation }) => {
                   • The tricycle icon will follow the actual route
                 </Text>
                 <Text style={styles.simModalInfoText}>
-                  • The odometer will be updated
+                  • Moves on both Booking &amp; Maps tab maps
+                </Text>
+                <Text style={styles.simModalInfoText}>
+                  • Trip recorded for relive playback in History
+                </Text>
+                <Text style={styles.simModalInfoText}>
+                  • Odometer updated (local + server)
                 </Text>
                 <Text style={styles.simModalInfoText}>
                   • Close this modal to see the map
@@ -1893,7 +2154,7 @@ const DriverBookingScreen = ({ navigation }) => {
               <View style={styles.simModalWarning}>
                 <Ionicons name="information-circle" size={18} color="#856404" />
                 <Text style={styles.simModalWarningText}>
-                  Testing feature only. Close this modal after starting to see the tricycle moving on the map.
+                  DEV testing only. Trip will be recorded on server for relive, odometer synced, and marker will move on Maps tab.
                 </Text>
               </View>
             </View>

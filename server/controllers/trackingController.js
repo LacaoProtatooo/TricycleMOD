@@ -242,17 +242,47 @@ export const endTrip = async (req, res) => {
     const { tripId } = req.params;
     const { finalCoordinates, name } = req.body;
 
-    // Find active trip
-    const trip = await TrackingRecord.findOne({ tripId, status: 'active' });
+    // Find trip — first try active, then check any status for better diagnostics
+    let trip = await TrackingRecord.findOne({ tripId, status: 'active' });
     if (!trip) {
-      return res.status(404).json({
+      // Check if trip exists in another state
+      const existingTrip = await TrackingRecord.findOne({ tripId });
+      if (!existingTrip) {
+        return res.status(404).json({
+          success: false,
+          message: 'Trip not found (no record with this ID)',
+        });
+      }
+      if (existingTrip.status === 'completed') {
+        // Already completed — return success so the client doesn't error
+        return res.status(200).json({
+          success: true,
+          message: 'Trip was already completed',
+          trip: {
+            tripId: existingTrip.tripId,
+            name: existingTrip.name,
+            startTime: existingTrip.startTime,
+            endTime: existingTrip.endTime,
+            duration: existingTrip.duration,
+            formattedDuration: existingTrip.formattedDuration,
+            totalDistance: existingTrip.totalDistance,
+            distanceKm: existingTrip.distanceKm,
+            avgSpeed: existingTrip.avgSpeed,
+            maxSpeed: existingTrip.maxSpeed,
+            pointCount: existingTrip.coordinates.length,
+          },
+        });
+      }
+      // Trip exists but is cancelled or another non-active state
+      return res.status(409).json({
         success: false,
-        message: 'Active trip not found',
+        message: `Trip cannot be ended — current status is '${existingTrip.status}'`,
+        currentStatus: existingTrip.status,
       });
     }
 
-    // Add any final coordinates
-    if (finalCoordinates && Array.isArray(finalCoordinates)) {
+    // Add any final coordinates (only unsynced ones from client)
+    if (finalCoordinates && Array.isArray(finalCoordinates) && finalCoordinates.length > 0) {
       const validCoords = finalCoordinates
         .filter(c => typeof c.latitude === 'number' && typeof c.longitude === 'number')
         .map(c => ({
@@ -264,7 +294,13 @@ export const endTrip = async (req, res) => {
           heading: c.heading || 0,
           timestamp: c.timestamp ? new Date(c.timestamp) : new Date(),
         }));
-      trip.coordinates.push(...validCoords);
+
+      // Safety: skip if adding would make document excessively large
+      if (trip.coordinates.length + validCoords.length < 50000) {
+        trip.coordinates.push(...validCoords);
+      } else {
+        console.warn(`Skipping ${validCoords.length} final coords — trip already has ${trip.coordinates.length} points`);
+      }
     }
 
     // Update trip
@@ -382,6 +418,46 @@ export const getTripDetails = async (req, res) => {
     return res.status(500).json({
       success: false,
       message: 'Failed to get trip details',
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Get tracking record by booking ID
+ * GET /api/tracking/by-booking/:bookingId
+ */
+export const getTripByBookingId = async (req, res) => {
+  try {
+    const { bookingId } = req.params;
+    const { includeCoordinates = 'true' } = req.query;
+
+    const projection = includeCoordinates === 'false' 
+      ? { coordinates: 0 }
+      : {};
+
+    const trip = await TrackingRecord.findOne({ bookingId }, projection)
+      .sort({ startTime: -1 })
+      .populate('userId', 'name email')
+      .populate('driverId', 'name email');
+
+    if (!trip) {
+      return res.status(404).json({
+        success: false,
+        message: 'No tracking record found for this booking',
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      trip,
+    });
+
+  } catch (error) {
+    console.error('Error getting trip by booking ID:', error);
+    return res.status(500).json({
+      success: false,
+      message: 'Failed to get trip by booking ID',
       error: error.message,
     });
   }

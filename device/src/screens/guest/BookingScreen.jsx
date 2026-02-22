@@ -23,9 +23,13 @@ import {
   Dimensions,
   FlatList,
   Platform,
+  AppState,
 } from 'react-native';
 import MapView, { Marker, Circle, Polyline, Polygon, PROVIDER_GOOGLE } from 'react-native-maps';
 import * as Location from 'expo-location';
+import * as TaskManager from 'expo-task-manager';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { BG_TASK_NAME } from '../../components/services/BackgroundLocationTask';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSelector, useDispatch } from 'react-redux';
@@ -251,6 +255,77 @@ const BookingScreen = ({ navigation }) => {
         clearInterval(pollingRef.current);
         pollingRef.current = null;
       }
+    };
+  }, [bookingStatus, db, user, dispatch]);
+
+  // AppState handling: pause polling when app goes to background to prevent token-expired errors,
+  // and start background location tracking so the trip keeps recording when screen is off
+  const appStateRef = useRef(AppState.currentState);
+  const wasPollingRef = useRef(false);
+
+  useEffect(() => {
+    const appStateSubscription = AppState.addEventListener('change', async (nextAppState) => {
+      if (nextAppState === 'background' || nextAppState === 'inactive') {
+        // App going to background — pause polling to prevent token expiration errors
+        if (pollingRef.current) {
+          wasPollingRef.current = true;
+          clearInterval(pollingRef.current);
+          pollingRef.current = null;
+          console.log('BookingScreen: Paused polling (app backgrounded)');
+        }
+
+        // If trip is active, start background location tracking
+        if (bookingStatus === BOOKING_STATUS.TRIP_ACTIVE) {
+          try {
+            const bgPermission = await Location.requestBackgroundPermissionsAsync();
+            if (bgPermission.status === 'granted') {
+              const isRegistered = await TaskManager.isTaskRegisteredAsync(BG_TASK_NAME);
+              if (!isRegistered) {
+                await Location.startLocationUpdatesAsync(BG_TASK_NAME, {
+                  accuracy: Location.Accuracy.BestForNavigation,
+                  timeInterval: 3000,
+                  distanceInterval: 5,
+                  foregroundService: {
+                    notificationTitle: 'Trip Active',
+                    notificationBody: 'Your booking trip is in progress',
+                    notificationColor: '#FF6600',
+                  },
+                  pausesUpdatesAutomatically: false,
+                  activityType: Location.ActivityType.AutomotiveNavigation,
+                });
+                console.log('BookingScreen: Started background location tracking');
+              }
+            }
+          } catch (e) {
+            console.warn('BookingScreen: Failed to start background tracking:', e);
+          }
+        }
+      } else if (nextAppState === 'active') {
+        // App returning to foreground — resume polling if it was active before
+        if (wasPollingRef.current && db && user) {
+          wasPollingRef.current = false;
+          const shouldPoll = [
+            BOOKING_STATUS.WAITING_FOR_DRIVER,
+            BOOKING_STATUS.OFFERS_RECEIVED,
+            BOOKING_STATUS.OFFER_RECEIVED,
+            BOOKING_STATUS.TRIP_ACTIVE,
+          ].includes(bookingStatus);
+
+          if (shouldPoll) {
+            // Immediately fetch once, then resume interval
+            dispatch(getActiveBooking(db));
+            pollingRef.current = setInterval(() => {
+              dispatch(getActiveBooking(db));
+            }, 5000);
+            console.log('BookingScreen: Resumed polling (app foregrounded)');
+          }
+        }
+      }
+      appStateRef.current = nextAppState;
+    });
+
+    return () => {
+      appStateSubscription.remove();
     };
   }, [bookingStatus, db, user, dispatch]);
 

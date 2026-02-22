@@ -120,11 +120,12 @@ const MapsTab = () => {
         </View>
       )}
 
-      {/* Only render map when tab is focused to prevent multiple MapView crashes */}
-      {isFocused ? (
+      {/* Always keep TrackingMap mounted so recording/tracking stays alive across tab switches.
+           isVisible controls whether MapView renders (prevents multiple MapView crashes). */}
       <TrackingMap
         odometerSeed={odometerSeed}
         codingDayRestricted={codingDayStatus?.isCodingDay || false}
+        isVisible={isFocused}
         onEnterTerminalZone={(terminal) => {
           // Don't allow queue actions on coding day
           if (codingDayStatus?.isCodingDay) {
@@ -145,12 +146,6 @@ const MapsTab = () => {
           );
         }}
       />
-      ) : (
-        <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-          <ActivityIndicator size="large" color={colors.primary} />
-          <Text style={{ marginTop: 12, color: colors.orangeShade5 }}>Loading map...</Text>
-        </View>
-      )}
 
       <View style={styles.fabContainer}>
         <TouchableOpacity style={styles.fab} onPress={() => setQueueVisible(true)}>

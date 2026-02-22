@@ -54,6 +54,10 @@ const BookingHistoryDetail = ({ navigation, route }) => {
   const [ratingComment, setRatingComment] = useState('');
   const [isSubmittingRating, setIsSubmittingRating] = useState(false);
 
+  // Route tracking data (actual GPS trail)
+  const [routeCoordinates, setRouteCoordinates] = useState([]);
+  const [trackingStats, setTrackingStats] = useState(null);
+
   useEffect(() => {
     fetchBookingDetails();
   }, [bookingId]);
@@ -84,6 +88,8 @@ const BookingHistoryDetail = ({ navigation, route }) => {
         setBooking(response.data.booking);
         // Fit map to show both markers
         setTimeout(() => fitMapToMarkers(response.data.booking), 500);
+        // Fetch the actual GPS tracking route for this booking
+        fetchTrackingRoute(token, response.data.booking);
       } else {
         setError('Failed to load booking details');
       }
@@ -97,13 +103,58 @@ const BookingHistoryDetail = ({ navigation, route }) => {
 
   const fitMapToMarkers = (bookingData) => {
     if (mapRef.current && bookingData?.pickup && bookingData?.destination) {
+      // If we have route coordinates, fit to those; otherwise fit to pickup/destination
+      const coordsToFit = routeCoordinates.length > 1
+        ? routeCoordinates
+        : [bookingData.pickup, bookingData.destination];
       mapRef.current.fitToCoordinates(
-        [bookingData.pickup, bookingData.destination],
+        coordsToFit,
         {
           edgePadding: { top: 80, right: 50, bottom: 80, left: 50 },
           animated: true,
         }
       );
+    }
+  };
+
+  // Fetch the actual GPS tracking route for this booking
+  const fetchTrackingRoute = async (token, bookingData) => {
+    try {
+      const response = await axios.get(
+        `${BACKEND_URL}/api/tracking/by-booking/${bookingData._id}`,
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      if (response.data.success && response.data.trip) {
+        const trip = response.data.trip;
+        const coords = (trip.coordinates || []).map(c => ({
+          latitude: c.latitude,
+          longitude: c.longitude,
+        }));
+
+        if (coords.length >= 2) {
+          setRouteCoordinates(coords);
+          setTrackingStats({
+            totalDistance: trip.totalDistance,
+            duration: trip.duration,
+            avgSpeed: trip.avgSpeed,
+            maxSpeed: trip.maxSpeed,
+            elevationGain: trip.elevationGain,
+          });
+          // Re-fit map to show the actual route
+          setTimeout(() => {
+            if (mapRef.current) {
+              mapRef.current.fitToCoordinates(coords, {
+                edgePadding: { top: 80, right: 50, bottom: 80, left: 50 },
+                animated: true,
+              });
+            }
+          }, 300);
+        }
+      }
+    } catch (err) {
+      // Tracking data may not exist for all bookings — this is fine
+      console.log('No tracking data for booking:', err.response?.status === 404 ? '(none found)' : err.message);
     }
   };
 
@@ -324,15 +375,21 @@ const BookingHistoryDetail = ({ navigation, route }) => {
               </View>
             </Marker>
 
-            {/* Route line */}
-            {booking.pickup && booking.destination && (
+            {/* Route line - show actual GPS trail if available, otherwise dashed straight line */}
+            {routeCoordinates.length >= 2 ? (
+              <Polyline
+                coordinates={routeCoordinates}
+                strokeColor={colors.primary}
+                strokeWidth={4}
+              />
+            ) : booking.pickup && booking.destination ? (
               <Polyline
                 coordinates={[booking.pickup, booking.destination]}
                 strokeColor={colors.primary}
                 strokeWidth={4}
                 lineDashPattern={[10, 5]}
               />
-            )}
+            ) : null}
           </MapView>
         </View>
 
@@ -438,11 +495,11 @@ const BookingHistoryDetail = ({ navigation, route }) => {
         </View>
 
         {/* Distance Info */}
-        {(!!booking.estimatedDistance || !!booking.actualDistance) ? (
+        {(!!booking.estimatedDistance || !!booking.actualDistance || trackingStats) ? (
           <View style={styles.card}>
             <View style={styles.cardHeader}>
               <Ionicons name="speedometer" size={20} color={colors.primary} />
-              <Text style={styles.cardTitle}>Distance</Text>
+              <Text style={styles.cardTitle}>Distance & Trip Stats</Text>
             </View>
             
             {booking.estimatedDistance ? (
@@ -457,6 +514,41 @@ const BookingHistoryDetail = ({ navigation, route }) => {
                 <Text style={styles.fareLabel}>Actual Distance</Text>
                 <Text style={styles.fareValue}>{formatDistance(booking.actualDistance)}</Text>
               </View>
+            ) : null}
+
+            {trackingStats ? (
+              <>
+                {trackingStats.totalDistance ? (
+                  <View style={styles.fareRow}>
+                    <Text style={styles.fareLabel}>GPS Tracked Distance</Text>
+                    <Text style={[styles.fareValue, { color: colors.primary, fontWeight: '700' }]}>
+                      {formatDistance(trackingStats.totalDistance)}
+                    </Text>
+                  </View>
+                ) : null}
+                {trackingStats.duration ? (
+                  <View style={styles.fareRow}>
+                    <Text style={styles.fareLabel}>Trip Duration</Text>
+                    <Text style={styles.fareValue}>
+                      {trackingStats.duration >= 3600
+                        ? `${Math.floor(trackingStats.duration / 3600)}h ${Math.floor((trackingStats.duration % 3600) / 60)}m`
+                        : `${Math.floor(trackingStats.duration / 60)}m ${trackingStats.duration % 60}s`}
+                    </Text>
+                  </View>
+                ) : null}
+                {trackingStats.avgSpeed ? (
+                  <View style={styles.fareRow}>
+                    <Text style={styles.fareLabel}>Average Speed</Text>
+                    <Text style={styles.fareValue}>{trackingStats.avgSpeed.toFixed(1)} km/h</Text>
+                  </View>
+                ) : null}
+                {trackingStats.maxSpeed ? (
+                  <View style={styles.fareRow}>
+                    <Text style={styles.fareLabel}>Max Speed</Text>
+                    <Text style={styles.fareValue}>{trackingStats.maxSpeed.toFixed(1)} km/h</Text>
+                  </View>
+                ) : null}
+              </>
             ) : null}
           </View>
         ) : null}
