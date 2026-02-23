@@ -23,7 +23,7 @@ const About = () => {
       name: "Donn Anthony Baldoza",
       image: require("../../../assets/marisa.gif"),
       role: "Lead Developer",
-      github: "https://github.com/LacaoProtatooo"
+      github: "https://github.com/chrollow"
     },
     {
       name: "Henrich Lacao",
@@ -35,7 +35,7 @@ const About = () => {
       name: "Juliana Mae Ines",
       image: require("../../../assets/marisa.gif"),
       role: "UI/UX Developer",
-      github: "https://github.com/LacaoProtatooo"
+      github: "https://github.com/julianamae11"
     }
   ];
 
@@ -45,6 +45,41 @@ const About = () => {
     role: "Technical Advisor",
     title: "Former MTICS Adviser '20-'23",
     institution: "Technological University of the Philippines"
+  };
+
+  // WEBTTODA Officials 2025-2027
+  const webttodaOfficers = [
+    { name: "Richard S. Alegre", position: "President" },
+    { name: "Emmanuel I. Bacomo", position: "Vice President" },
+    { name: "Arnel V. Tonogan", position: "Treasurer" },
+    { name: "Alberto A. Luchavez", position: "Secretary" },
+    { name: "Pelagia A. Occiano", position: "Auditor" }
+  ];
+
+  const webttodaBoardOfDirectors = [
+    { name: "Jayson R. Garcia", position: "Board Member" },
+    { name: "Eddie M. Jardinel", position: "Board Member" },
+    { name: "Rey V. Salvadora", position: "Board Member" },
+    { name: "Rey B. Bolo", position: "Chief Marshall" },
+    { name: "Jopet M. Agena", position: "Board Member" },
+    { name: "Rico N. Velasquez", position: "Board Member" },
+    { name: "Carlito D. Colapo", position: "Board Member" },
+    { name: "Edwin C. Macaraig", position: "Board Member" },
+    { name: "Dennis R. Ortiga", position: "Board Member" },
+    { name: "Domingo A. Saavedra", position: "Board Member" },
+    { name: "Ricky G. Manio", position: "Board Member" }
+  ];
+
+  const webttodaAdviser = {
+    name: "Hon. Ernesto B. Occiano",
+    title: "Former WEBTTODA President"
+  };
+
+  const webttodaInfo = {
+    address: "Champaca cor. Balatan Sts., Western Bicutan, Taguig City",
+    sec: "ANO-91-190714",
+    tin: "264-035-203-000",
+    phones: ["09651661097", "09998889532"]
   };
 
   const openLink = (url) => {
@@ -245,6 +280,82 @@ const About = () => {
               </View>
               <Text style={styles.advisorTitle}>{advisor.title}</Text>
               <Text style={styles.advisorInstitution}>{advisor.institution}</Text>
+            </View>
+          </View>
+        </View>
+
+        {/* WEBTTODA Officials Section */}
+        <View style={styles.webttodaSection}>
+          <Text style={styles.webttodaMainTitle}>WEBTTODA Officials</Text>
+          <Text style={styles.webttodaSubtitle}>2025-2027 Term</Text>
+          <View style={styles.teamDivider} />
+
+          {/* Officers */}
+          <Text style={styles.webttodaSectionTitle}>Officers</Text>
+          <View style={styles.officialsGrid}>
+            {webttodaOfficers.map((officer, index) => (
+              <View key={index} style={styles.officialCard}>
+                <View style={styles.officialIconWrapper}>
+                  <Ionicons 
+                    name={officer.position === "President" ? "star" : "person"} 
+                    size={24} 
+                    color={colors.ivory1} 
+                  />
+                </View>
+                <Text style={styles.officialName}>{officer.name}</Text>
+                <View style={styles.positionBadge}>
+                  <Text style={styles.positionText}>{officer.position}</Text>
+                </View>
+              </View>
+            ))}
+          </View>
+
+          {/* Board of Directors */}
+          <Text style={[styles.webttodaSectionTitle, { marginTop: spacing.large }]}>Board of Directors</Text>
+          <View style={styles.officialsGrid}>
+            {webttodaBoardOfDirectors.map((director, index) => (
+              <View key={index} style={styles.directorCard}>
+                <View style={styles.directorIconWrapper}>
+                  <Ionicons 
+                    name={director.position === "Chief Marshall" ? "shield" : "people"} 
+                    size={20} 
+                    color={colors.ivory1} 
+                  />
+                </View>
+                <Text style={styles.directorName}>{director.name}</Text>
+                <Text style={styles.directorPosition}>{director.position}</Text>
+              </View>
+            ))}
+          </View>
+
+          {/* WEBTTODA Adviser */}
+          <Text style={[styles.webttodaSectionTitle, { marginTop: spacing.large }]}>Adviser</Text>
+          <View style={styles.webttodaAdviserCard}>
+            <View style={styles.webttodaAdviserIconWrapper}>
+              <Ionicons name="ribbon" size={28} color={colors.ivory1} />
+            </View>
+            <Text style={styles.webttodaAdviserName}>{webttodaAdviser.name}</Text>
+            <Text style={styles.webttodaAdviserTitle}>{webttodaAdviser.title}</Text>
+          </View>
+
+          {/* Contact Information */}
+          <Text style={[styles.webttodaSectionTitle, { marginTop: spacing.large }]}>Contact Information</Text>
+          <View style={styles.contactCard}>
+            <View style={styles.contactItem}>
+              <Ionicons name="location" size={20} color={colors.primary} />
+              <Text style={styles.contactText}>{webttodaInfo.address}</Text>
+            </View>
+            <View style={styles.contactItem}>
+              <Ionicons name="call" size={20} color={colors.primary} />
+              <Text style={styles.contactText}>{webttodaInfo.phones.join(" / ")}</Text>
+            </View>
+            <View style={styles.contactItem}>
+              <Ionicons name="document-text" size={20} color={colors.primary} />
+              <Text style={styles.contactText}>SEC: {webttodaInfo.sec}</Text>
+            </View>
+            <View style={styles.contactItem}>
+              <Ionicons name="receipt" size={20} color={colors.primary} />
+              <Text style={styles.contactText}>TIN: {webttodaInfo.tin}</Text>
             </View>
           </View>
         </View>
@@ -688,6 +799,157 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: colors.orangeShade7,
     textAlign: 'center',
+  },
+
+  // WEBTTODA Officials Section
+  webttodaSection: {
+    backgroundColor: colors.ivory1,
+    paddingVertical: spacing.large * 2,
+    paddingHorizontal: spacing.medium,
+    alignItems: 'center',
+  },
+  webttodaMainTitle: {
+    fontSize: 28,
+    fontWeight: 'bold',
+    color: colors.primary,
+    marginBottom: spacing.small,
+    textAlign: 'center',
+  },
+  webttodaSubtitle: {
+    fontSize: 15,
+    color: colors.orangeShade8,
+    marginBottom: spacing.medium,
+  },
+  webttodaSectionTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: colors.orangeShade8,
+    marginBottom: spacing.medium,
+    textAlign: 'center',
+  },
+  officialsGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    justifyContent: 'center',
+    gap: spacing.medium,
+    width: '100%',
+  },
+  officialCard: {
+    width: windowWidth < 500 ? windowWidth * 0.42 : 160,
+    backgroundColor: colors.ivory2,
+    borderRadius: 16,
+    padding: spacing.medium,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.orangeShade2,
+    shadowColor: colors.orangeShade8,
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  officialIconWrapper: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: spacing.small,
+  },
+  officialName: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.orangeShade8,
+    textAlign: 'center',
+    marginBottom: spacing.small / 2,
+  },
+  positionBadge: {
+    backgroundColor: colors.orangeShade1,
+    paddingHorizontal: spacing.small,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  positionText: {
+    fontSize: 11,
+    color: colors.orangeShade7,
+    fontWeight: '600',
+  },
+  directorCard: {
+    width: windowWidth < 500 ? windowWidth * 0.42 : 150,
+    backgroundColor: colors.ivory3,
+    borderRadius: 12,
+    padding: spacing.medium,
+    alignItems: 'center',
+  },
+  directorIconWrapper: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.orangeShade4,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: spacing.small / 2,
+  },
+  directorName: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.orangeShade8,
+    textAlign: 'center',
+    marginBottom: 2,
+  },
+  directorPosition: {
+    fontSize: 10,
+    color: colors.orangeShade6,
+  },
+  webttodaAdviserCard: {
+    backgroundColor: colors.orangeShade1,
+    borderRadius: 16,
+    padding: spacing.large,
+    alignItems: 'center',
+    width: '100%',
+    maxWidth: 300,
+    borderWidth: 2,
+    borderColor: colors.orangeShade2,
+  },
+  webttodaAdviserIconWrapper: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: spacing.small,
+  },
+  webttodaAdviserName: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.orangeShade8,
+    textAlign: 'center',
+    marginBottom: spacing.small / 2,
+  },
+  webttodaAdviserTitle: {
+    fontSize: 14,
+    color: colors.orangeShade6,
+    fontStyle: 'italic',
+    textAlign: 'center',
+  },
+  contactCard: {
+    backgroundColor: colors.ivory2,
+    borderRadius: 16,
+    padding: spacing.large,
+    width: '100%',
+    gap: spacing.medium,
+  },
+  contactItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.small,
+  },
+  contactText: {
+    flex: 1,
+    fontSize: 14,
+    color: colors.text,
   },
 
   // Footer

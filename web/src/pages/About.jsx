@@ -7,17 +7,20 @@ export default function About() {
     {
       name: "Donn Anthony Baldoza",
       role: "Lead Developer",
-      github: "https://github.com/LacaoProtatooo",
+      github: "https://github.com/chrollow",
+      image: "/images/user/donpic.png",
     },
     {
       name: "Henrich Lacao",
       role: "Backend Developer",
       github: "https://github.com/LacaoProtatooo",
+      image: "/images/user/henrich.jpg",
     },
     {
       name: "Juliana Mae Ines",
       role: "UI/UX Developer",
-      github: "https://github.com/LacaoProtatooo",
+      github: "https://github.com/julianamae11",
+      image: "/images/user/inespic.png",
     },
   ];
 
@@ -27,6 +30,42 @@ export default function About() {
     title: "Professor",
     institution: "Technological University of the Philippines",
     image: "/images/user/doc_rico.jpg",
+  };
+
+  // WEBTTODA Officers 2025-2027
+  const webttodaOfficers = [
+    { name: "Richard S. Alegre", position: "President", subtitle: "Chairman of the Board" },
+    { name: "Emmanuel I. Bacomo", position: "Vice President", subtitle: "Co-Chairman Grievance Committee" },
+    { name: "Arnel V. Tonogan", position: "Treasurer", subtitle: "" },
+    { name: "Alberto A. Luchavez", position: "Secretary", subtitle: "" },
+    { name: "Pelagia A. Occiano", position: "Auditor", subtitle: "" },
+  ];
+
+  const webttodaBoardOfDirectors = [
+    { name: "Jayson R. Garcia", position: "Member Grievance Comm." },
+    { name: "Eddie M. Jardinel", position: "Co-Chairman Screening Comm." },
+    { name: "Arnie F. Senorin", position: "Member Screening Comm." },
+    { name: "Alvin A. Mataverde", position: "Member Grievance Comm." },
+    { name: "Martin A. Bajande", position: "Member Screening Comm." },
+    { name: "Rey V. Salvadora", position: "Business Manager" },
+    { name: "Victor S. Sasing", position: "Co-Chairman Environmental Comm." },
+    { name: "Marilyn T. Costin", position: "Member Environmental Comm." },
+    { name: "Anthony Y. Magabilin", position: "Co-Chairman Peace and Order Comm." },
+    { name: "Eduardo C. Darasin", position: "Member Peace and Order Comm." },
+    { name: "Rey B. Bolo", position: "Chief Marshall" },
+  ];
+
+  const webttodaAdviser = {
+    name: "Hon. Ernesto B. Occiano",
+    position: "Adviser",
+    subtitle: "Former WEBTTODA President",
+  };
+
+  const webttodaInfo = {
+    address: "Champaca cor. Balatan Sts., Western Bicutan, Taguig City",
+    secRegNo: "ANO-91-190714",
+    tinNo: "264-035-203-000",
+    contactNumbers: ["09651661097", "09998889532"],
   };
 
   const features = [
@@ -406,19 +445,11 @@ export default function About() {
                 className="rounded-xl border border-gray-200 bg-gray-50 p-6 dark:border-gray-700 dark:bg-gray-800/50 text-center"
               >
                 <div className="w-24 h-24 rounded-full bg-gradient-to-br from-orange-100 to-orange-200 dark:from-orange-900/30 dark:to-orange-800/30 mx-auto mb-4 flex items-center justify-center overflow-hidden border-4 border-orange-200 dark:border-orange-800">
-                  <svg
-                    className="w-12 h-12 text-orange-500"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                  >
-                    <path
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                      strokeWidth={2}
-                      d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z"
-                    />
-                  </svg>
+                  <img
+                    src={dev.image}
+                    alt={dev.name}
+                    className="w-full h-full object-cover"
+                  />
                 </div>
                 <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">
                   {dev.name}
@@ -480,6 +511,144 @@ export default function About() {
               <p className="text-gray-600 dark:text-gray-400 text-sm">
                 {advisor.institution}
               </p>
+            </div>
+          </div>
+        </div>
+
+        {/* WEBTTODA Officers Section */}
+        <div className="rounded-2xl border border-gray-200 bg-white p-6 dark:border-gray-800 dark:bg-white/[0.03] lg:p-8">
+          <div className="text-center mb-8">
+            <h2 className="text-2xl font-bold text-gray-900 dark:text-white mb-2">
+              WEBTTODA Officers & Board of Directors
+            </h2>
+            <p className="text-gray-600 dark:text-gray-400">
+              2025 – 2027
+            </p>
+            <div className="w-16 h-1 bg-orange-500 mx-auto mt-4 rounded-full"></div>
+          </div>
+
+          {/* Officers */}
+          <div className="mb-8">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 text-center">
+              Officers
+            </h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 max-w-4xl mx-auto">
+              {webttodaOfficers.map((officer, index) => (
+                <div
+                  key={index}
+                  className="rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-800/50 text-center"
+                >
+                  <div className="w-12 h-12 rounded-full bg-orange-100 dark:bg-orange-900/30 mx-auto mb-3 flex items-center justify-center">
+                    <svg className="w-6 h-6 text-orange-500" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M16 7a4 4 0 11-8 0 4 4 0 018 0zM12 14a7 7 0 00-7 7h14a7 7 0 00-7-7z" />
+                    </svg>
+                  </div>
+                  <h4 className="font-semibold text-gray-900 dark:text-white text-sm">
+                    {officer.name}
+                  </h4>
+                  <span className="inline-block px-2 py-0.5 text-xs text-white bg-orange-500 rounded-full mt-2">
+                    {officer.position}
+                  </span>
+                  {officer.subtitle && (
+                    <p className="text-gray-500 dark:text-gray-400 text-xs mt-1">
+                      {officer.subtitle}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Board of Directors */}
+          <div className="mb-8">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 text-center">
+              Board of Directors
+            </h3>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 max-w-5xl mx-auto">
+              {webttodaBoardOfDirectors.map((member, index) => (
+                <div
+                  key={index}
+                  className="rounded-lg border border-gray-200 bg-gray-50 p-3 dark:border-gray-700 dark:bg-gray-800/50 text-center"
+                >
+                  <h4 className="font-medium text-gray-900 dark:text-white text-sm">
+                    {member.name}
+                  </h4>
+                  <p className="text-orange-600 dark:text-orange-400 text-xs mt-1">
+                    {member.position}
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Adviser */}
+          <div className="mb-8">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 text-center">
+              Adviser
+            </h3>
+            <div className="max-w-sm mx-auto">
+              <div className="rounded-lg border border-orange-200 bg-orange-50 p-4 dark:border-orange-800 dark:bg-orange-900/20 text-center">
+                <div className="w-14 h-14 rounded-full bg-orange-200 dark:bg-orange-800 mx-auto mb-3 flex items-center justify-center">
+                  <svg className="w-7 h-7 text-orange-600 dark:text-orange-300" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 3v4M3 5h4M6 17v4m-2-2h4m5-16l2.286 6.857L21 12l-5.714 2.143L13 21l-2.286-6.857L5 12l5.714-2.143L13 3z" />
+                  </svg>
+                </div>
+                <h4 className="font-semibold text-gray-900 dark:text-white">
+                  {webttodaAdviser.name}
+                </h4>
+                <span className="inline-block px-3 py-1 text-xs text-white bg-orange-500 rounded-full mt-2">
+                  {webttodaAdviser.position}
+                </span>
+                <p className="text-gray-600 dark:text-gray-400 text-xs mt-2">
+                  {webttodaAdviser.subtitle}
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Contact Information */}
+          <div className="border-t border-gray-200 dark:border-gray-700 pt-6">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4 text-center">
+              Contact Information
+            </h3>
+            <div className="max-w-2xl mx-auto grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
+              <div className="flex items-start gap-3">
+                <svg className="w-5 h-5 text-orange-500 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" />
+                </svg>
+                <div>
+                  <p className="font-medium text-gray-900 dark:text-white">Address</p>
+                  <p className="text-gray-600 dark:text-gray-400">{webttodaInfo.address}</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-3">
+                <svg className="w-5 h-5 text-orange-500 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" />
+                </svg>
+                <div>
+                  <p className="font-medium text-gray-900 dark:text-white">Contact Numbers</p>
+                  <p className="text-gray-600 dark:text-gray-400">{webttodaInfo.contactNumbers.join(" / ")}</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-3">
+                <svg className="w-5 h-5 text-orange-500 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                </svg>
+                <div>
+                  <p className="font-medium text-gray-900 dark:text-white">SEC Registration No.</p>
+                  <p className="text-gray-600 dark:text-gray-400">{webttodaInfo.secRegNo}</p>
+                </div>
+              </div>
+              <div className="flex items-start gap-3">
+                <svg className="w-5 h-5 text-orange-500 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M7 7h.01M7 3h5c.512 0 1.024.195 1.414.586l7 7a2 2 0 010 2.828l-7 7a2 2 0 01-2.828 0l-7-7A1.994 1.994 0 013 12V7a4 4 0 014-4z" />
+                </svg>
+                <div>
+                  <p className="font-medium text-gray-900 dark:text-white">TIN No.</p>
+                  <p className="text-gray-600 dark:text-gray-400">{webttodaInfo.tinNo}</p>
+                </div>
+              </div>
             </div>
           </div>
         </div>

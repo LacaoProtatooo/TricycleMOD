@@ -178,80 +178,221 @@ function PhoneMockup({ activeScreen = 0 }) {
 
 /* ─── QR PANEL ─── */
 function QRPanel() {
-  const [scanning, setScanning] = useState(false);
+  const [expanded, setExpanded] = useState(false);
 
   return (
-    <div style={{
-      background: "var(--warm-white)",
-      border: "1px solid var(--sand)",
-      borderRadius: 20,
-      padding: 28,
-      width: 200,
-      display: "flex",
-      flexDirection: "column",
-      alignItems: "center",
-      gap: 14,
-      boxShadow: "0 20px 60px rgba(0,0,0,0.08)",
-    }}>
-      <p style={{ fontFamily: "var(--sans)", fontSize: 8, letterSpacing: "0.3em", textTransform: "uppercase", color: "var(--ash)" }}>
-        Scan to View App
-      </p>
-
-      {/* QR wrapper */}
-      <div
-        style={{ position: "relative", cursor: "pointer", padding: 8, background: "#fff", borderRadius: 12, boxShadow: "0 4px 16px rgba(0,0,0,0.06)" }}
-        onMouseEnter={() => setScanning(true)}
-        onMouseLeave={() => setScanning(false)}
-      >
-        <QRCode size={120} />
-
-        {/* Scan line animation */}
-        {scanning && (
-          <div style={{
-            position: "absolute", left: 8, right: 8, top: "10%",
-            height: 2,
-            background: "linear-gradient(90deg, transparent, var(--clay), transparent)",
-            animation: "scanLine 1.2s linear infinite",
-            borderRadius: 1,
-          }} />
-        )}
-
-        {/* Corner brackets */}
-        {[{top:4,left:4},{top:4,right:4},{bottom:4,left:4},{bottom:4,right:4}].map((pos,i) => (
-          <div key={i} style={{
-            position: "absolute", ...pos,
-            width: 14, height: 14,
-            borderTop: i < 2 ? `2px solid var(--clay)` : "none",
-            borderBottom: i >= 2 ? `2px solid var(--clay)` : "none",
-            borderLeft: (i === 0 || i === 2) ? `2px solid var(--clay)` : "none",
-            borderRight: (i === 1 || i === 3) ? `2px solid var(--clay)` : "none",
-          }} />
-        ))}
-      </div>
-
-      <p style={{ fontFamily: "var(--sans)", fontSize: 7.5, letterSpacing: "0.1em", color: "var(--fog)", textAlign: "center", lineHeight: 1.6 }}>
-        WEBT-TRaC Digital App<br />2026
-      </p>
-
-      {/* Store badges */}
-      <div style={{ display: "flex", gap: 8 }}>
-        {["WEBT-TRaC", "Learn More"].map((label, i) => (
-          <div key={i} style={{
-            padding: "5px 10px",
-            background: "var(--ink)",
-            borderRadius: 6,
-            fontFamily: "var(--sans)",
-            fontSize: 7,
-            letterSpacing: "0.1em",
-            color: "var(--warm-white)",
+    <>
+      {/* Backdrop overlay when expanded */}
+      {expanded && (
+        <div 
+          style={{
+            position: "fixed",
+            top: 0,
+            left: 0,
+            right: 0,
+            bottom: 0,
+            background: "rgba(0,0,0,0.8)",
+            zIndex: 999,
+            animation: "fadeIn 0.3s ease forwards",
             cursor: "pointer",
-            whiteSpace: "nowrap",
+          }}
+          onClick={() => setExpanded(false)}
+        />
+      )}
+      
+      {/* Expanded QR modal */}
+      {expanded && (
+        <div 
+          style={{
+            position: "fixed",
+            top: "50%",
+            left: "50%",
+            transform: "translate(-50%, -50%)",
+            zIndex: 1000,
+            background: "var(--warm-white)",
+            borderRadius: 24,
+            padding: 40,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: 20,
+            boxShadow: "0 40px 100px rgba(0,0,0,0.3)",
+            animation: "fadeIn 0.3s ease forwards",
+          }}
+        >
+          <p style={{ 
+            fontFamily: "var(--sans)", 
+            fontSize: 14, 
+            letterSpacing: "0.3em", 
+            textTransform: "uppercase", 
+            color: "var(--clay)",
+            fontWeight: 500,
           }}>
-            {label}
+            Scan to Download App
+          </p>
+          
+          <div style={{ 
+            position: "relative", 
+            padding: 20, 
+            background: "#fff", 
+            borderRadius: 16, 
+            boxShadow: "0 10px 40px rgba(0,0,0,0.1)",
+          }}>
+            <img
+              src="/images/logo/qr-code.png"
+              alt="WEBT-TRaC QR"
+              style={{ 
+                display: "block", 
+                width: 350, 
+                height: 350, 
+                objectFit: "contain",
+              }}
+            />
+            
+            {/* Scan line animation */}
+            <div style={{
+              position: "absolute", left: 20, right: 20, top: "10%",
+              height: 3,
+              background: "linear-gradient(90deg, transparent, var(--clay), transparent)",
+              animation: "scanLine 1.2s linear infinite",
+              borderRadius: 1,
+            }} />
+
+            {/* Corner brackets */}
+            {[{top:8,left:8},{top:8,right:8},{bottom:8,left:8},{bottom:8,right:8}].map((pos,i) => (
+              <div key={i} style={{
+                position: "absolute", ...pos,
+                width: 28, 
+                height: 28,
+                borderTop: i < 2 ? `3px solid var(--clay)` : "none",
+                borderBottom: i >= 2 ? `3px solid var(--clay)` : "none",
+                borderLeft: (i === 0 || i === 2) ? `3px solid var(--clay)` : "none",
+                borderRight: (i === 1 || i === 3) ? `3px solid var(--clay)` : "none",
+              }} />
+            ))}
           </div>
-        ))}
+          
+          <p style={{ 
+            fontFamily: "var(--sans)", 
+            fontSize: 12, 
+            letterSpacing: "0.1em", 
+            color: "var(--ash)", 
+            textAlign: "center", 
+          }}>
+            Point your camera at the QR code
+          </p>
+          
+          <button
+            onClick={() => setExpanded(false)}
+            style={{
+              padding: "12px 32px",
+              background: "var(--ink)",
+              color: "var(--warm-white)",
+              fontFamily: "var(--sans)",
+              fontSize: 11,
+              letterSpacing: "0.2em",
+              textTransform: "uppercase",
+              border: "none",
+              borderRadius: 8,
+              cursor: "pointer",
+              transition: "background 0.3s",
+            }}
+            onMouseEnter={e => e.target.style.background = "var(--clay)"}
+            onMouseLeave={e => e.target.style.background = "var(--ink)"}
+          >
+            Close
+          </button>
+        </div>
+      )}
+
+      {/* Normal small panel */}
+      <div 
+        style={{
+          background: "var(--warm-white)",
+          border: "1px solid var(--sand)",
+          borderRadius: 20,
+          padding: 28,
+          width: 200,
+          display: "flex",
+          flexDirection: "column",
+          alignItems: "center",
+          gap: 14,
+          boxShadow: "0 20px 60px rgba(0,0,0,0.08)",
+          cursor: "pointer",
+          transition: "transform 0.2s ease, box-shadow 0.2s ease",
+        }}
+        onClick={() => setExpanded(true)}
+        onMouseEnter={e => {
+          e.currentTarget.style.transform = "scale(1.02)";
+          e.currentTarget.style.boxShadow = "0 25px 70px rgba(0,0,0,0.12)";
+        }}
+        onMouseLeave={e => {
+          e.currentTarget.style.transform = "scale(1)";
+          e.currentTarget.style.boxShadow = "0 20px 60px rgba(0,0,0,0.08)";
+        }}
+      >
+        <p style={{ fontFamily: "var(--sans)", fontSize: 8, letterSpacing: "0.3em", textTransform: "uppercase", color: "var(--ash)" }}>
+          Tap to Scan
+        </p>
+
+        {/* QR wrapper */}
+        <div
+          style={{ 
+            position: "relative", 
+            padding: 8, 
+            background: "#fff", 
+            borderRadius: 12, 
+            boxShadow: "0 4px 16px rgba(0,0,0,0.06)",
+          }}
+        >
+          <img
+            src="/images/logo/qr-code.png"
+            alt="WEBT-TRaC QR"
+            style={{ 
+              display: "block", 
+              width: 120, 
+              height: 120, 
+              objectFit: "contain",
+            }}
+          />
+
+          {/* Corner brackets */}
+          {[{top:4,left:4},{top:4,right:4},{bottom:4,left:4},{bottom:4,right:4}].map((pos,i) => (
+            <div key={i} style={{
+              position: "absolute", ...pos,
+              width: 14, 
+              height: 14,
+              borderTop: i < 2 ? `2px solid var(--clay)` : "none",
+              borderBottom: i >= 2 ? `2px solid var(--clay)` : "none",
+              borderLeft: (i === 0 || i === 2) ? `2px solid var(--clay)` : "none",
+              borderRight: (i === 1 || i === 3) ? `2px solid var(--clay)` : "none",
+            }} />
+          ))}
+        </div>
+
+        <p style={{ fontFamily: "var(--sans)", fontSize: 7.5, letterSpacing: "0.1em", color: "var(--fog)", textAlign: "center", lineHeight: 1.6 }}>
+          WEBT-TRaC Digital App<br />2026
+        </p>
+
+        {/* Store badges */}
+        <div style={{ display: "flex", gap: 8 }}>
+          {["WEBT-TRaC", "Learn More"].map((label, i) => (
+            <div key={i} style={{
+              padding: "5px 10px",
+              background: "var(--ink)",
+              borderRadius: 6,
+              fontFamily: "var(--sans)",
+              fontSize: 7,
+              letterSpacing: "0.1em",
+              color: "var(--warm-white)",
+              whiteSpace: "nowrap",
+            }}>
+              {label}
+            </div>
+          ))}
+        </div>
       </div>
-    </div>
+    </>
   );
 }
 
@@ -459,7 +600,7 @@ function Nav({ activeSection }) {
             e.currentTarget.style.transform = "translateY(0)";
           }}
         >
-          Admin Portal
+          Portal
         </Link>
       </div>
     </nav>
