@@ -246,6 +246,13 @@ const bookingSchema = new mongoose.Schema({
     default: false,
   },
   
+  // Driver's current live location (updated during active trips)
+  driverCurrentLocation: {
+    latitude: { type: Number, default: null },
+    longitude: { type: Number, default: null },
+    updatedAt: { type: Date, default: null },
+  },
+
   // Location at completion (for verification)
   completionLocation: {
     type: locationSchema,

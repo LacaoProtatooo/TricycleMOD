@@ -113,6 +113,8 @@ const DriverBookingScreen = ({ navigation }) => {
   const activeRouteRef = useRef([]);
   const lastRerouteTimeRef = useRef(0);
   const isReroutingRef = useRef(false);
+  // Ref for throttling driver location broadcasts to the server
+  const lastLocationBroadcastRef = useRef(0);
 
   // UI state
   const [viewMode, setViewMode] = useState(VIEW_MODE.LIST);
@@ -449,6 +451,19 @@ const DriverBookingScreen = ({ navigation }) => {
           const { latitude, longitude } = location.coords;
           const newLocation = { latitude, longitude };
           setUserLocation(newLocation);
+
+          // Broadcast driver location to server for passenger tracking (throttle to every 5s)
+          if (activeBooking && authToken) {
+            const now = Date.now();
+            if (now - lastLocationBroadcastRef.current >= 5000) {
+              lastLocationBroadcastRef.current = now;
+              axios.put(
+                `${API_URL}/${activeBooking._id}/driver-location`,
+                { latitude, longitude },
+                { headers: { Authorization: `Bearer ${authToken}` } }
+              ).catch(() => {}); // fire-and-forget, don't block UI
+            }
+          }
 
           // Update distances if active booking
           if (activeBooking) {
@@ -1263,6 +1278,19 @@ const DriverBookingScreen = ({ navigation }) => {
     };
     simCoordsBufferRef.current.push(simCoord);
     broadcastSimPosition(currentPoint, route, index);
+
+    // Push simulated position to server so guest/passenger can track it
+    if (activeBooking?._id && authToken) {
+      const now = Date.now();
+      if (now - lastLocationBroadcastRef.current >= 3000) {
+        lastLocationBroadcastRef.current = now;
+        axios.put(
+          `${API_URL}/${activeBooking._id}/driver-location`,
+          { latitude: currentPoint.latitude, longitude: currentPoint.longitude },
+          { headers: { Authorization: `Bearer ${authToken}` } }
+        ).catch(() => {});
+      }
+    }
     
     // Schedule next step
     simulationIndexRef.current = index + 1;
@@ -1270,7 +1298,7 @@ const DriverBookingScreen = ({ navigation }) => {
     const delay = baseDelay / simulationSpeedRef.current;
     
     simulationRef.current = setTimeout(runSimulationStep, delay);
-  }, [activeBooking, broadcastSimPosition]);
+  }, [activeBooking, authToken, broadcastSimPosition]);
 
   // Update odometer during simulation
   const updateSimulatedOdometer = async (distanceMeters) => {
@@ -1979,26 +2007,29 @@ const DriverBookingScreen = ({ navigation }) => {
                     : `Get within ${PICKUP_RADIUS_METERS}m of passenger (currently ${formatDistance(distanceToPickup)} away)`
                 }
               </Text>
-              {/* Test Bypass - For Development Only */}
-              {__DEV__ && distanceToPickup !== null && distanceToPickup > PICKUP_RADIUS_METERS && (
+              {/* Override Pickup - for cases where passenger pinned wrong location */}
+              {distanceToPickup !== null && distanceToPickup > PICKUP_RADIUS_METERS && (
                 <TouchableOpacity 
-                  style={styles.testBypassBtn}
+                  style={styles.overridePickupBtn}
                   onPress={() => {
                     Alert.alert(
-                      '🧪 Test Bypass',
-                      'Skip location requirement and start trip? (Testing only)',
+                      '⚠️ Override Pickup Location',
+                      `You are ${formatDistance(distanceToPickup)} away from the pinned pickup location. `
+                      + 'This may happen if the passenger pinned an incorrect address.\n\n'
+                      + 'Only proceed if the passenger is physically present with you.',
                       [
                         { text: 'Cancel', style: 'cancel' },
                         { 
-                          text: 'Bypass & Start Trip',
+                          text: 'Passenger Is With Me',
+                          style: 'destructive',
                           onPress: handleConfirmPickup
                         }
                       ]
                     );
                   }}
                 >
-                  <Ionicons name="flask" size={16} color="#fff" />
-                  <Text style={styles.testBypassBtnText}>🧪 Bypass for Testing</Text>
+                  <Ionicons name="warning-outline" size={16} color="#fff" />
+                  <Text style={styles.overridePickupBtnText}>Passenger pinned wrong location?</Text>
                 </TouchableOpacity>
               )}
             </>
@@ -3515,21 +3546,20 @@ const styles = StyleSheet.create({
     fontSize: 14,
     marginLeft: 8,
   },
-  testBypassBtn: {
+  overridePickupBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#6f42c1',
+    backgroundColor: '#e67e22',
     paddingVertical: 10,
     paddingHorizontal: 16,
     borderRadius: 8,
     marginTop: 8,
-    opacity: 0.8,
   },
-  testBypassBtnText: {
+  overridePickupBtnText: {
     color: '#fff',
-    fontWeight: '500',
-    fontSize: 12,
+    fontWeight: '600',
+    fontSize: 13,
     marginLeft: 6,
   },
 

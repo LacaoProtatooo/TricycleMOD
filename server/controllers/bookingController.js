@@ -1818,3 +1818,78 @@ export const getDriverPendingOffers = async (req, res) => {
   }
 };
 
+/**
+ * Update driver's current location during an active trip
+ * PUT /api/booking/:id/driver-location
+ */
+export const updateDriverLocation = async (req, res) => {
+  try {
+    const driverId = req.user._id;
+    const { latitude, longitude } = req.body;
+
+    if (latitude == null || longitude == null) {
+      return res.status(400).json({ success: false, message: 'latitude and longitude are required' });
+    }
+
+    const booking = await Booking.findById(req.params.id);
+    if (!booking) {
+      return res.status(404).json({ success: false, message: 'Booking not found' });
+    }
+
+    if (!booking.driver || booking.driver.toString() !== driverId.toString()) {
+      return res.status(403).json({ success: false, message: 'Not authorized' });
+    }
+
+    if (!['accepted', 'in_progress'].includes(booking.status)) {
+      return res.status(400).json({ success: false, message: 'Trip is not active' });
+    }
+
+    booking.driverCurrentLocation = {
+      latitude,
+      longitude,
+      updatedAt: new Date(),
+    };
+    await booking.save();
+
+    res.status(200).json({ success: true });
+  } catch (error) {
+    console.error('Error updating driver location:', error);
+    res.status(500).json({ success: false, message: 'Failed to update location' });
+  }
+};
+
+/**
+ * Get driver's current location for an active booking (passenger polls this)
+ * GET /api/booking/:id/driver-location
+ */
+export const getDriverLocation = async (req, res) => {
+  try {
+    const userId = req.user._id;
+    const booking = await Booking.findById(req.params.id).select('user driver status driverCurrentLocation');
+
+    if (!booking) {
+      return res.status(404).json({ success: false, message: 'Booking not found' });
+    }
+
+    // Only the passenger or the driver can query this
+    const isParticipant =
+      booking.user.toString() === userId.toString() ||
+      (booking.driver && booking.driver.toString() === userId.toString());
+    if (!isParticipant) {
+      return res.status(403).json({ success: false, message: 'Not authorized' });
+    }
+
+    if (!['accepted', 'in_progress'].includes(booking.status)) {
+      return res.status(400).json({ success: false, message: 'Trip is not active' });
+    }
+
+    res.status(200).json({
+      success: true,
+      driverLocation: booking.driverCurrentLocation || null,
+    });
+  } catch (error) {
+    console.error('Error fetching driver location:', error);
+    res.status(500).json({ success: false, message: 'Failed to fetch driver location' });
+  }
+};
+

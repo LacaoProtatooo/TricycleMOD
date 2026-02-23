@@ -162,6 +162,13 @@ export default function TrackingMap({ follow = true, onEnterTerminalZone, odomet
   const lastSyncedIndexRef = useRef(0); // Track which coords have been synced to server
   const isRecordingRef = useRef(false); // Ref mirror of isRecording to avoid stale closures
 
+  // Throttle refs to prevent excessive re-renders and AsyncStorage writes
+  const lastRecordedStateUpdateRef = useRef(0); // last time we pushed recordedPositions to state
+  const lastLocalStorageWriteRef = useRef(0);   // last time we wrote to AsyncStorage
+  const pendingStorageWriteRef = useRef(null);   // pending setTimeout id for deferred storage write
+  const RECORDED_STATE_THROTTLE_MS = 3000; // update UI every 3s instead of every GPS tick
+  const LOCAL_STORAGE_THROTTLE_MS = 10000; // write to AsyncStorage every 10s instead of every GPS tick
+
   // Trip history state
   const [showHistory, setShowHistory] = useState(false);
   const [tripHistory, setTripHistory] = useState([]);
@@ -480,7 +487,9 @@ export default function TrackingMap({ follow = true, onEnterTerminalZone, odomet
               // Skip teleportation jumps (GPS glitch drawing lines far away)
               if (jumpDist > 500) return p;
             }
-            const next = [...p, newPoint].slice(-5000);
+            // Cap stored positions at 2000 to prevent memory bloat
+            const next = [...p, newPoint];
+            if (next.length > 2000) return next.slice(-2000);
             return next;
           });
 
@@ -549,14 +558,19 @@ export default function TrackingMap({ follow = true, onEnterTerminalZone, odomet
                 distanceRef.current += meters;
                 setTripDistance(distanceRef.current);
                 recordedPosRef.current.push(newCoord);
-                setRecordedPositions([...recordedPosRef.current]);
+                // Throttle state update to prevent excessive re-renders & OOM
+                const now = Date.now();
+                if (now - lastRecordedStateUpdateRef.current >= RECORDED_STATE_THROTTLE_MS) {
+                  lastRecordedStateUpdateRef.current = now;
+                  setRecordedPositions([...recordedPosRef.current]);
+                }
                 updateLocalStorage();
               }
             } else {
               // First point — only record if accuracy is reasonable
               recordedPosRef.current.push(newCoord);
               setRecordedPositions([...recordedPosRef.current]);
-              updateLocalStorage();
+              updateLocalStorage(true); // force write for first point
             }
           }
 
@@ -653,7 +667,19 @@ export default function TrackingMap({ follow = true, onEnterTerminalZone, odomet
 
   // ============== TRIP RECORDING ==============
 
-  const updateLocalStorage = async () => {
+  const updateLocalStorage = async (force = false) => {
+    const now = Date.now();
+    if (!force && now - lastLocalStorageWriteRef.current < LOCAL_STORAGE_THROTTLE_MS) {
+      // Schedule a deferred write if one isn't already pending
+      if (!pendingStorageWriteRef.current) {
+        pendingStorageWriteRef.current = setTimeout(() => {
+          pendingStorageWriteRef.current = null;
+          updateLocalStorage(true);
+        }, LOCAL_STORAGE_THROTTLE_MS);
+      }
+      return;
+    }
+    lastLocalStorageWriteRef.current = now;
     try {
       if (activeTripIdRef.current) {
         await AsyncStorage.setItem(ACTIVE_TRIP_KEY, JSON.stringify({
@@ -766,33 +792,9 @@ export default function TrackingMap({ follow = true, onEnterTerminalZone, odomet
       // Start sync interval
       syncIntervalRef.current = setInterval(syncToServer, SYNC_INTERVAL_MS);
 
-      // Clear any stale background coordinates and ensure background tracking is ready
+      // Clear any stale background coordinates (bg tracking starts when app goes to background)
       await AsyncStorage.setItem(BG_COORDS_KEY, '[]');
       await AsyncStorage.setItem(BG_DISTANCE_KEY, '0');
-      
-      // Auto-start background tracking so recording survives screen-off
-      try {
-        const bgPermission = await Location.requestBackgroundPermissionsAsync();
-        if (bgPermission.status === 'granted') {
-          const isRegistered = await TaskManager.isTaskRegisteredAsync(BG_TASK_NAME);
-          if (!isRegistered) {
-            await Location.startLocationUpdatesAsync(BG_TASK_NAME, {
-              accuracy: Location.Accuracy.BestForNavigation,
-              timeInterval: 2000,
-              distanceInterval: 1,
-              foregroundService: {
-                notificationTitle: 'Trip Recording Active',
-                notificationBody: 'Your trip is being recorded',
-                notificationColor: '#FF0000',
-              },
-              pausesUpdatesAutomatically: false,
-              activityType: Location.ActivityType.AutomotiveNavigation,
-            });
-          }
-        }
-      } catch (bgErr) {
-        console.warn('Could not start background tracking:', bgErr);
-      }
 
       Alert.alert('Recording Started', 'Your trip is being recorded');
     } catch (error) {
@@ -941,33 +943,9 @@ export default function TrackingMap({ follow = true, onEnterTerminalZone, odomet
       // Start sync interval
       syncIntervalRef.current = setInterval(syncToServer, SYNC_INTERVAL_MS);
 
-      // Clear any stale background coordinates and ensure background tracking is ready
+      // Clear any stale background coordinates (bg tracking starts when app goes to background)
       await AsyncStorage.setItem(BG_COORDS_KEY, '[]');
       await AsyncStorage.setItem(BG_DISTANCE_KEY, '0');
-
-      // Auto-start background tracking so recording survives screen-off
-      try {
-        const bgPermission = await Location.requestBackgroundPermissionsAsync();
-        if (bgPermission.status === 'granted') {
-          const isRegistered = await TaskManager.isTaskRegisteredAsync(BG_TASK_NAME);
-          if (!isRegistered) {
-            await Location.startLocationUpdatesAsync(BG_TASK_NAME, {
-              accuracy: Location.Accuracy.BestForNavigation,
-              timeInterval: 2000,
-              distanceInterval: 1,
-              foregroundService: {
-                notificationTitle: 'Trip Recording Active',
-                notificationBody: 'Your trip is being recorded',
-                notificationColor: '#FF0000',
-              },
-              pausesUpdatesAutomatically: false,
-              activityType: Location.ActivityType.AutomotiveNavigation,
-            });
-          }
-        }
-      } catch (bgErr) {
-        console.warn('Could not start background tracking for booking:', bgErr);
-      }
 
       console.log('Auto-started recording from booking:', tripId);
     } catch (error) {
@@ -1040,6 +1018,11 @@ export default function TrackingMap({ follow = true, onEnterTerminalZone, odomet
       if (syncIntervalRef.current) {
         clearInterval(syncIntervalRef.current);
         syncIntervalRef.current = null;
+      }
+      // Clear any pending throttled storage write
+      if (pendingStorageWriteRef.current) {
+        clearTimeout(pendingStorageWriteRef.current);
+        pendingStorageWriteRef.current = null;
       }
 
       const tripId = activeTripIdRef.current;
@@ -1158,6 +1141,11 @@ export default function TrackingMap({ follow = true, onEnterTerminalZone, odomet
       if (syncIntervalRef.current) {
         clearInterval(syncIntervalRef.current);
         syncIntervalRef.current = null;
+      }
+      // Clear any pending throttled storage write
+      if (pendingStorageWriteRef.current) {
+        clearTimeout(pendingStorageWriteRef.current);
+        pendingStorageWriteRef.current = null;
       }
 
       // Cancel on server

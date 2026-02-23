@@ -20,6 +20,8 @@ import {
   getBookingOffers,
   withdrawOffer,
   getDriverPendingOffers,
+  updateDriverLocation,
+  getDriverLocation,
 } from '../controllers/bookingController.js';
 import { protect, authorize, requireVerified } from '../middleware/authMiddleware.js';
 
@@ -51,6 +53,10 @@ router.get('/driver/pending-offers', protect, authorize('driver'), getDriverPend
 router.post('/:id/driver-respond', protect, authorize('driver'), driverRespondToBooking);
 router.post('/:id/withdraw-offer', protect, authorize('driver'), withdrawOffer);  // Withdraw driver's offer
 router.post('/:id/start-trip', protect, authorize('driver'), startTrip);
+router.put('/:id/driver-location', protect, authorize('driver'), updateDriverLocation);
+
+// Driver location for passenger to track
+router.get('/:id/driver-location', protect, getDriverLocation);
 
 // Shared routes (user or driver)
 router.get('/:id', protect, getBookingDetails);

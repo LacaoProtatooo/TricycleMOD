@@ -168,8 +168,10 @@ const BookingScreen = ({ navigation }) => {
   
   // Trip tracking
   const [distanceToDestination, setDistanceToDestination] = useState(null);
+  const [driverLocation, setDriverLocation] = useState(null);
   const watchRef = useRef(null);
   const pollingRef = useRef(null);
+  const driverLocationPollRef = useRef(null);
   
   // Route calculation state
   const [routeCoordinates, setRouteCoordinates] = useState([]);
@@ -224,6 +226,9 @@ const BookingScreen = ({ navigation }) => {
       }
       if (pollingRef.current) {
         clearInterval(pollingRef.current);
+      }
+      if (driverLocationPollRef.current) {
+        clearInterval(driverLocationPollRef.current);
       }
     };
   }, [db, user, isAuthenticated]);
@@ -328,6 +333,49 @@ const BookingScreen = ({ navigation }) => {
       appStateSubscription.remove();
     };
   }, [bookingStatus, db, user, dispatch]);
+
+  // Poll driver's live location during active trip
+  useEffect(() => {
+    const isActive = bookingStatus === BOOKING_STATUS.TRIP_ACTIVE && currentBooking?._id;
+
+    if (isActive && db) {
+      const pollDriverLocation = async () => {
+        try {
+          const token = await getToken(db);
+          if (!token) return;
+          const res = await axios.get(
+            `${API_URL}/${currentBooking._id}/driver-location`,
+            { headers: { Authorization: `Bearer ${token}` } }
+          );
+          if (res.data.success && res.data.driverLocation) {
+            const loc = res.data.driverLocation;
+            if (loc.latitude != null && loc.longitude != null) {
+              setDriverLocation({ latitude: loc.latitude, longitude: loc.longitude });
+            }
+          }
+        } catch (e) {
+          // silently ignore — driver may not have pushed yet
+        }
+      };
+
+      // Fetch immediately, then every 5 seconds
+      pollDriverLocation();
+      driverLocationPollRef.current = setInterval(pollDriverLocation, 5000);
+    } else {
+      if (driverLocationPollRef.current) {
+        clearInterval(driverLocationPollRef.current);
+        driverLocationPollRef.current = null;
+      }
+      if (!isActive) setDriverLocation(null);
+    }
+
+    return () => {
+      if (driverLocationPollRef.current) {
+        clearInterval(driverLocationPollRef.current);
+        driverLocationPollRef.current = null;
+      }
+    };
+  }, [bookingStatus, currentBooking?._id, db]);
 
   // Handle errors
   useEffect(() => {
@@ -928,6 +976,7 @@ const BookingScreen = ({ navigation }) => {
     setSelectedRating(0);
     setRatingComment('');
     setDistanceToDestination(null);
+    setDriverLocation(null);
     setCancellationDetails(null);
     setReportReason('');
     setDisputeReason('');
@@ -1433,6 +1482,20 @@ const BookingScreen = ({ navigation }) => {
             strokeColor="rgba(40,167,69,0.6)"
             fillColor="rgba(40,167,69,0.15)"
           />
+        )}
+
+        {/* Driver live location marker */}
+        {driverLocation && bookingStatus === BOOKING_STATUS.TRIP_ACTIVE && (
+          <Marker
+            coordinate={driverLocation}
+            title="Driver"
+            description="Your driver's current location"
+            anchor={{ x: 0.5, y: 0.5 }}
+          >
+            <View style={styles.driverMarker}>
+              <Ionicons name="bicycle" size={20} color="#fff" />
+            </View>
+          </Marker>
         )}
       </MapView>
       ) : (
@@ -2836,6 +2899,17 @@ const styles = StyleSheet.create({
   destinationMarkerWarning: {
     backgroundColor: '#dc3545',
     borderColor: '#fff3cd',
+  },
+  driverMarker: {
+    backgroundColor: '#007bff',
+    padding: 10,
+    borderRadius: 25,
+    borderWidth: 3,
+    borderColor: '#fff',
+    shadowColor: '#000',
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 6,
   },
 
   // Bottom Panel
