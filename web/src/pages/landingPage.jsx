@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
+import { Link } from 'react-router-dom';
 import { ShieldCheck, ListFilter, BarChart3, Wrench, QrCode, Megaphone } from 'lucide-react';
 
 /* ─── GOOGLE FONTS INJECTION ─── */
@@ -411,28 +412,56 @@ function Nav({ activeSection }) {
           WEBT-TRaC
         </span>
       </a>
-      <ul style={{ listStyle: "none", display: "flex", gap: "3rem" }}>
-        {links.map((link, i) => (
-          <li key={link}>
-            <a
-              href={`#${ids[i]}`}
-              style={{
-                fontFamily: "var(--sans)",
-                fontSize: "0.7rem",
-                letterSpacing: "0.2em",
-                textTransform: "uppercase",
-                color: activeSection === ids[i] ? "var(--clay)" : "var(--ash)",
-                textDecoration: "none",
-                transition: "color 0.3s",
-                paddingBottom: "3px",
-                borderBottom: activeSection === ids[i] ? "1px solid var(--clay)" : "1px solid transparent",
-              }}
-            >
-              {link}
-            </a>
-          </li>
-        ))}
-      </ul>
+      <div style={{ display: "flex", alignItems: "center", gap: "3rem" }}>
+        <ul style={{ listStyle: "none", display: "flex", gap: "3rem", margin: 0 }}>
+          {links.map((link, i) => (
+            <li key={link}>
+              <a
+                href={`#${ids[i]}`}
+                style={{
+                  fontFamily: "var(--sans)",
+                  fontSize: "0.7rem",
+                  letterSpacing: "0.2em",
+                  textTransform: "uppercase",
+                  color: activeSection === ids[i] ? "var(--clay)" : "var(--ash)",
+                  textDecoration: "none",
+                  transition: "color 0.3s",
+                  paddingBottom: "3px",
+                  borderBottom: activeSection === ids[i] ? "1px solid var(--clay)" : "1px solid transparent",
+                }}
+              >
+                {link}
+              </a>
+            </li>
+          ))}
+        </ul>
+        <Link
+          to="/signin"
+          style={{
+            fontFamily: "var(--sans)",
+            fontSize: "0.7rem",
+            letterSpacing: "0.15em",
+            textTransform: "uppercase",
+            color: "var(--warm-white)",
+            backgroundColor: "var(--clay)",
+            padding: "0.6rem 1.4rem",
+            borderRadius: "4px",
+            textDecoration: "none",
+            transition: "background-color 0.3s, transform 0.2s",
+            fontWeight: 400,
+          }}
+          onMouseOver={(e) => {
+            e.currentTarget.style.backgroundColor = "#a06f48";
+            e.currentTarget.style.transform = "translateY(-1px)";
+          }}
+          onMouseOut={(e) => {
+            e.currentTarget.style.backgroundColor = "var(--clay)";
+            e.currentTarget.style.transform = "translateY(0)";
+          }}
+        >
+          Admin Portal
+        </Link>
+      </div>
     </nav>
   );
 }

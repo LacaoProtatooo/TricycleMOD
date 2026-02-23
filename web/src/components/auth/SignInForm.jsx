@@ -11,7 +11,7 @@ export default function SignInForm() {
   const location = useLocation();
 
   // Get redirect path from location state or default to dashboard
-  const from = location.state?.from?.pathname || "/";
+  const from = location.state?.from?.pathname || "/dashboard";
 
   const handleGoogleSignIn = async () => {
     setFormError("");

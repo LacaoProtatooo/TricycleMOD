@@ -27,32 +27,32 @@ const navItems = [
   {
     icon: <GridIcon />,
     name: "Dashboard",
-    path: "/",
+    path: "/dashboard",
   },
   {
     icon: <BoltIcon />,
     name: "Announcements",
-    path: "/announcements",
+    path: "/dashboard/announcements",
   },
   {
     icon: <GroupIcon />,
     name: "Users",
-    path: "/users",
+    path: "/dashboard/users",
   },
   {
     icon: <UserCircleIcon />,
     name: "Drivers",
-    path: "/drivers",
+    path: "/dashboard/drivers",
   },
   {
     icon: <BoxCubeIcon />,
     name: "Operators",
-    path: "/operators",
+    path: "/dashboard/operators",
   },
   {
     icon: <TaskIcon />,
     name: "Bookings",
-    path: "/bookings",
+    path: "/dashboard/bookings",
   },
   {
     icon: (
@@ -62,17 +62,17 @@ const navItems = [
       </svg>
     ),
     name: "Live Tracking",
-    path: "/live-tracking",
+    path: "/dashboard/live-tracking",
   },
   {
     icon: <AlertIcon />,
     name: "Notifications",
-    path: "/notifications",
+    path: "/dashboard/notifications",
   },
   {
     icon: <FolderIcon />,
     name: "Lost & Found",
-    path: "/lost-found",
+    path: "/dashboard/lost-found",
   },
   {
     icon: (
@@ -81,7 +81,7 @@ const navItems = [
       </svg>
     ),
     name: "Complaints",
-    path: "/complaints",
+    path: "/dashboard/complaints",
   },
   {
     icon: (
@@ -90,12 +90,12 @@ const navItems = [
       </svg>
     ),
     name: "Violations",
-    path: "/violations",
+    path: "/dashboard/violations",
   },
   {
     icon: <PieChartIcon />,
     name: "Leaderboard",
-    path: "/leaderboard",
+    path: "/dashboard/leaderboard",
   },
   {
     icon: (
@@ -104,7 +104,7 @@ const navItems = [
       </svg>
     ),
     name: "Tricycle Coding",
-    path: "/coding",
+    path: "/dashboard/coding",
   },
   {
     icon: (
@@ -113,14 +113,14 @@ const navItems = [
       </svg>
     ),
     name: "Rules & Regulations",
-    path: "/rules-regulations",
+    path: "/dashboard/rules-regulations",
   },
   {
     icon: <ListIcon />,
     name: "Admin Logs",
-    path: "/admin-logs",
+    path: "/dashboard/admin-logs",
   },
-  { name: "About", path: "/about", icon: <PageIcon /> },
+  { name: "About", path: "/dashboard/about", icon: <PageIcon /> },
   // {
   //   name: "Forms",
   //   icon: <ListIcon />,
@@ -144,20 +144,20 @@ const othersItems = [
     icon: <PieChartIcon />,
     name: "Charts",
     subItems: [
-      { name: "Line Chart", path: "/line-chart", pro: false },
-      { name: "Bar Chart", path: "/bar-chart", pro: false },
+      { name: "Line Chart", path: "/dashboard/line-chart", pro: false },
+      { name: "Bar Chart", path: "/dashboard/bar-chart", pro: false },
     ],
   },
   {
     icon: <BoxCubeIcon />,
     name: "UI Elements",
     subItems: [
-      { name: "Alerts", path: "/alerts", pro: false },
-      { name: "Avatar", path: "/avatars", pro: false },
-      { name: "Badge", path: "/badge", pro: false },
-      { name: "Buttons", path: "/buttons", pro: false },
-      { name: "Images", path: "/images", pro: false },
-      { name: "Videos", path: "/videos", pro: false },
+      { name: "Alerts", path: "/dashboard/alerts", pro: false },
+      { name: "Avatar", path: "/dashboard/avatars", pro: false },
+      { name: "Badge", path: "/dashboard/badge", pro: false },
+      { name: "Buttons", path: "/dashboard/buttons", pro: false },
+      { name: "Images", path: "/dashboard/images", pro: false },
+      { name: "Videos", path: "/dashboard/videos", pro: false },
     ],
   },
   {
