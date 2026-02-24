@@ -180,6 +180,7 @@ export default function TrackingMap({ follow = true, onEnterTerminalZone, odomet
 
   // DEV: Simulation broadcast listener state
   const [simActive, setSimActive] = useState(false);
+  const simActiveRef = useRef(false); // Ref mirror to avoid stale closures in watcher
   const simLastPosRef = useRef(null);
 
   useEffect(() => {
@@ -193,17 +194,19 @@ export default function TrackingMap({ follow = true, onEnterTerminalZone, odomet
       try {
         const raw = await AsyncStorage.getItem(SIM_BROADCAST_KEY);
         if (!raw) {
-          if (simActive) setSimActive(false);
+          if (simActive) { setSimActive(false); simActiveRef.current = false; }
           return;
         }
         const data = JSON.parse(raw);
         if (!data.isActive) {
           if (simActive) setSimActive(false);
+          simActiveRef.current = false;
           simLastPosRef.current = null;
           return;
         }
 
         setSimActive(true);
+        simActiveRef.current = true;
         const newPoint = { latitude: data.latitude, longitude: data.longitude };
 
         // Add to positions array so polyline trail and relive data build up
@@ -211,6 +214,40 @@ export default function TrackingMap({ follow = true, onEnterTerminalZone, odomet
           const next = [...prev, newPoint].slice(-5000);
           return next;
         });
+
+        // === RECORD simulated position into active trip so whole journey is captured ===
+        if (activeTripIdRef.current && isRecordingRef.current) {
+          const simCoord = {
+            latitude: data.latitude,
+            longitude: data.longitude,
+            altitude: data.altitude || 0,
+            accuracy: data.accuracy || 5,
+            speed: data.speed || 0,
+            heading: data.heading || 0,
+            timestamp: data.timestamp || Date.now(),
+          };
+
+          if (recordedPosRef.current.length > 0) {
+            const lastRecorded = recordedPosRef.current[recordedPosRef.current.length - 1];
+            const meters = haversineMeters(lastRecorded, simCoord);
+            // Same jitter/teleport filter as real GPS recording
+            if (meters >= 1 && meters <= 500) {
+              distanceRef.current += meters;
+              setTripDistance(distanceRef.current);
+              recordedPosRef.current.push(simCoord);
+              const now = Date.now();
+              if (now - lastRecordedStateUpdateRef.current >= RECORDED_STATE_THROTTLE_MS) {
+                lastRecordedStateUpdateRef.current = now;
+                setRecordedPositions([...recordedPosRef.current]);
+              }
+              updateLocalStorage();
+            }
+          } else {
+            recordedPosRef.current.push(simCoord);
+            setRecordedPositions([...recordedPosRef.current]);
+            updateLocalStorage(true);
+          }
+        }
 
         // Update odometer from simulated movement
         if (simLastPosRef.current) {
@@ -535,7 +572,10 @@ export default function TrackingMap({ follow = true, onEnterTerminalZone, odomet
           }
 
           // Handle trip recording
-          if (activeTripIdRef.current) {
+          // Skip real GPS recording when simulation is active — simulated coords
+          // are already being recorded by the simulation broadcast listener above,
+          // so real (stationary) GPS would pollute the route.
+          if (activeTripIdRef.current && !simActiveRef.current) {
             const newCoord = {
               latitude,
               longitude,

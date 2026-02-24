@@ -1108,16 +1108,18 @@ const DriverBookingScreen = ({ navigation }) => {
         await AsyncStorage.setItem(SIM_DEVICE_ID_KEY, simDevId);
       }
 
-      // Cancel any existing active SIMULATION trip (not real trips)
-      try {
-        const activeRes = await axios.get(`${BACKEND_URL}/api/tracking/active`, {
-          params: { deviceId: simDevId },
-        });
-        if (activeRes.data?.success && activeRes.data?.trip) {
-          await axios.post(`${BACKEND_URL}/api/tracking/${activeRes.data.trip.tripId}/cancel`);
-          console.log('[DEV SIM] Cancelled previous simulation trip');
-        }
-      } catch (_) { /* no active sim trip - fine */ }
+      // Cancel the previous simulation trip if we still have a reference to it.
+      // NOTE: We intentionally avoid using GET /api/tracking/active here because
+      // cookies attach the driver's userId to the request, causing the server to
+      // return the REAL trip (from TrackingMap) instead of the sim trip — which
+      // would then get cancelled by mistake (409 on save).
+      if (simTripIdRef.current) {
+        try {
+          await axios.post(`${BACKEND_URL}/api/tracking/${simTripIdRef.current}/cancel`);
+          console.log('[DEV SIM] Cancelled previous simulation trip:', simTripIdRef.current);
+          simTripIdRef.current = null;
+        } catch (_) { /* already cancelled or ended - fine */ }
+      }
 
       const response = await axios.post(`${BACKEND_URL}/api/tracking/start`, {
         deviceId: simDevId,
