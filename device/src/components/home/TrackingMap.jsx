@@ -157,6 +157,10 @@ export default function TrackingMap({
   const [statsExpanded, setStatsExpanded] = useState(false);
   const statsAnim = useRef(new RNAnimated.Value(0)).current;
 
+  // Collapsible map controls container
+  const [controlsCollapsed, setControlsCollapsed] = useState(false);
+  const controlsAnim = useRef(new RNAnimated.Value(1)).current;
+
   // Trip recording state
   const [isRecording, setIsRecording] = useState(false);
   const [activeTripId, setActiveTripId] = useState(null);
@@ -1709,6 +1713,17 @@ ${trackPoints}
     setMapReady(true);
   }, []);
 
+  // Toggle controls collapse with animation
+  const toggleControlsCollapse = useCallback(() => {
+    const toValue = controlsCollapsed ? 1 : 0;
+    setControlsCollapsed(!controlsCollapsed);
+    RNAnimated.timing(controlsAnim, {
+      toValue,
+      duration: 250,
+      useNativeDriver: false,
+    }).start();
+  }, [controlsCollapsed, controlsAnim]);
+
   // When not visible (tab not focused), keep hooks alive but skip rendering
   // This keeps recording and location tracking alive across tab switches
   if (!isVisible) return null;
@@ -1896,132 +1911,176 @@ ${trackPoints}
         </View>
       )}
 
+      {/* Collapsible Map Controls Container */}
       <View style={styles.hud}>
-        {/* Retractable GPS Stats Panel - Now below the map */}
+        {/* Collapse / Expand Header */}
         <TouchableOpacity
-          style={styles.statsToggle}
-          onPress={() => setStatsExpanded(!statsExpanded)}
+          style={styles.controlsToggleHeader}
+          onPress={toggleControlsCollapse}
           activeOpacity={0.8}
         >
+          <View style={styles.controlsToggleLeft}>
+            <Ionicons name="settings-outline" size={16} color={colors.primary} />
+            <Text style={styles.controlsToggleText}>Map Controls</Text>
+          </View>
+          {/* Quick-action icons visible even when collapsed */}
+          <View style={styles.controlsQuickActions}>
+            <TouchableOpacity
+              style={styles.quickActionBtn}
+              onPress={() => {
+                if (positions.length) {
+                  const last = positions[positions.length - 1];
+                  mapRef.current?.animateCamera({ center: last }, { duration: 300 });
+                }
+              }}
+            >
+              <Ionicons name="locate-outline" size={18} color={colors.primary} />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.quickActionBtn}
+              onPress={() => {
+                setMapType((prev) => {
+                  if (prev === 'standard') return 'satellite';
+                  if (prev === 'satellite') return 'hybrid';
+                  return 'standard';
+                });
+              }}
+            >
+              <Ionicons
+                name={mapType === 'satellite' ? 'earth' : mapType === 'hybrid' ? 'globe' : 'map-outline'}
+                size={18}
+                color={colors.primary}
+              />
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={styles.quickActionBtn}
+              onPress={isRecording ? stopRecording : startRecording}
+            >
+              <Ionicons
+                name={isRecording ? 'stop-circle' : 'radio-button-on'}
+                size={18}
+                color={isRecording ? '#dc3545' : colors.primary}
+              />
+            </TouchableOpacity>
+            <TouchableOpacity style={styles.quickActionBtn} onPress={openHistory}>
+              <Ionicons name="time-outline" size={18} color={colors.primary} />
+            </TouchableOpacity>
+          </View>
           <Ionicons
-            name={statsExpanded ? 'chevron-down' : 'chevron-up'}
-            size={20}
-            color={colors.primary}
+            name={controlsCollapsed ? 'chevron-up' : 'chevron-down'}
+            size={18}
+            color={colors.orangeShade5}
           />
-          <Text style={styles.statsToggleText}>
-            {statsExpanded ? 'Hide Stats' : 'Show Stats'}
-          </Text>
         </TouchableOpacity>
 
+        {/* Animated collapsible content */}
         <RNAnimated.View
-          style={[
-            styles.statsPanelInline,
-            {
-              height: statsAnim.interpolate({
-                inputRange: [0, 1],
-                outputRange: [0, 100],
-              }),
-              opacity: statsAnim,
-            },
-          ]}
+          style={{
+            maxHeight: controlsAnim.interpolate({
+              inputRange: [0, 1],
+              outputRange: [0, 500],
+            }),
+            opacity: controlsAnim,
+            overflow: 'hidden',
+          }}
         >
-          <View style={styles.statsRow}>
-            <View style={styles.statCard}>
-              <Ionicons name="speedometer-outline" size={16} color={colors.primary} />
-              <Text style={styles.statLabel}>Speed</Text>
-              <Text style={styles.statValue}>{speedKph} km/h</Text>
-            </View>
-            <View style={styles.statCard}>
-              <Ionicons name="compass-outline" size={16} color={colors.primary} />
-              <Text style={styles.statLabel}>Heading</Text>
-              <Text style={styles.statValue}>{heading}°</Text>
-            </View>
-            <View style={styles.statCard}>
-              <Ionicons name="arrow-up-outline" size={16} color={colors.primary} />
-              <Text style={styles.statLabel}>Altitude</Text>
-              <Text style={styles.statValue}>{altitude} m</Text>
-            </View>
-            <View style={styles.statCard}>
-              <Ionicons name="radio-outline" size={16} color={colors.primary} />
-              <Text style={styles.statLabel}>Accuracy</Text>
-              <Text style={styles.statValue}>±{accuracy} m</Text>
-            </View>
-          </View>
-        </RNAnimated.View>
-
-        <View style={styles.hudRow}>
-          <Text style={styles.hudLabel}>Speed</Text>
-          <Text style={styles.hudValue}>{speedKph} kph</Text>
-        </View>
-        <View style={styles.hudRow}>
-          <Text style={styles.hudLabel}>Odometer</Text>
-          <Text style={styles.hudValue}>{Math.round(odometerKm)} km</Text>
-        </View>
-
-        {/* DEV: Simulation active indicator */}
-        {simActive && (
-          <View style={styles.simBanner}>
-            <Ionicons name="flask" size={14} color="#fff" />
-            <Text style={styles.simBannerText}>DEV Simulation Active — trip recording for relive</Text>
-          </View>
-        )}
-
-        {/* Trip Recording Controls */}
-        <View style={styles.recordingControls}>
+          {/* Retractable GPS Stats Panel */}
           <TouchableOpacity
-            onPress={isRecording ? stopRecording : startRecording}
-            style={[
-              styles.recordBtn,
-              isRecording && styles.recordBtnActive,
-            ]}
+            style={styles.statsToggle}
+            onPress={() => setStatsExpanded(!statsExpanded)}
+            activeOpacity={0.8}
           >
             <Ionicons
-              name={isRecording ? 'stop-circle' : 'radio-button-on'}
+              name={statsExpanded ? 'chevron-down' : 'chevron-up'}
               size={20}
-              color="#fff"
+              color={colors.primary}
             />
-            <Text style={styles.recordBtnText}>
-              {isRecording ? 'Stop' : 'Record'}
+            <Text style={styles.statsToggleText}>
+              {statsExpanded ? 'Hide Stats' : 'Show Stats'}
             </Text>
           </TouchableOpacity>
 
-          <TouchableOpacity
-            onPress={openHistory}
-            style={styles.historyBtn}
+          <RNAnimated.View
+            style={[
+              styles.statsPanelInline,
+              {
+                height: statsAnim.interpolate({
+                  inputRange: [0, 1],
+                  outputRange: [0, 100],
+                }),
+                opacity: statsAnim,
+              },
+            ]}
           >
-            <Ionicons name="time-outline" size={20} color="#fff" />
-            <Text style={styles.historyBtnText}>History</Text>
-          </TouchableOpacity>
-        </View>
+            <View style={styles.statsRow}>
+              <View style={styles.statCard}>
+                <Ionicons name="speedometer-outline" size={16} color={colors.primary} />
+                <Text style={styles.statLabel}>Speed</Text>
+                <Text style={styles.statValue}>{speedKph} km/h</Text>
+              </View>
+              <View style={styles.statCard}>
+                <Ionicons name="compass-outline" size={16} color={colors.primary} />
+                <Text style={styles.statLabel}>Heading</Text>
+                <Text style={styles.statValue}>{heading}°</Text>
+              </View>
+              <View style={styles.statCard}>
+                <Ionicons name="arrow-up-outline" size={16} color={colors.primary} />
+                <Text style={styles.statLabel}>Altitude</Text>
+                <Text style={styles.statValue}>{altitude} m</Text>
+              </View>
+              <View style={styles.statCard}>
+                <Ionicons name="radio-outline" size={16} color={colors.primary} />
+                <Text style={styles.statLabel}>Accuracy</Text>
+                <Text style={styles.statValue}>±{accuracy} m</Text>
+              </View>
+            </View>
+          </RNAnimated.View>
 
-        <TouchableOpacity
-          style={styles.centerBtn}
-          onPress={() => {
-            if (positions.length) {
-              const last = positions[positions.length - 1];
-              mapRef.current?.animateCamera({ center: last }, { duration: 300 });
-            }
-          }}
-        >
-          <Ionicons name="locate-outline" size={20} color="#fff" />
-        </TouchableOpacity>
+          <View style={styles.hudRow}>
+            <Text style={styles.hudLabel}>Speed</Text>
+            <Text style={styles.hudValue}>{speedKph} kph</Text>
+          </View>
+          <View style={styles.hudRow}>
+            <Text style={styles.hudLabel}>Odometer</Text>
+            <Text style={styles.hudValue}>{Math.round(odometerKm)} km</Text>
+          </View>
 
-        <TouchableOpacity
-          style={styles.mapTypeBtn}
-          onPress={() => {
-            setMapType((prev) => {
-              if (prev === 'standard') return 'satellite';
-              if (prev === 'satellite') return 'hybrid';
-              return 'standard';
-            });
-          }}
-        >
-          <Ionicons
-            name={mapType === 'satellite' ? 'earth' : mapType === 'hybrid' ? 'globe' : 'map-outline'}
-            size={20}
-            color="#fff"
-          />
-        </TouchableOpacity>
+          {/* DEV: Simulation active indicator */}
+          {simActive && (
+            <View style={styles.simBanner}>
+              <Ionicons name="flask" size={14} color="#fff" />
+              <Text style={styles.simBannerText}>DEV Simulation Active — trip recording for relive</Text>
+            </View>
+          )}
+
+          {/* Trip Recording Controls */}
+          <View style={styles.recordingControls}>
+            <TouchableOpacity
+              onPress={isRecording ? stopRecording : startRecording}
+              style={[
+                styles.recordBtn,
+                isRecording && styles.recordBtnActive,
+              ]}
+            >
+              <Ionicons
+                name={isRecording ? 'stop-circle' : 'radio-button-on'}
+                size={20}
+                color="#fff"
+              />
+              <Text style={styles.recordBtnText}>
+                {isRecording ? 'Stop' : 'Record'}
+              </Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={openHistory}
+              style={styles.historyBtn}
+            >
+              <Ionicons name="time-outline" size={20} color="#fff" />
+              <Text style={styles.historyBtnText}>History</Text>
+            </TouchableOpacity>
+          </View>
+        </RNAnimated.View>
       </View>
 
       {/* Relive Panel - Compact bottom bar with stats */}
@@ -2303,6 +2362,42 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.08,
     elevation: 4,
   },
+  controlsToggleHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 6,
+    paddingHorizontal: 4,
+    marginBottom: 4,
+  },
+  controlsToggleLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  controlsToggleText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.primary,
+  },
+  controlsQuickActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    flex: 1,
+    justifyContent: 'flex-end',
+    marginRight: 8,
+  },
+  quickActionBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    backgroundColor: colors.ivory2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: colors.ivory3,
+  },
   hudRow: { flexDirection: 'row', justifyContent: 'flex-start', marginBottom: 6 },
   hudLabel: { color: colors.orangeShade5, marginRight: 8 },
   hudValue: { fontWeight: '700', color: colors.orangeShade7 },
@@ -2321,28 +2416,7 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     marginLeft: 6,
   },
-  centerBtn: {
-    position: 'absolute',
-    right: spacing.small,
-    bottom: spacing.small + 98,
-    backgroundColor: colors.primary,
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  mapTypeBtn: {
-    position: 'absolute',
-    right: spacing.small,
-    bottom: spacing.small + 52,
-    backgroundColor: colors.primary,
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  /* centerBtn and mapTypeBtn now replaced by quickActionBtn in the collapsible header */
   bgBtn: {
     flexDirection: 'row',
     alignItems: 'center',

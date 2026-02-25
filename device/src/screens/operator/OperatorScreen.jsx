@@ -25,7 +25,6 @@ import {
 import OverviewTab from './tabs/OverviewTab';
 import DriversTab from './tabs/DriversTab';
 import SickLeaveTab from './tabs/SickLeaveTab';
-import ReceiptScannerTab from './tabs/ReceiptScannerTab';
 import DriverComplaintsTab from './tabs/DriverComplaintsTab';
 import MaintenanceApprovalTab from './tabs/MaintenanceApprovalTab';
 
@@ -325,9 +324,6 @@ export default function OperatorScreen({ navigation }) {
               case 'Drivers':
                 iconName = focused ? 'people' : 'people-outline';
                 break;
-              case 'Receipt':
-                iconName = focused ? 'document-text' : 'document-text-outline';
-                break;
               case 'Sick Leave':
                 iconName = focused ? 'medical' : 'medical-outline';
                 break;
@@ -384,21 +380,6 @@ export default function OperatorScreen({ navigation }) {
               allDrivers={drivers}
               onRefresh={onRefresh}
               refreshing={refreshing}
-            />
-          )}
-        </Tab.Screen>
-        <Tab.Screen 
-          name="Receipt"
-          options={{ headerShown: false }}
-        >
-          {() => (
-            <ReceiptScannerTab 
-              token={token} 
-              BACKEND={BACKEND}
-              receiptResult={operatorState.receiptResult}
-              loadingReceipt={operatorState.loadingReceipt}
-              errorReceipt={operatorState.errorReceipt}
-              tricycles={tricycles}
             />
           )}
         </Tab.Screen>
