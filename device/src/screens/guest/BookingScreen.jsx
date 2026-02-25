@@ -243,10 +243,10 @@ const BookingScreen = ({ navigation }) => {
     ].includes(bookingStatus);
 
     if (shouldPoll && db && user) {
-      // Start polling every 5 seconds
+      // Start polling every 8 seconds (reduced frequency for better performance)
       pollingRef.current = setInterval(() => {
         dispatch(getActiveBooking(db));
-      }, 5000);
+      }, 8000);
     } else {
       // Stop polling when not needed
       if (pollingRef.current) {
@@ -358,9 +358,9 @@ const BookingScreen = ({ navigation }) => {
         }
       };
 
-      // Fetch immediately, then every 5 seconds
+      // Fetch immediately, then every 8 seconds (reduced for battery)
       pollDriverLocation();
-      driverLocationPollRef.current = setInterval(pollDriverLocation, 5000);
+      driverLocationPollRef.current = setInterval(pollDriverLocation, 8000);
     } else {
       if (driverLocationPollRef.current) {
         clearInterval(driverLocationPollRef.current);
@@ -515,9 +515,9 @@ const BookingScreen = ({ navigation }) => {
     try {
       const subscription = await Location.watchPositionAsync(
         {
-          accuracy: Location.Accuracy.High,
-          timeInterval: 5000,
-          distanceInterval: 10,
+          accuracy: Location.Accuracy.Balanced, // Balanced for better battery
+          timeInterval: 8000, // Reduced frequency
+          distanceInterval: 15, // Only update when moved 15m
         },
         (location) => {
           const { latitude, longitude } = location.coords;

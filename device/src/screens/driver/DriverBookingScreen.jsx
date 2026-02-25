@@ -59,8 +59,8 @@ const COMPLETION_RADIUS_METERS = 300;
 const PICKUP_RADIUS_METERS = 50;
 // Default search radius for nearby bookings (km)
 const SEARCH_RADIUS_KM = 5;
-// Polling interval for fetching bookings (ms)
-const POLL_INTERVAL = 10000;
+// Polling interval for fetching bookings (ms) - increased for better battery life
+const POLL_INTERVAL = 15000;
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -125,6 +125,12 @@ const DriverBookingScreen = ({ navigation }) => {
   const [counterOffer, setCounterOffer] = useState('');
   const [offerMessage, setOfferMessage] = useState('');
   const [tripHistory, setTripHistory] = useState([]);
+  
+  // Map view selected booking state
+  const [mapSelectedBooking, setMapSelectedBooking] = useState(null);
+  const [mapSelectedRoute, setMapSelectedRoute] = useState([]);
+  const [mapSelectedPickupRoute, setMapSelectedPickupRoute] = useState([]);
+  const [isLoadingMapRoute, setIsLoadingMapRoute] = useState(false);
 
   // Assigned tricycle for coding day
   const [assignedTricycle, setAssignedTricycle] = useState(null);
@@ -443,9 +449,9 @@ const DriverBookingScreen = ({ navigation }) => {
     try {
       const subscription = await Location.watchPositionAsync(
         {
-          accuracy: Location.Accuracy.High,
-          timeInterval: 5000,
-          distanceInterval: 10,
+          accuracy: Location.Accuracy.Balanced, // Balanced instead of High for better battery
+          timeInterval: 8000, // Reduced frequency
+          distanceInterval: 15, // Only update when moved 15m
         },
         (location) => {
           const { latitude, longitude } = location.coords;
@@ -1562,6 +1568,76 @@ const DriverBookingScreen = ({ navigation }) => {
     setPreviewPickupRoute([]);
   };
 
+  // Select a booking in map view and calculate its route
+  const selectBookingOnMap = async (booking) => {
+    if (!booking?.pickup || !booking?.destination) return;
+    
+    // If same booking is selected, deselect it
+    if (mapSelectedBooking?._id === booking._id) {
+      setMapSelectedBooking(null);
+      setMapSelectedRoute([]);
+      setMapSelectedPickupRoute([]);
+      return;
+    }
+    
+    setMapSelectedBooking(booking);
+    setMapSelectedRoute([]);
+    setMapSelectedPickupRoute([]);
+    setIsLoadingMapRoute(true);
+    
+    try {
+      // Calculate route from pickup to destination
+      const tripRouteResult = await getRoute(booking.pickup, booking.destination);
+      if (tripRouteResult?.success && tripRouteResult?.route?.coordinates?.length > 1) {
+        setMapSelectedRoute(tripRouteResult.route.coordinates);
+      } else if (tripRouteResult?.fallback?.coordinates?.length > 0) {
+        setMapSelectedRoute(tripRouteResult.fallback.coordinates);
+      } else {
+        setMapSelectedRoute([booking.pickup, booking.destination]);
+      }
+      
+      // Calculate route from driver location to pickup
+      if (userLocation?.latitude && userLocation?.longitude) {
+        const pickupRouteResult = await getRoute(userLocation, booking.pickup);
+        if (pickupRouteResult?.success && pickupRouteResult?.route?.coordinates?.length > 1) {
+          setMapSelectedPickupRoute(pickupRouteResult.route.coordinates);
+        } else if (pickupRouteResult?.fallback?.coordinates?.length > 0) {
+          setMapSelectedPickupRoute(pickupRouteResult.fallback.coordinates);
+        } else {
+          setMapSelectedPickupRoute([userLocation, booking.pickup]);
+        }
+      }
+      
+      // Fit map to show the entire route
+      if (mapRef.current) {
+        const coords = [booking.pickup, booking.destination];
+        if (userLocation) coords.unshift(userLocation);
+        mapRef.current.fitToCoordinates(coords, {
+          edgePadding: { top: 80, right: 50, bottom: 200, left: 50 },
+          animated: true,
+        });
+      }
+    } catch (error) {
+      console.error('Error calculating map route:', error);
+      setMapSelectedRoute([booking.pickup, booking.destination]);
+      if (userLocation?.latitude) {
+        setMapSelectedPickupRoute([userLocation, booking.pickup]);
+      }
+    } finally {
+      setIsLoadingMapRoute(false);
+    }
+  };
+  
+  // Clear map selection when switching view modes
+  const handleViewModeChange = (mode) => {
+    if (mode === VIEW_MODE.LIST) {
+      setMapSelectedBooking(null);
+      setMapSelectedRoute([]);
+      setMapSelectedPickupRoute([]);
+    }
+    setViewMode(mode);
+  };
+
   const openHistoryModal = async () => {
     await fetchTripHistory();
     setShowHistoryModal(true);
@@ -2272,7 +2348,7 @@ const DriverBookingScreen = ({ navigation }) => {
       <View style={styles.actionRow}>
         <TouchableOpacity
           style={[styles.viewModeBtn, viewMode === VIEW_MODE.LIST && styles.viewModeBtnActive]}
-          onPress={() => setViewMode(VIEW_MODE.LIST)}
+          onPress={() => handleViewModeChange(VIEW_MODE.LIST)}
         >
           <Ionicons
             name="list"
@@ -2290,7 +2366,7 @@ const DriverBookingScreen = ({ navigation }) => {
         </TouchableOpacity>
         <TouchableOpacity
           style={[styles.viewModeBtn, viewMode === VIEW_MODE.MAP && styles.viewModeBtnActive]}
-          onPress={() => setViewMode(VIEW_MODE.MAP)}
+          onPress={() => handleViewModeChange(VIEW_MODE.MAP)}
         >
           <Ionicons
             name="map"
@@ -2406,7 +2482,7 @@ const DriverBookingScreen = ({ navigation }) => {
 
           {/* Map or List View */}
           {viewMode === VIEW_MODE.MAP ? (
-            // Map view
+            // Lightweight map view - similar to user BookingScreen
             <View style={styles.mapContainer}>
               {isFocused ? (
               <MapView
@@ -2417,28 +2493,154 @@ const DriverBookingScreen = ({ navigation }) => {
                 region={mapRegion}
                 showsUserLocation={true}
                 showsMyLocationButton={false}
+                onPress={() => {
+                  // Deselect booking when tapping empty map area
+                  if (mapSelectedBooking) {
+                    setMapSelectedBooking(null);
+                    setMapSelectedRoute([]);
+                    setMapSelectedPickupRoute([]);
+                  }
+                }}
               >
-                {/* Nearby booking markers */}
+                {/* Pickup markers with fare badges - lightweight */}
                 {nearbyBookings.map((booking) => (
                   <Marker
                     key={booking._id}
                     coordinate={booking.pickup}
-                    onPress={() => openOfferModal(booking)}
+                    onPress={() => selectBookingOnMap(booking)}
+                    anchor={{ x: 0.5, y: 1 }}
+                    zIndex={mapSelectedBooking?._id === booking._id ? 100 : 10}
                   >
-                    <View style={styles.bookingMarker}>
-                      <Text style={styles.bookingMarkerText}>₱{booking.preferredFare}</Text>
+                    <View style={[
+                      styles.fareMarker,
+                      mapSelectedBooking?._id === booking._id && styles.fareMarkerSelected
+                    ]}>
+                      <Text style={styles.fareMarkerText}>₱{booking.preferredFare}</Text>
                     </View>
                   </Marker>
                 ))}
+                
+                {/* Selected booking destination marker */}
+                {mapSelectedBooking && (
+                  <Marker
+                    coordinate={mapSelectedBooking.destination}
+                    anchor={{ x: 0.5, y: 0.5 }}
+                    zIndex={101}
+                  >
+                    <View style={styles.destMarkerSimple}>
+                      <Text style={styles.destMarkerIcon}>◆</Text>
+                    </View>
+                  </Marker>
+                )}
+                
+                {/* Route from driver to pickup (selected) */}
+                {mapSelectedPickupRoute.length > 1 && (
+                  <Polyline
+                    coordinates={mapSelectedPickupRoute}
+                    strokeColor="#6c757d"
+                    strokeWidth={3}
+                    lineDashPattern={[8, 6]}
+                  />
+                )}
+                
+                {/* Route from pickup to destination (selected) */}
+                {mapSelectedRoute.length > 1 && (
+                  <Polyline
+                    coordinates={mapSelectedRoute}
+                    strokeColor="#2196F3"
+                    strokeWidth={4}
+                  />
+                )}
               </MapView>
               ) : (
                 <View style={[styles.fullMap, { justifyContent: 'center', alignItems: 'center' }]}>
                   <ActivityIndicator size="large" color={colors.primary} />
                 </View>
               )}
+              
+              {/* Map controls */}
               <TouchableOpacity style={styles.centerMapBtn} onPress={centerMapOnUser}>
                 <Ionicons name="locate" size={22} color={colors.primary} />
               </TouchableOpacity>
+              
+              {/* Route loading indicator */}
+              {isLoadingMapRoute && (
+                <View style={styles.mapRouteLoading}>
+                  <ActivityIndicator size="small" color={colors.primary} />
+                  <Text style={styles.mapRouteLoadingText}>Loading route...</Text>
+                </View>
+              )}
+              
+              {/* Selected booking card - compact */}
+              {mapSelectedBooking && (
+                <View style={styles.mapBookingCard}>
+                  <View style={styles.mapBookingHeader}>
+                    <View style={styles.mapBookingPassenger}>
+                      <View style={styles.avatarCircleSmall}>
+                        <Ionicons name="person" size={16} color="#fff" />
+                      </View>
+                      <View>
+                        <Text style={styles.mapBookingName}>
+                          {mapSelectedBooking.user?.firstname || 'Passenger'}
+                        </Text>
+                        {mapSelectedBooking.user?.rating > 0 && (
+                          <View style={styles.ratingBadge}>
+                            <Ionicons name="star" size={10} color={colors.starYellow || '#FFD700'} />
+                            <Text style={styles.ratingValueSmall}>{mapSelectedBooking.user.rating.toFixed(1)}</Text>
+                          </View>
+                        )}
+                      </View>
+                    </View>
+                    <View style={styles.mapBookingFare}>
+                      <Text style={styles.mapBookingFareLabel}>Offered</Text>
+                      <Text style={styles.mapBookingFareAmount}>₱{mapSelectedBooking.preferredFare}</Text>
+                    </View>
+                  </View>
+                  
+                  <View style={styles.mapBookingDetails}>
+                    <View style={styles.mapBookingDetailRow}>
+                      <Ionicons name="location" size={14} color="#28a745" />
+                      <Text style={styles.mapBookingDetailText} numberOfLines={1}>
+                        {userLocation ? formatDistance(calculateDistance(
+                          userLocation.latitude, userLocation.longitude,
+                          mapSelectedBooking.pickup.latitude, mapSelectedBooking.pickup.longitude
+                        )) + ' to pickup' : 'Calculating...'}
+                      </Text>
+                    </View>
+                    <View style={styles.mapBookingDetailRow}>
+                      <Ionicons name="navigate" size={14} color={colors.primary} />
+                      <Text style={styles.mapBookingDetailText} numberOfLines={1}>
+                        {formatDistance(calculateDistance(
+                          mapSelectedBooking.pickup.latitude, mapSelectedBooking.pickup.longitude,
+                          mapSelectedBooking.destination.latitude, mapSelectedBooking.destination.longitude
+                        ))} trip
+                      </Text>
+                    </View>
+                  </View>
+                  
+                  <View style={styles.mapBookingActions}>
+                    <TouchableOpacity
+                      style={styles.mapAcceptBtn}
+                      onPress={() => handleAcceptBooking(mapSelectedBooking)}
+                    >
+                      <Text style={styles.mapAcceptBtnText}>Accept ₱{mapSelectedBooking.preferredFare}</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity
+                      style={styles.mapCounterBtn}
+                      onPress={() => openOfferModal(mapSelectedBooking)}
+                    >
+                      <Text style={styles.mapCounterBtnText}>Counter</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )}
+              
+              {/* Hint when no booking selected */}
+              {!mapSelectedBooking && nearbyBookings.length > 0 && (
+                <View style={styles.mapHint}>
+                  <Text style={styles.mapHintText}>Tap a fare to view details</Text>
+                </View>
+              )}
             </View>
           ) : nearbyBookings.length === 0 && pendingOffers.length === 0 ? (
             // Empty state
@@ -3347,6 +3549,179 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontWeight: '700',
     fontSize: 12,
+  },
+  
+  // Lightweight fare-based markers (no Ionicons for better performance)
+  fareMarker: {
+    backgroundColor: colors.primary,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 20,
+    borderWidth: 2,
+    borderColor: '#fff',
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
+    elevation: 3,
+  },
+  fareMarkerSelected: {
+    backgroundColor: '#28a745',
+    borderWidth: 3,
+    transform: [{ scale: 1.1 }],
+  },
+  fareMarkerText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 14,
+  },
+  destMarkerSimple: {
+    width: 28,
+    height: 28,
+    backgroundColor: colors.primary,
+    borderRadius: 14,
+    borderWidth: 2,
+    borderColor: '#fff',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  destMarkerIcon: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  mapRouteLoading: {
+    position: 'absolute',
+    top: 10,
+    alignSelf: 'center',
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    borderRadius: 16,
+    paddingVertical: 6,
+    paddingHorizontal: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  mapRouteLoadingText: {
+    fontSize: 12,
+    color: colors.orangeShade5,
+  },
+  mapBookingCard: {
+    position: 'absolute',
+    bottom: 10,
+    left: 10,
+    right: 10,
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 14,
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 8,
+    elevation: 6,
+  },
+  mapBookingHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 10,
+  },
+  mapBookingPassenger: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+  },
+  avatarCircleSmall: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.primary,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  mapBookingName: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: colors.orangeShade7 || '#333',
+  },
+  ratingValueSmall: {
+    fontSize: 11,
+    color: colors.orangeShade5,
+    marginLeft: 2,
+  },
+  mapBookingFare: {
+    alignItems: 'flex-end',
+  },
+  mapBookingFareLabel: {
+    fontSize: 10,
+    color: colors.orangeShade4,
+  },
+  mapBookingFareAmount: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: colors.primary,
+  },
+  mapBookingDetails: {
+    flexDirection: 'row',
+    gap: 16,
+    marginBottom: 12,
+    paddingTop: 10,
+    borderTopWidth: 1,
+    borderTopColor: colors.ivory3 || '#eee',
+  },
+  mapBookingDetailRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+  },
+  mapBookingDetailText: {
+    fontSize: 12,
+    color: colors.orangeShade6 || '#666',
+  },
+  mapBookingActions: {
+    flexDirection: 'row',
+    gap: 10,
+  },
+  mapAcceptBtn: {
+    flex: 2,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#28a745',
+    paddingVertical: 12,
+    borderRadius: 10,
+  },
+  mapAcceptBtnText: {
+    color: '#fff',
+    fontWeight: '700',
+    fontSize: 15,
+  },
+  mapCounterBtn: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.ivory3 || '#f0f0f0',
+    paddingVertical: 12,
+    borderRadius: 10,
+  },
+  mapCounterBtnText: {
+    color: colors.primary,
+    fontWeight: '600',
+    fontSize: 14,
+  },
+  mapHint: {
+    position: 'absolute',
+    bottom: 16,
+    alignSelf: 'center',
+    backgroundColor: 'rgba(255,255,255,0.95)',
+    borderRadius: 20,
+    paddingVertical: 10,
+    paddingHorizontal: 18,
+    shadowColor: '#000',
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  mapHintText: {
+    fontSize: 13,
+    color: '#666',
   },
 
   // Active trip
