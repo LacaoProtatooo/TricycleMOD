@@ -55,7 +55,7 @@ const SkipReasonModal = ({
 			onRequestClose={handleCancel}
 		>
 			<KeyboardAvoidingView 
-				behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+				behavior="height"
 				style={styles.modalOverlay}
 			>
 				<View style={styles.skipModal}>

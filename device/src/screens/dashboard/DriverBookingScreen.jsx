@@ -509,7 +509,7 @@ const DriverBookingScreen = () => {
           <MapView
             ref={mapRef}
             provider={PROVIDER_GOOGLE}
-            mapType={Platform.OS === 'ios' ? 'mutedStandard' : 'standard'}
+            mapType="standard"
             style={styles.map}
             region={{
               latitude: userLocation?.latitude || activeBooking.pickup.latitude,

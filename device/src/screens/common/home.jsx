@@ -12,13 +12,14 @@ import Ionicons from 'react-native-vector-icons/Ionicons';
 import { colors } from '../../components/common/theme';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { getUserCredentials } from '../../utils/userStorage';
+import { BookingProvider } from '../../context/BookingContext';
 
 // Import tab components
 import DashboardTab from '../dashboard/DashboardTab';
 import MapsTab from '../dashboard/MapsTab';
 import ChatMenu from '../message/chatMenu';
 import GuestMain from '../guest/main';
-import DriverBookingScreen from '../driver/DriverBookingScreen';
+import TripsTab from '../dashboard/TripsTab';
 import LeaderboardTab from '../dashboard/LeaderboardTab';
 
 const Tab = createBottomTabNavigator();
@@ -61,7 +62,8 @@ const Home = () => {
   }
 
   // Full navigation for authenticated users (driver, operator)
-  return (
+  // Wrap with BookingProvider for drivers to share booking state between Trips and Maps tabs
+  const tabNavigator = (
     <SafeAreaView style={{ flex: 1 }} edges={['bottom']}>
       <Tab.Navigator
         screenOptions={{
@@ -90,8 +92,8 @@ const Home = () => {
         {/* Driver Booking Tab - Only for drivers */}
         {currentUser?.role === 'driver' && (
           <Tab.Screen
-            name="Booking"
-            component={DriverBookingScreen}
+            name="Trips"
+            component={TripsTab}
             options={{ 
               title: 'Trips',
               tabBarIcon: ({ color, size }) => (
@@ -134,6 +136,13 @@ const Home = () => {
       </Tab.Navigator>
     </SafeAreaView>
   );
+
+  // For drivers, wrap with BookingProvider to share state between Trips and Maps
+  if (currentUser?.role === 'driver') {
+    return <BookingProvider>{tabNavigator}</BookingProvider>;
+  }
+
+  return tabNavigator;
 };
 
 const styles = StyleSheet.create({

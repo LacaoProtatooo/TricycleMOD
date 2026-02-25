@@ -315,8 +315,8 @@ const Chat = () => {
     <SafeAreaView style={{ flex: 1 }} edges={['bottom']}>
       <KeyboardAvoidingView
         style={styles.container}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 0}
+        behavior="height"
+        keyboardVerticalOffset={0}
       >
         <FlatList
           ref={flatListRef}
@@ -460,7 +460,7 @@ const styles = StyleSheet.create({
     borderTopWidth: 1,
     borderTopColor: colors.ivory3,
     alignItems: 'flex-end',
-    paddingBottom: Platform.OS === 'ios' ? spacing.large : spacing.medium,
+    paddingBottom: spacing.medium,
   },
   input: {
     flex: 1,

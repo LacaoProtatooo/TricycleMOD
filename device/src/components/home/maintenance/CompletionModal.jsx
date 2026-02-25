@@ -143,7 +143,7 @@ const CompletionModal = ({
 			onRequestClose={handleClose}
 		>
 			<KeyboardAvoidingView 
-				behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+				behavior="height"
 				style={styles.modalOverlay}
 			>
 				<ScrollView contentContainerStyle={styles.completionModalScroll}>

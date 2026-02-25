@@ -1840,7 +1840,7 @@ const DriverBookingScreen = ({ navigation }) => {
         <MapView
           ref={mapRef}
           provider={PROVIDER_GOOGLE}
-          mapType={Platform.OS === 'ios' ? 'mutedStandard' : 'standard'}
+          mapType="standard"
           style={styles.fullMap}
           region={{
             latitude: userLocation?.latitude || activeBooking.pickup.latitude,
@@ -1856,6 +1856,8 @@ const DriverBookingScreen = ({ navigation }) => {
             coordinate={activeBooking.pickup}
             title="Pickup"
             description="Passenger pickup location"
+            anchor={{ x: 0.5, y: 0.5 }}
+            tracksViewChanges={false}
           >
             <View style={styles.pickupMarker}>
               <Ionicons name="person" size={14} color="#fff" />
@@ -1867,6 +1869,8 @@ const DriverBookingScreen = ({ navigation }) => {
             coordinate={activeBooking.destination}
             title="Destination"
             description="Drop-off location"
+            anchor={{ x: 0.5, y: 0.5 }}
+            tracksViewChanges={false}
           >
             <View style={styles.destinationMarker}>
               <Ionicons name="flag" size={14} color="#fff" />
@@ -2408,7 +2412,7 @@ const DriverBookingScreen = ({ navigation }) => {
               <MapView
                 ref={mapRef}
                 provider={PROVIDER_GOOGLE}
-                mapType={Platform.OS === 'ios' ? 'mutedStandard' : 'standard'}
+                mapType="standard"
                 style={styles.fullMap}
                 region={mapRegion}
                 showsUserLocation={true}
@@ -2564,7 +2568,7 @@ const DriverBookingScreen = ({ navigation }) => {
                 <View style={styles.routeMapContainer}>
                   <MapView
                     provider={PROVIDER_GOOGLE}
-                    mapType={Platform.OS === 'ios' ? 'mutedStandard' : 'standard'}
+                    mapType="standard"
                     style={styles.routePreviewMap}
                     initialRegion={{
                       latitude: (previewBooking.pickup.latitude + previewBooking.destination.latitude) / 2,
@@ -2591,6 +2595,8 @@ const DriverBookingScreen = ({ navigation }) => {
                       coordinate={previewBooking.pickup}
                       title="Pickup Location"
                       description={previewBooking.pickup.address || 'Passenger pickup point'}
+                      anchor={{ x: 0.5, y: 0.5 }}
+                      tracksViewChanges={false}
                     >
                       <View style={styles.pickupMarkerLarge}>
                         <Ionicons name="person" size={18} color="#fff" />
@@ -2602,6 +2608,8 @@ const DriverBookingScreen = ({ navigation }) => {
                       coordinate={previewBooking.destination}
                       title="Destination"
                       description={previewBooking.destination.address || 'Drop-off point'}
+                      anchor={{ x: 0.5, y: 0.5 }}
+                      tracksViewChanges={false}
                     >
                       <View style={styles.destinationMarkerLarge}>
                         <Ionicons name="flag" size={18} color="#fff" />
@@ -3413,6 +3421,10 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     borderWidth: 2,
     borderColor: '#fff',
+    minWidth: 32,
+    minHeight: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   destinationMarker: {
     backgroundColor: colors.primary,
@@ -3420,6 +3432,10 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     borderWidth: 2,
     borderColor: '#fff',
+    minWidth: 32,
+    minHeight: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   simulationMarker: {
     backgroundColor: '#6f42c1',
@@ -3676,7 +3692,7 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
     padding: 20,
-    paddingBottom: Platform.OS === 'ios' ? 40 : 20,
+    paddingBottom: 20,
   },
   simModalHeader: {
     flexDirection: 'row',
@@ -3775,7 +3791,7 @@ const styles = StyleSheet.create({
     borderTopLeftRadius: 24,
     borderTopRightRadius: 24,
     padding: spacing.large || 24,
-    paddingBottom: Platform.OS === 'ios' ? 40 : 24,
+    paddingBottom: 24,
   },
   historyModalContent: {
     maxHeight: SCREEN_HEIGHT * 0.7,
@@ -4149,6 +4165,10 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 3,
     elevation: 5,
+    minWidth: 40,
+    minHeight: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   destinationMarkerLarge: {
     backgroundColor: colors.primary,
@@ -4161,6 +4181,10 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.3,
     shadowRadius: 3,
     elevation: 5,
+    minWidth: 40,
+    minHeight: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   mapLegend: {
     position: 'absolute',

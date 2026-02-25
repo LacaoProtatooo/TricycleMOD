@@ -344,7 +344,7 @@ const BookingHistoryDetail = ({ navigation, route }) => {
           <MapView
             ref={mapRef}
             provider={PROVIDER_GOOGLE}
-            mapType={Platform.OS === 'ios' ? 'mutedStandard' : 'standard'}
+            mapType="standard"
             style={styles.map}
             initialRegion={{
               latitude: booking.pickup?.latitude || 14.5176,

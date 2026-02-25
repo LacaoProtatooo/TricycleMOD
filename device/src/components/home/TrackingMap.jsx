@@ -105,7 +105,18 @@ function generateSimulatedRoute(start, end, numPoints = 30) {
   return points;
 }
 
-export default function TrackingMap({ follow = true, onEnterTerminalZone, odometerSeed, codingDayRestricted = false, isVisible = true }) {
+export default function TrackingMap({ 
+  follow = true, 
+  onEnterTerminalZone, 
+  odometerSeed, 
+  codingDayRestricted = false, 
+  isVisible = true,
+  // Booking route props
+  activeBooking = null,
+  bookingRoute = null,
+  isPickedUp = false,
+  onRerouteNeeded = null,
+}) {
   const mapRef = useRef(null);
   const [region, setRegion] = useState(null);
   const [positions, setPositions] = useState([]);
@@ -130,7 +141,7 @@ export default function TrackingMap({ follow = true, onEnterTerminalZone, odomet
   const [reliveCurrentAltitude, setReliveCurrentAltitude] = useState(0);
   const [reliveDistanceCovered, setReliveDistanceCovered] = useState(0); // meters
   const [reliveStats, setReliveStats] = useState(null); // trip-level stats for overlay
-  const [mapType, setMapType] = useState(Platform.OS === 'ios' ? 'mutedStandard' : 'standard');
+  const [mapType, setMapType] = useState('standard');
   const progressBarRef = useRef(null);
   const progressBarWidth = useRef(0);
   const insideTerminalRef = useRef(null);
@@ -1737,6 +1748,8 @@ ${trackPoints}
                   coordinate={{ latitude: t.latitude, longitude: t.longitude }}
                   title={t.name}
                   description={t.id}
+                  anchor={{ x: 0.5, y: 0.5 }}
+                  tracksViewChanges={false}
                 >
                   <View style={styles.terminalMarker}>
                     <Ionicons name="flag" size={16} color="#fff" />
@@ -1759,9 +1772,60 @@ ${trackPoints}
                 <Marker
                   key="position-marker"
                   coordinate={positions[positions.length - 1]}
+                  anchor={{ x: 0.5, y: 0.5 }}
+                  tracksViewChanges={false}
                 >
                   <View style={styles.marker}>
                     <Ionicons name="bicycle" size={20} color="#fff" />
+                  </View>
+                </Marker>
+              )}
+
+              {/* Booking route polyline - shows route to pickup/destination */}
+              {bookingRoute && bookingRoute.length > 1 && !reliveActive && (
+                <Polyline
+                  key="booking-route-polyline"
+                  coordinates={bookingRoute}
+                  strokeColor="#17a2b8"
+                  strokeWidth={4}
+                  lineDashPattern={[1]}
+                />
+              )}
+
+              {/* Booking pickup marker */}
+              {activeBooking?.pickup && !isPickedUp && !reliveActive && (
+                <Marker
+                  key="booking-pickup-marker"
+                  coordinate={{
+                    latitude: activeBooking.pickup.latitude,
+                    longitude: activeBooking.pickup.longitude,
+                  }}
+                  title="Pickup Location"
+                  description={activeBooking.pickup.address || 'Pick up passenger here'}
+                  anchor={{ x: 0.5, y: 0.5 }}
+                  tracksViewChanges={false}
+                >
+                  <View style={[styles.bookingMarker, styles.pickupMarker]}>
+                    <Ionicons name="person" size={16} color="#fff" />
+                  </View>
+                </Marker>
+              )}
+
+              {/* Booking destination marker */}
+              {activeBooking?.destination && !reliveActive && (
+                <Marker
+                  key="booking-destination-marker"
+                  coordinate={{
+                    latitude: activeBooking.destination.latitude,
+                    longitude: activeBooking.destination.longitude,
+                  }}
+                  title="Destination"
+                  description={activeBooking.destination.address || 'Drop off here'}
+                  anchor={{ x: 0.5, y: 0.5 }}
+                  tracksViewChanges={false}
+                >
+                  <View style={[styles.bookingMarker, styles.destinationMarker]}>
+                    <Ionicons name="flag" size={16} color="#fff" />
                   </View>
                 </Marker>
               )}
@@ -2174,6 +2238,10 @@ const styles = StyleSheet.create({
     borderRadius: 20,
     borderWidth: 2,
     borderColor: colors.ivory1,
+    minWidth: 40,
+    minHeight: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   terminalMarker: {
     backgroundColor: '#f97316',
@@ -2181,6 +2249,10 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     borderWidth: 2,
     borderColor: '#fff',
+    minWidth: 32,
+    minHeight: 32,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   reliveMarker: {
     backgroundColor: '#0d6efd',
@@ -2192,6 +2264,30 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.15,
     shadowRadius: 6,
     elevation: 6,
+    minWidth: 44,
+    minHeight: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  bookingMarker: {
+    padding: 10,
+    borderRadius: 24,
+    borderWidth: 2,
+    borderColor: '#fff',
+    shadowColor: '#000',
+    shadowOpacity: 0.15,
+    shadowRadius: 6,
+    elevation: 6,
+    minWidth: 40,
+    minHeight: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  pickupMarker: {
+    backgroundColor: '#28a745',
+  },
+  destinationMarker: {
+    backgroundColor: '#dc3545',
   },
   hud: {
     position: 'absolute',

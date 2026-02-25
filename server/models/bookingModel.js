@@ -134,6 +134,7 @@ const bookingSchema = new mongoose.Schema({
       'completed',      // Trip completed successfully
       'cancelled',      // Booking was cancelled
       'expired',        // No driver accepted in time
+      'no_show',        // Passenger did not show up
     ],
     default: 'pending',
   },
@@ -190,6 +191,30 @@ const bookingSchema = new mongoose.Schema({
   cancelledAt: {
     type: Date,
     default: null,
+  },
+  
+  // No-show related fields
+  driverArrivedAt: {
+    type: Date,
+    default: null,
+    description: 'When driver arrived at pickup location',
+  },
+  
+  noShowMarkedAt: {
+    type: Date,
+    default: null,
+  },
+  
+  noShowFee: {
+    type: Number,
+    default: null,
+    description: 'Fee charged for no-show (typically 50% of fare)',
+  },
+  
+  noShowWaitMinutes: {
+    type: Number,
+    default: 5,
+    description: 'Minutes driver waited before marking no-show',
   },
   
   // Completion dispute fields

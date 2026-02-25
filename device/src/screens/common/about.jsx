@@ -426,7 +426,7 @@ const styles = StyleSheet.create({
     color: colors.primary,
     letterSpacing: 2,
     marginBottom: spacing.small,
-    fontFamily: Platform.OS === 'ios' ? 'Georgia' : 'serif',
+    fontFamily: 'serif',
   },
   subtitle: {
     fontSize: 14,

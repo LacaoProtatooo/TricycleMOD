@@ -90,6 +90,20 @@ const getDayName = (dayNumber) => {
   return day ? day.label : 'No Coding Day';
 };
 
+// Validate plate number format: 3 numbers followed by 3 letters (e.g., 123ABC)
+const PLATE_NUMBER_REGEX = /^\d{3}[A-Z]{3}$/;
+const validatePlateNumber = (plateNumber) => {
+  if (!plateNumber) return { valid: false, message: 'Plate number is required' };
+  const cleaned = plateNumber.toUpperCase().replace(/\s/g, '');
+  if (!PLATE_NUMBER_REGEX.test(cleaned)) {
+    return { 
+      valid: false, 
+      message: 'Format: 3 numbers + 3 letters (e.g., 123ABC)' 
+    };
+  }
+  return { valid: true, message: '' };
+};
+
 // Helper function to create form data for image upload
 const createImageFormData = (uri, fieldName = 'image') => {
   const formData = new FormData();
@@ -135,6 +149,7 @@ export default function AddTricycleModal({
   const [showImageSourceModal, setShowImageSourceModal] = useState(null); // 'cr' | 'or' | null
   const [crExpanded, setCrExpanded] = useState(false);
   const [orExpanded, setOrExpanded] = useState(false);
+  const [plateError, setPlateError] = useState('');
   
   // Animated values for scan pulse
   const crScanAnim = useRef(new Animated.Value(0)).current;
@@ -388,6 +403,14 @@ export default function AddTricycleModal({
 
   // Handle form submission with document data
   const handleSubmitWithDocuments = () => {
+    // Validate plate number before submit
+    const validation = validatePlateNumber(newTricycle.plateNumber);
+    if (!validation.valid) {
+      setPlateError(validation.message);
+      Alert.alert('Invalid Plate Number', 'Plate number must be 3 numbers followed by 3 letters (e.g., 123ABC)');
+      return;
+    }
+    
     const tricycleData = {
       ...newTricycle,
       crData,
@@ -398,6 +421,18 @@ export default function AddTricycleModal({
     };
     
     onSubmit(tricycleData);
+  };
+  
+  // Handle basic form submission
+  const handleBasicSubmit = () => {
+    // Validate plate number before submit
+    const validation = validatePlateNumber(newTricycle.plateNumber);
+    if (!validation.valid) {
+      setPlateError(validation.message);
+      Alert.alert('Invalid Plate Number', 'Plate number must be 3 numbers followed by 3 letters (e.g., 123ABC)');
+      return;
+    }
+    onSubmit(newTricycle);
   };
 
   // Reset state when modal closes
@@ -413,6 +448,7 @@ export default function AddTricycleModal({
     setShowImageSourceModal(null);
     setCrExpanded(false);
     setOrExpanded(false);
+    setPlateError('');
     onClose();
   };
 
@@ -721,8 +757,8 @@ export default function AddTricycleModal({
       <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
         <KeyboardAvoidingView 
           style={styles.modalContainer} 
-          behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-          keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+          behavior="height"
+          keyboardVerticalOffset={20}
         >
           <View style={[styles.modalContent, { maxHeight: '90%' }]}>
             {/* Tab Switcher */}
@@ -772,13 +808,38 @@ export default function AddTricycleModal({
               {activeTab === 'basic' ? (
                 <>
                   {/* Basic Info Tab */}
-                  <TextInput
-                    style={styles.textInput}
-                    placeholder="Plate Number"
-                    value={newTricycle.plateNumber}
-                    onChangeText={(text) => setNewTricycle({ ...newTricycle, plateNumber: text.toUpperCase() })}
-                    editable={!creating}
-                  />
+                  <View>
+                    <TextInput
+                      style={[
+                        styles.textInput, 
+                        plateError ? { borderColor: '#dc3545', borderWidth: 1 } : null
+                      ]}
+                      placeholder="Plate Number (e.g., 123ABC)"
+                      value={newTricycle.plateNumber}
+                      onChangeText={(text) => {
+                        const cleaned = text.toUpperCase().replace(/\s/g, '');
+                        setNewTricycle({ ...newTricycle, plateNumber: cleaned });
+                        // Clear error when user starts typing
+                        if (plateError) {
+                          const validation = validatePlateNumber(cleaned);
+                          setPlateError(validation.valid ? '' : validation.message);
+                        }
+                      }}
+                      onBlur={() => {
+                        const validation = validatePlateNumber(newTricycle.plateNumber);
+                        setPlateError(validation.valid ? '' : validation.message);
+                      }}
+                      editable={!creating}
+                      maxLength={6}
+                      autoCapitalize="characters"
+                    />
+                    <Text style={scanStyles.plateHint}>
+                      Format: 3 numbers + 3 letters (e.g., 123ABC)
+                    </Text>
+                    {plateError ? (
+                      <Text style={scanStyles.plateError}>{plateError}</Text>
+                    ) : null}
+                  </View>
 
                   <TextInput
                     style={styles.textInput}
@@ -810,8 +871,8 @@ export default function AddTricycleModal({
                     <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
                       <KeyboardAvoidingView 
                         style={styles.modalContainer}
-                        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-                        keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 20}
+                        behavior="height"
+                        keyboardVerticalOffset={20}
                       >
                         <View style={[styles.modalContent, { maxHeight: '80%' }]}>
                           {!showOtherInput ? (
@@ -1049,7 +1110,7 @@ export default function AddTricycleModal({
               
               <TouchableOpacity 
                 style={[styles.modalBtn, { backgroundColor: colors.primary }]} 
-                onPress={activeTab === 'documents' && (crData || orData) ? handleSubmitWithDocuments : () => onSubmit(newTricycle)} 
+                onPress={activeTab === 'documents' && (crData || orData) ? handleSubmitWithDocuments : handleBasicSubmit} 
                 disabled={creating}
               >
                 {creating ? (
@@ -1413,7 +1474,7 @@ const scanStyles = StyleSheet.create({
     borderTopLeftRadius: 22,
     borderTopRightRadius: 22,
     padding: 20,
-    paddingBottom: Platform.OS === 'ios' ? 34 : 20,
+    paddingBottom: 20,
   },
   bottomSheetHandle: {
     width: 36,
@@ -1464,5 +1525,21 @@ const scanStyles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '600',
     color: '#6B7280',
+  },
+  // Plate number validation styles
+  plateHint: {
+    fontSize: 11,
+    color: '#6B7280',
+    marginTop: -8,
+    marginBottom: 8,
+    marginLeft: 4,
+  },
+  plateError: {
+    fontSize: 12,
+    color: '#dc3545',
+    marginTop: -4,
+    marginBottom: 8,
+    marginLeft: 4,
+    fontWeight: '500',
   },
 });

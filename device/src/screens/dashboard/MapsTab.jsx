@@ -1,11 +1,13 @@
-import React, { useEffect, useState, useMemo } from "react";
+import React, { useEffect, useState, useMemo, useRef } from "react";
 import { StyleSheet, View, TouchableOpacity, Text, Modal, Alert, ActivityIndicator } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { Ionicons } from '@expo/vector-icons';
-import { useIsFocused } from '@react-navigation/native';
+import { useIsFocused, useNavigation } from '@react-navigation/native';
 import { colors, spacing } from '../../components/common/theme';
 import TrackingMap from '../../components/home/TrackingMap';
 import QueueCard from '../../components/home/QueueCard';
+import { ActiveTripOverlay } from '../../components/booking';
+import { useSafeBooking } from '../../context/BookingContext';
 import { useAsyncSQLiteContext } from '../../utils/asyncSQliteProvider';
 import { getToken } from '../../utils/jwtStorage';
 import { getUserCredentials } from '../../utils/userStorage';
@@ -18,7 +20,26 @@ const KM_KEY = 'vehicle_current_km_v1';
 
 const MapsTab = () => {
   const isFocused = useIsFocused();
+  const navigation = useNavigation();
   const db = useAsyncSQLiteContext();
+  const trackingMapRef = useRef(null);
+  
+  // Booking context for active trip overlay (safely handles operators without BookingProvider)
+  const { 
+    activeBooking, 
+    isPickedUp, 
+    distanceToPickup, 
+    distanceToDestination,
+    driverArrivedAt,
+    noShowWaitMinutes,
+    bookingRoute,
+    confirmPickup,
+    completeTrip,
+    cancelTrip,
+    markDriverArrived,
+    markNoShow,
+  } = useSafeBooking();
+  
   const [user, setUser] = useState(null);
   const [assignedTricycle, setAssignedTricycle] = useState(null);
   const [authToken, setAuthToken] = useState(null);
@@ -123,9 +144,13 @@ const MapsTab = () => {
       {/* Always keep TrackingMap mounted so recording/tracking stays alive across tab switches.
            isVisible controls whether MapView renders (prevents multiple MapView crashes). */}
       <TrackingMap
+        ref={trackingMapRef}
         odometerSeed={odometerSeed}
         codingDayRestricted={codingDayStatus?.isCodingDay || false}
         isVisible={isFocused}
+        activeBooking={activeBooking}
+        bookingRoute={bookingRoute}
+        isPickedUp={isPickedUp}
         onEnterTerminalZone={(terminal) => {
           // Don't allow queue actions on coding day
           if (codingDayStatus?.isCodingDay) {
@@ -146,6 +171,37 @@ const MapsTab = () => {
           );
         }}
       />
+
+      {/* Active Trip Overlay - shows when driver has accepted a booking */}
+      {activeBooking && (
+        <ActiveTripOverlay
+          booking={activeBooking}
+          isPickedUp={isPickedUp}
+          distanceToPickup={distanceToPickup}
+          distanceToDestination={distanceToDestination}
+          driverArrivedAt={driverArrivedAt}
+          noShowWaitMinutes={noShowWaitMinutes}
+          onConfirmPickup={confirmPickup}
+          onCompleteTrip={completeTrip}
+          onMarkArrived={markDriverArrived}
+          onMarkNoShow={markNoShow}
+          onCancelTrip={() => {
+            // Add confirmation dialog before cancel
+            Alert.alert(
+              'Cancel Trip',
+              'Are you sure you want to cancel this trip?',
+              [
+                { text: 'No', style: 'cancel' },
+                { text: 'Yes, Cancel', style: 'destructive', onPress: cancelTrip },
+              ]
+            );
+          }}
+          onBackToBookings={() => {
+            // Navigate back to Trips tab
+            navigation.navigate('Trips');
+          }}
+        />
+      )}
 
       <View style={styles.fabContainer}>
         <TouchableOpacity style={styles.fab} onPress={() => setQueueVisible(true)}>

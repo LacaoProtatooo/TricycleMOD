@@ -982,6 +982,198 @@ export const confirmCompletion = async (req, res) => {
 };
 
 /**
+ * Driver marks arrival at pickup location
+ * POST /api/booking/:id/driver-arrived
+ */
+export const driverArrived = async (req, res) => {
+  try {
+    const driverId = req.user._id;
+    const { latitude, longitude } = req.body;
+    const booking = await Booking.findById(req.params.id);
+
+    if (!booking) {
+      return res.status(404).json({
+        success: false,
+        message: 'Booking not found',
+      });
+    }
+
+    // Only the assigned driver can mark arrival
+    if (!booking.driver || booking.driver.toString() !== driverId.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized - only the assigned driver can mark arrival',
+      });
+    }
+
+    // Can only mark arrival if status is 'accepted'
+    if (booking.status !== 'accepted') {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot mark arrival - current status is '${booking.status}'`,
+      });
+    }
+
+    // Optionally verify driver is near pickup location (within 100m)
+    if (latitude && longitude) {
+      const R = 6371e3; // Earth's radius in meters
+      const φ1 = (latitude * Math.PI) / 180;
+      const φ2 = (booking.pickup.latitude * Math.PI) / 180;
+      const Δφ = ((booking.pickup.latitude - latitude) * Math.PI) / 180;
+      const Δλ = ((booking.pickup.longitude - longitude) * Math.PI) / 180;
+
+      const a = Math.sin(Δφ / 2) ** 2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) ** 2;
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      const distance = R * c;
+
+      // Must be within 100m of pickup location
+      if (distance > 100) {
+        return res.status(400).json({
+          success: false,
+          message: `You must be within 100m of pickup location to mark arrival. Current distance: ${Math.round(distance)}m`,
+        });
+      }
+    }
+
+    // Mark arrival time
+    booking.driverArrivedAt = new Date();
+    await booking.save();
+
+    // Notify the passenger that driver has arrived
+    const user = await User.findById(booking.user);
+    if (user && user.FCMToken) {
+      await sendNotification(
+        user.FCMToken,
+        '🚗 Driver Has Arrived!',
+        'Your driver is waiting at the pickup location. Please meet them within 5 minutes.',
+        {
+          type: 'driver_arrived',
+          bookingId: booking._id.toString(),
+        }
+      );
+    }
+
+    await booking.populate('driver', 'firstname lastname rating image');
+    await booking.populate('user', 'firstname lastname rating image');
+
+    res.status(200).json({
+      success: true,
+      message: 'Arrival marked - passenger notified',
+      booking,
+      waitStartTime: booking.driverArrivedAt,
+    });
+  } catch (error) {
+    console.error('Error marking driver arrival:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to mark arrival',
+      error: error.message,
+    });
+  }
+};
+
+/**
+ * Driver marks passenger as no-show
+ * POST /api/booking/:id/no-show
+ */
+export const markNoShow = async (req, res) => {
+  try {
+    const driverId = req.user._id;
+    const booking = await Booking.findById(req.params.id);
+
+    if (!booking) {
+      return res.status(404).json({
+        success: false,
+        message: 'Booking not found',
+      });
+    }
+
+    // Only the assigned driver can mark no-show
+    if (!booking.driver || booking.driver.toString() !== driverId.toString()) {
+      return res.status(403).json({
+        success: false,
+        message: 'Not authorized - only the assigned driver can mark no-show',
+      });
+    }
+
+    // Can only mark no-show if status is 'accepted'
+    if (booking.status !== 'accepted') {
+      return res.status(400).json({
+        success: false,
+        message: `Cannot mark no-show - current status is '${booking.status}'`,
+      });
+    }
+
+    // Must have marked arrival first
+    if (!booking.driverArrivedAt) {
+      return res.status(400).json({
+        success: false,
+        message: 'You must mark arrival at pickup location first',
+      });
+    }
+
+    // Check if minimum wait time has passed (5 minutes)
+    const MIN_WAIT_MINUTES = 5;
+    const waitTimeMs = Date.now() - new Date(booking.driverArrivedAt).getTime();
+    const waitMinutes = waitTimeMs / (1000 * 60);
+
+    if (waitMinutes < MIN_WAIT_MINUTES) {
+      const remainingMinutes = Math.ceil(MIN_WAIT_MINUTES - waitMinutes);
+      return res.status(400).json({
+        success: false,
+        message: `You must wait at least ${MIN_WAIT_MINUTES} minutes. ${remainingMinutes} minute(s) remaining.`,
+        remainingMinutes,
+      });
+    }
+
+    // Calculate no-show fee (50% of the fare)
+    const fare = booking.agreedFare || booking.preferredFare;
+    const noShowFee = Math.round(fare * 0.5);
+
+    // Update booking status
+    booking.status = 'no_show';
+    booking.noShowMarkedAt = new Date();
+    booking.noShowFee = noShowFee;
+    booking.noShowWaitMinutes = Math.round(waitMinutes);
+
+    await booking.save();
+
+    // Notify the passenger about no-show
+    const user = await User.findById(booking.user);
+    if (user && user.FCMToken) {
+      await sendNotification(
+        user.FCMToken,
+        '❌ No-Show - Booking Cancelled',
+        `You did not meet the driver after ${Math.round(waitMinutes)} minutes. A no-show fee of ₱${noShowFee} may apply.`,
+        {
+          type: 'no_show',
+          bookingId: booking._id.toString(),
+          noShowFee: noShowFee.toString(),
+        }
+      );
+    }
+
+    await booking.populate('driver', 'firstname lastname rating image');
+    await booking.populate('user', 'firstname lastname rating image');
+
+    res.status(200).json({
+      success: true,
+      message: 'Passenger marked as no-show',
+      booking,
+      noShowFee,
+      waitMinutes: Math.round(waitMinutes),
+    });
+  } catch (error) {
+    console.error('Error marking no-show:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to mark no-show',
+      error: error.message,
+    });
+  }
+};
+
+/**
  * Cancel a booking
  * POST /api/booking/:id/cancel
  */

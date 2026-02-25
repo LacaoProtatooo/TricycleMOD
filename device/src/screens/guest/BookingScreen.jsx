@@ -1364,7 +1364,7 @@ const BookingScreen = ({ navigation }) => {
         <MapView
           ref={mapRef}
           provider={PROVIDER_GOOGLE}
-          mapType={Platform.OS === 'ios' ? 'mutedStandard' : 'standard'}
+          mapType="standard"
           style={styles.map}
           region={region}
           onRegionChangeComplete={setRegion}
@@ -1378,6 +1378,7 @@ const BookingScreen = ({ navigation }) => {
           strokeColor="rgba(255,140,0,0.6)"
           fillColor="rgba(255,140,0,0.08)"
           strokeWidth={2}
+          zIndex={0}
         />
 
         {/* WEBTODA GPX Route - Main service route reference */}
@@ -1388,19 +1389,21 @@ const BookingScreen = ({ navigation }) => {
             strokeWidth={4}
             lineCap="round"
             lineJoin="round"
+            zIndex={2}
           />
         )}
 
-        {/* Route buffer visualization (150m pickup zone) */}
+        {/* Route buffer visualization (150m pickup zone) - reduced circles for performance */}
         {bookingStatus === BOOKING_STATUS.SELECTING_LOCATIONS && selectingLocationType === 'pickup' && (
-          WEBTODA_ROUTE_COORDINATES.filter((_, index) => index % 5 === 0).map((coord, index) => (
+          WEBTODA_ROUTE_COORDINATES.filter((_, index) => index % 20 === 0).map((coord, index) => (
             <Circle
               key={`buffer-${index}`}
               center={coord}
               radius={WEBTODA_SERVICE_AREA.maxPickupDistance}
-              strokeColor="rgba(40,167,69,0.2)"
-              fillColor="rgba(40,167,69,0.05)"
+              strokeColor="rgba(40,167,69,0.15)"
+              fillColor="rgba(40,167,69,0.02)"
               strokeWidth={1}
+              zIndex={1}
             />
           ))
         )}
@@ -1416,9 +1419,12 @@ const BookingScreen = ({ navigation }) => {
               // Allow dragging pickup marker anywhere - no area restriction
               setPickupLocation({ latitude, longitude });
             }}
+            anchor={{ x: 0.5, y: 0.5 }}
+            zIndex={100}
+            tracksViewChanges={true}
           >
-            <View style={styles.pickupMarker}>
-              <Ionicons name="locate" size={20} color="#fff" />
+            <View style={styles.pickupMarker} collapsable={false}>
+              <Ionicons name="locate" size={16} color="#fff" />
             </View>
           </Marker>
         )}
@@ -1439,16 +1445,15 @@ const BookingScreen = ({ navigation }) => {
               }
               setDestinationLocation({ latitude, longitude });
             }}
+            anchor={{ x: 0.5, y: 0.5 }}
+            zIndex={101}
+            tracksViewChanges={true}
           >
             <View style={[
               styles.destinationMarker,
               destinationWarning && styles.destinationMarkerWarning
-            ]}>
-              <Ionicons 
-                name={destinationWarning ? "warning" : "flag"} 
-                size={20} 
-                color="#fff" 
-              />
+            ]} collapsable={false}>
+              <Ionicons name={destinationWarning ? "warning" : "flag"} size={16} color="#fff" />
             </View>
           </Marker>
         )}
@@ -1461,6 +1466,7 @@ const BookingScreen = ({ navigation }) => {
             strokeWidth={4}
             lineCap="round"
             lineJoin="round"
+            zIndex={10}
           />
         )}
         
@@ -1471,6 +1477,7 @@ const BookingScreen = ({ navigation }) => {
             strokeColor={colors.orangeShade4}
             strokeWidth={2}
             lineDashPattern={[10, 5]}
+            zIndex={9}
           />
         )}
 
@@ -1481,6 +1488,7 @@ const BookingScreen = ({ navigation }) => {
             radius={COMPLETION_RADIUS_METERS}
             strokeColor="rgba(40,167,69,0.6)"
             fillColor="rgba(40,167,69,0.15)"
+            zIndex={5}
           />
         )}
 
@@ -1491,9 +1499,11 @@ const BookingScreen = ({ navigation }) => {
             title="Driver"
             description="Your driver's current location"
             anchor={{ x: 0.5, y: 0.5 }}
+            zIndex={102}
+            tracksViewChanges={true}
           >
-            <View style={styles.driverMarker}>
-              <Ionicons name="bicycle" size={20} color="#fff" />
+            <View style={styles.driverMarker} collapsable={false}>
+              <Ionicons name="bicycle" size={16} color="#fff" />
             </View>
           </Marker>
         )}
@@ -2875,41 +2885,46 @@ const styles = StyleSheet.create({
 
   // Markers
   pickupMarker: {
+    width: 28,
+    height: 28,
     backgroundColor: '#28a745',
-    padding: 10,
-    borderRadius: 25,
-    borderWidth: 3,
+    borderRadius: 14,
+    borderWidth: 2,
     borderColor: '#fff',
-    shadowColor: '#000',
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   destinationMarker: {
+    width: 28,
+    height: 28,
     backgroundColor: colors.primary,
-    padding: 10,
-    borderRadius: 25,
-    borderWidth: 3,
+    borderRadius: 14,
+    borderWidth: 2,
     borderColor: '#fff',
-    shadowColor: '#000',
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   destinationMarkerWarning: {
     backgroundColor: '#dc3545',
     borderColor: '#fff3cd',
   },
   driverMarker: {
+    width: 28,
+    height: 28,
     backgroundColor: '#007bff',
-    padding: 10,
-    borderRadius: 25,
-    borderWidth: 3,
+    borderRadius: 14,
+    borderWidth: 2,
     borderColor: '#fff',
-    shadowColor: '#000',
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  markerIcon: {
+    fontSize: 14,
+    color: '#fff',
+    fontWeight: 'bold',
+    textAlign: 'center',
+    includeFontPadding: false,
+    textAlignVertical: 'center',
   },
 
   // Bottom Panel

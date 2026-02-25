@@ -84,7 +84,7 @@ export default function AssignDriverModal({
       <View style={localStyles.overlay}>
         <KeyboardAvoidingView 
           style={localStyles.keyboardView}
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+          behavior={undefined}
         >
           <View style={localStyles.modalBox}>
             {/* Fixed Header */}

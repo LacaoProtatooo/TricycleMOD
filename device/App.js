@@ -17,6 +17,7 @@ import ActivityTracker from './src/components/common/ActivityTracker';
 import { fetchUnreadAnnouncements, markAnnouncementsAsRead } from './src/redux/actions/announcementAction';
 import AnnouncementModal from './src/components/common/announcementModal';
 import ComplaintNotificationModal from './src/components/common/ComplaintNotificationModal';
+import { SweetAlertProvider } from './src/context/SweetAlertContext';
 import complaintNotifEmitter from './src/utils/complaintNotificationEvent';
 
 // Suppress known react-native-maps warning about topUserLocationChange event
@@ -121,7 +122,9 @@ export default function App() {
     <SafeAreaProvider>
       <Provider store={store}>
         <AsyncSQLiteProvider databaseName="tmod.db" onInit={migrateDbIfNeeded}>
-          <AppContent />
+          <SweetAlertProvider>
+            <AppContent />
+          </SweetAlertProvider>
         </AsyncSQLiteProvider>
       </Provider>
     </SafeAreaProvider>
