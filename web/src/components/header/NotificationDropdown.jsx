@@ -515,7 +515,7 @@ export default function NotificationDropdown() {
 
         <div className="flex gap-2 mt-3">
           <Link
-            to="/notifications"
+            to="/dashboard/notifications"
             onClick={closeDropdown}
             className="flex-1 px-4 py-2 text-sm font-medium text-center text-white bg-brand-500 hover:bg-brand-600 rounded-lg transition-colors"
           >

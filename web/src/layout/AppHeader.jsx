@@ -10,77 +10,77 @@ import UserDropdown from "../components/header/UserDropdown";
 const searchableItems = [
   {
     name: "Dashboard",
-    path: "/",
+    path: "/dashboard",
     keywords: ["home", "overview", "stats", "statistics", "metrics", "revenue", "performance", "analytics", "main"],
   },
   {
     name: "Announcements",
-    path: "/announcements",
+    path: "/dashboard/announcements",
     keywords: ["news", "updates", "notices", "broadcast", "message", "alert", "info", "notification", "publish"],
   },
   {
     name: "Users",
-    path: "/users",
+    path: "/dashboard/users",
     keywords: ["accounts", "members", "guests", "passengers", "commuters", "people", "profiles", "all users"],
   },
   {
     name: "Drivers",
-    path: "/drivers",
+    path: "/dashboard/drivers",
     keywords: ["operators", "riders", "kuya", "tricycle drivers", "license", "verification", "suspend", "verified", "pending"],
   },
   {
     name: "Operators",
-    path: "/operators",
+    path: "/dashboard/operators",
     keywords: ["owners", "franchise", "toda", "business", "tricycle owners", "vehicles", "fleet"],
   },
   {
     name: "Bookings",
-    path: "/bookings",
+    path: "/dashboard/bookings",
     keywords: ["trips", "rides", "reservations", "travel", "fare", "dispute", "completed", "cancelled", "ongoing", "scheduled"],
   },
   {
     name: "Live Tracking",
-    path: "/live-tracking",
+    path: "/dashboard/live-tracking",
     keywords: ["map", "location", "gps", "real-time", "track", "position", "live", "driver location", "monitoring"],
   },
   {
     name: "Notifications",
-    path: "/notifications",
+    path: "/dashboard/notifications",
     keywords: ["alerts", "messages", "push", "bell", "updates", "reminders"],
   },
   {
     name: "Lost & Found",
-    path: "/lost-found",
+    path: "/dashboard/lost-found",
     keywords: ["missing", "items", "belongings", "lost items", "found items", "recover", "claim", "property"],
   },
   {
     name: "Complaints",
-    path: "/complaints",
+    path: "/dashboard/complaints",
     keywords: ["reports", "issues", "problems", "feedback", "violations", "concerns", "dispute", "incident", "rude", "overcharging"],
   },
   {
     name: "Leaderboard",
-    path: "/leaderboard",
+    path: "/dashboard/leaderboard",
     keywords: ["rankings", "top drivers", "ratings", "best", "performance", "stars", "reviews", "scores"],
   },
   {
     name: "Tricycle Coding",
-    path: "/coding",
+    path: "/dashboard/coding",
     keywords: ["number coding", "schedule", "rest day", "day off", "coding day", "plate number", "restriction"],
   },
   {
     name: "Rules & Regulations",
-    path: "/rules-regulations",
+    path: "/dashboard/rules-regulations",
     keywords: ["policies", "guidelines", "terms", "conditions", "laws", "ordinance", "webttoda", "rules"],
   },
   {
     name: "Admin Logs",
-    path: "/admin-logs",
+    path: "/dashboard/admin-logs",
     keywords: ["activity", "history", "audit", "actions", "logs", "trail", "admin activity", "changes"],
   },
   {
     name: "About",
-    path: "/about",
+    path: "/dashboard/about",
     keywords: ["info", "information", "help", "contact", "system", "version", "developers"],
   },
 ];
