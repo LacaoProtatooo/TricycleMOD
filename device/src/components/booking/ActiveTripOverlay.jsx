@@ -10,7 +10,6 @@ import { View, Text, TouchableOpacity, StyleSheet, Alert, Animated, PanResponder
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { colors, spacing } from '../common/theme';
 import { formatDistance } from '../../utils/routeService';
-import TripSimulator from '../home/TripSimulator';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 const DRAWER_WIDTH = 280;
@@ -40,8 +39,7 @@ const ActiveTripOverlay = ({
   const [timeRemaining, setTimeRemaining] = useState(null);
   const [canMarkNoShow, setCanMarkNoShow] = useState(false);
 
-  // DEV-only: Trip Simulator state
-  const [showSimulator, setShowSimulator] = useState(false);
+  
 
   // Drawer open/close: translateX animated between 0 (open) and DRAWER_WIDTH (closed)
   const drawerOpen = useRef(false);
@@ -372,16 +370,7 @@ const ActiveTripOverlay = ({
           </Text>
         )}
 
-        {/* DEV-only: Trip Simulator button */}
-        {__DEV__ && (
-          <TouchableOpacity
-            style={styles.simBtn}
-            onPress={() => setShowSimulator(true)}
-          >
-            <Ionicons name="flask" size={16} color="#fff" />
-            <Text style={styles.simBtnText}>Simulate Trip</Text>
-          </TouchableOpacity>
-        )}
+        {/* DEV-only simulator removed */}
 
         {/* Back to bookings button */}
         <TouchableOpacity style={styles.backBtn} onPress={onBackToBookings}>
@@ -390,18 +379,7 @@ const ActiveTripOverlay = ({
         </TouchableOpacity>
       </ScrollView>
 
-      {/* DEV-only: Trip Simulator Modal */}
-      {__DEV__ && (
-        <TripSimulator
-          visible={showSimulator}
-          onClose={() => setShowSimulator(false)}
-          pickup={booking.pickup}
-          destination={booking.destination}
-          bookingId={booking._id}
-          routeCoordinates={routeCoordinates}
-          onSimulationComplete={() => setShowSimulator(false)}
-        />
-      )}
+      {/* TripSimulator removed */}
     </Animated.View>
   );
 };
