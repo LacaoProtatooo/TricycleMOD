@@ -1167,7 +1167,7 @@ const GuestTracking = () => {
           {currentLocation && !reliveActive && (
             <Marker coordinate={currentLocation} anchor={{ x: 0.5, y: 0.5 }}>
               <View style={styles.locationMarker}>
-                <Ionicons name="navigate" size={20} color="#fff" />
+                <Ionicons name="navigate" size={14} color="#fff" />
               </View>
             </Marker>
           )}
@@ -1197,7 +1197,7 @@ const GuestTracking = () => {
                 anchor={{ x: 0.5, y: 0.5 }}
               >
                 <View style={styles.reliveMarker}>
-                  <Ionicons name="bicycle" size={20} color="#fff" />
+                  <Ionicons name="bicycle" size={14} color="#fff" />
                 </View>
               </Marker.Animated>
             </>
@@ -1510,26 +1510,34 @@ const styles = StyleSheet.create({
     color: colors.orangeShade5,
   },
   locationMarker: {
+    width: 32,
+    height: 32,
     backgroundColor: colors.primary,
-    padding: 10,
-    borderRadius: 25,
-    borderWidth: 3,
+    borderRadius: 16,
+    borderWidth: 2,
     borderColor: '#fff',
+    justifyContent: 'center',
+    alignItems: 'center',
     shadowColor: '#000',
     shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 6,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 4,
   },
   reliveMarker: {
+    width: 32,
+    height: 32,
     backgroundColor: '#0d6efd',
-    padding: 10,
-    borderRadius: 25,
-    borderWidth: 3,
+    borderRadius: 16,
+    borderWidth: 2,
     borderColor: '#fff',
+    justifyContent: 'center',
+    alignItems: 'center',
     shadowColor: '#000',
     shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 6,
+    shadowRadius: 4,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 4,
   },
   
   // Recording Panel

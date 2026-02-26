@@ -178,6 +178,7 @@ const BookingScreen = ({ navigation }) => {
   const [routeInfo, setRouteInfo] = useState(null);
   const [suggestedFare, setSuggestedFare] = useState(null);
   const [isCalculatingRoute, setIsCalculatingRoute] = useState(false);
+  const [showFareBreakdown, setShowFareBreakdown] = useState(false);
   const [routeError, setRouteError] = useState(null);
 
   // Location search state
@@ -1699,117 +1700,104 @@ const BookingScreen = ({ navigation }) => {
           </View>
         )}
 
-        {/* SETTING_FARE State */}
+        {/* SETTING_FARE State - Compact minimal design */}
         {bookingStatus === BOOKING_STATUS.SETTING_FARE && (
-          <View style={styles.panelContent}>
-            <Text style={styles.panelTitle}>Set Your Fare</Text>
-            
-            {/* Route Info Display */}
+          <View style={styles.panelContentCompact}>
+            {/* Compact Route Summary Row */}
             {routeInfo && suggestedFare && (
-              <View style={styles.routeInfoContainer}>
-                <View style={styles.routeInfoRow}>
-                  <View style={styles.routeInfoItem}>
-                    <Ionicons name="navigate-outline" size={18} color={colors.primary} />
-                    <Text style={styles.routeInfoLabel}>Distance</Text>
-                    <Text style={styles.routeInfoValue}>{formatDistance(routeInfo.distanceMeters)}</Text>
-                  </View>
-                  <View style={styles.routeInfoDivider} />
-                  <View style={styles.routeInfoItem}>
-                    <Ionicons name="time-outline" size={18} color={colors.primary} />
-                    <Text style={styles.routeInfoLabel}>Est. Time</Text>
-                    <Text style={styles.routeInfoValue}>{formatDuration(routeInfo.durationMinutes)}</Text>
-                  </View>
+              <View style={styles.compactRouteRow}>
+                <View style={styles.compactRouteInfo}>
+                  <Ionicons name="navigate" size={14} color={colors.primary} />
+                  <Text style={styles.compactRouteText}>{formatDistance(routeInfo.distanceMeters)}</Text>
                 </View>
-                
-                {/* Fare Breakdown */}
-                <View style={styles.fareBreakdownContainer}>
-                  <Text style={styles.fareBreakdownTitle}>Suggested Fare Breakdown</Text>
-                  {suggestedFare.breakdown.map((item, index) => (
-                    <View key={index} style={styles.fareBreakdownRow}>
-                      <Text style={styles.fareBreakdownLabel}>{item.label}</Text>
-                      <Text style={styles.fareBreakdownAmount}>₱{item.amount}</Text>
-                    </View>
-                  ))}
-                  <View style={styles.fareBreakdownTotal}>
-                    <Text style={styles.fareBreakdownTotalLabel}>Suggested Fare</Text>
-                    <Text style={styles.fareBreakdownTotalAmount}>₱{suggestedFare.suggestedFare}</Text>
-                  </View>
+                <View style={styles.compactRouteDot} />
+                <View style={styles.compactRouteInfo}>
+                  <Ionicons name="time" size={14} color={colors.primary} />
+                  <Text style={styles.compactRouteText}>{formatDuration(routeInfo.durationMinutes)}</Text>
                 </View>
-                
-                {routeError && (
-                  <View style={styles.routeWarningBanner}>
-                    <Ionicons name="information-circle-outline" size={16} color="#856404" />
-                    <Text style={styles.routeWarningText}>{routeError}</Text>
-                  </View>
-                )}
+                <View style={styles.compactRouteDot} />
+                <TouchableOpacity 
+                  style={styles.compactSuggestedFare}
+                  onPress={() => setShowFareBreakdown(!showFareBreakdown)}
+                >
+                  <Text style={styles.compactSuggestedLabel}>Suggested:</Text>
+                  <Text style={styles.compactSuggestedAmount}>₱{suggestedFare.suggestedFare}</Text>
+                  <Ionicons 
+                    name={showFareBreakdown ? "chevron-up" : "chevron-down"} 
+                    size={14} 
+                    color={colors.orangeShade5} 
+                  />
+                </TouchableOpacity>
               </View>
             )}
             
             {isCalculatingRoute && (
-              <View style={styles.calculatingContainer}>
+              <View style={styles.compactCalculating}>
                 <ActivityIndicator size="small" color={colors.primary} />
-                <Text style={styles.calculatingText}>Calculating best route...</Text>
+                <Text style={styles.compactCalculatingText}>Calculating...</Text>
               </View>
             )}
             
-            <Text style={styles.panelDescription}>
-              You can adjust the fare below. Nearby drivers will be notified.
-            </Text>
-            
-            <View style={styles.fareInputContainer}>
-              <Text style={styles.currencySymbol}>₱</Text>
-              <TextInput
-                style={styles.fareInput}
-                placeholder="Enter amount"
-                placeholderTextColor={colors.orangeShade4}
-                keyboardType="numeric"
-                value={preferredFare}
-                onChangeText={setPreferredFare}
-              />
-            </View>
-            
-            {suggestedFare && preferredFare && (
-              <View style={styles.fareComparisonBanner}>
-                {parseFloat(preferredFare) < suggestedFare.fareRange.min ? (
-                  <View style={styles.fareLowWarning}>
-                    <Ionicons name="warning-outline" size={16} color="#dc3545" />
-                    <Text style={styles.fareLowText}>
-                      Fare is below suggested minimum (₱{suggestedFare.fareRange.min})
-                    </Text>
+            {/* Expandable Fare Breakdown */}
+            {showFareBreakdown && suggestedFare && (
+              <View style={styles.compactBreakdown}>
+                {suggestedFare.breakdown.map((item, index) => (
+                  <View key={index} style={styles.compactBreakdownRow}>
+                    <Text style={styles.compactBreakdownLabel}>{item.label}</Text>
+                    <Text style={styles.compactBreakdownAmount}>₱{item.amount}</Text>
                   </View>
-                ) : parseFloat(preferredFare) >= suggestedFare.fareRange.min && parseFloat(preferredFare) <= suggestedFare.fareRange.max ? (
-                  <View style={styles.fareGoodBanner}>
-                    <Ionicons name="checkmark-circle-outline" size={16} color="#28a745" />
-                    <Text style={styles.fareGoodText}>
-                      Fare is within suggested range
-                    </Text>
-                  </View>
-                ) : null}
+                ))}
               </View>
             )}
-
-            <View style={styles.buttonRow}>
+            
+            {routeError && (
+              <View style={styles.compactWarning}>
+                <Ionicons name="information-circle" size={14} color="#856404" />
+                <Text style={styles.compactWarningText}>{routeError}</Text>
+              </View>
+            )}
+            
+            {/* Compact Fare Input Row with Inline Button */}
+            <View style={styles.compactFareRow}>
               <TouchableOpacity
-                style={styles.secondaryButton}
+                style={styles.compactBackButton}
                 onPress={() => setBookingStatus(BOOKING_STATUS.SELECTING_LOCATIONS)}
               >
-                <Text style={styles.secondaryButtonText}>Back</Text>
+                <Ionicons name="arrow-back" size={20} color={colors.orangeShade6} />
               </TouchableOpacity>
+              
+              <View style={styles.compactFareInputWrapper}>
+                <Text style={styles.compactCurrencySymbol}>₱</Text>
+                <TextInput
+                  style={styles.compactFareInput}
+                  placeholder="Your fare"
+                  placeholderTextColor={colors.orangeShade4}
+                  keyboardType="numeric"
+                  value={preferredFare}
+                  onChangeText={setPreferredFare}
+                />
+                {suggestedFare && preferredFare && parseFloat(preferredFare) < suggestedFare.fareRange.min && (
+                  <Ionicons name="warning" size={16} color="#dc3545" style={styles.compactFareIcon} />
+                )}
+                {suggestedFare && preferredFare && parseFloat(preferredFare) >= suggestedFare.fareRange.min && parseFloat(preferredFare) <= suggestedFare.fareRange.max && (
+                  <Ionicons name="checkmark-circle" size={16} color="#28a745" style={styles.compactFareIcon} />
+                )}
+              </View>
+              
               <TouchableOpacity
                 style={[
-                  styles.primaryButton,
-                  styles.buttonFlex,
+                  styles.compactRequestButton,
                   loading && styles.buttonDisabled,
                 ]}
                 onPress={handleRequestBooking}
                 disabled={loading}
               >
                 {loading ? (
-                  <ActivityIndicator color="#fff" />
+                  <ActivityIndicator color="#fff" size="small" />
                 ) : (
                   <>
-                    <Ionicons name="send-outline" size={20} color="#fff" />
-                    <Text style={styles.primaryButtonText}>Request Trip</Text>
+                    <Ionicons name="send" size={18} color="#fff" />
+                    <Text style={styles.compactRequestText}>Request</Text>
                   </>
                 )}
               </TouchableOpacity>
@@ -4622,6 +4610,160 @@ const styles = StyleSheet.create({
     fontSize: 15,
     color: colors.orangeShade6,
     marginLeft: spacing.small,
+  },
+
+  // Compact Fare Panel Styles
+  panelContentCompact: {
+    paddingHorizontal: spacing.medium,
+    paddingVertical: spacing.small,
+  },
+  compactRouteRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.ivory4,
+    borderRadius: 8,
+    paddingVertical: 8,
+    paddingHorizontal: spacing.small,
+    marginBottom: spacing.small,
+  },
+  compactRouteInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  compactRouteText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.orangeShade7,
+    marginLeft: 4,
+  },
+  compactRouteDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: colors.orangeShade4,
+    marginHorizontal: 8,
+  },
+  compactSuggestedFare: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.ivory2,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    borderWidth: 1,
+    borderColor: colors.primary,
+  },
+  compactSuggestedLabel: {
+    fontSize: 11,
+    color: colors.orangeShade5,
+    marginRight: 4,
+  },
+  compactSuggestedAmount: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: colors.primary,
+    marginRight: 4,
+  },
+  compactCalculating: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+  },
+  compactCalculatingText: {
+    fontSize: 13,
+    color: colors.orangeShade5,
+    marginLeft: 8,
+  },
+  compactBreakdown: {
+    backgroundColor: colors.ivory4,
+    borderRadius: 8,
+    padding: spacing.small,
+    marginBottom: spacing.small,
+  },
+  compactBreakdownRow: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    paddingVertical: 2,
+  },
+  compactBreakdownLabel: {
+    fontSize: 12,
+    color: colors.orangeShade5,
+  },
+  compactBreakdownAmount: {
+    fontSize: 12,
+    fontWeight: '500',
+    color: colors.orangeShade6,
+  },
+  compactWarning: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff3cd',
+    paddingHorizontal: 8,
+    paddingVertical: 6,
+    borderRadius: 6,
+    marginBottom: spacing.small,
+  },
+  compactWarningText: {
+    flex: 1,
+    fontSize: 11,
+    color: '#856404',
+    marginLeft: 6,
+  },
+  compactFareRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  compactBackButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 10,
+    backgroundColor: colors.ivory4,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  compactFareInputWrapper: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.ivory4,
+    borderRadius: 10,
+    paddingHorizontal: spacing.small,
+    height: 44,
+    borderWidth: 1,
+    borderColor: colors.ivory3,
+  },
+  compactCurrencySymbol: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.primary,
+    marginRight: 4,
+  },
+  compactFareInput: {
+    flex: 1,
+    fontSize: 18,
+    fontWeight: '600',
+    color: colors.orangeShade7,
+    paddingVertical: 0,
+  },
+  compactFareIcon: {
+    marginLeft: 4,
+  },
+  compactRequestButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.primary,
+    paddingHorizontal: 16,
+    height: 44,
+    borderRadius: 10,
+  },
+  compactRequestText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '700',
+    marginLeft: 6,
   },
 });
 
