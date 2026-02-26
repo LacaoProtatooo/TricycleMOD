@@ -179,6 +179,7 @@ const BookingScreen = ({ navigation }) => {
   const [suggestedFare, setSuggestedFare] = useState(null);
   const [isCalculatingRoute, setIsCalculatingRoute] = useState(false);
   const [showFareBreakdown, setShowFareBreakdown] = useState(false);
+  const [showRouteDetails, setShowRouteDetails] = useState(false);
   const [routeError, setRouteError] = useState(null);
 
   // Location search state
@@ -1703,50 +1704,53 @@ const BookingScreen = ({ navigation }) => {
         {/* SETTING_FARE State - Compact minimal design */}
         {bookingStatus === BOOKING_STATUS.SETTING_FARE && (
           <View style={styles.panelContentCompact}>
-            {/* Compact Route Summary Row */}
-            {routeInfo && suggestedFare && (
-              <View style={styles.compactRouteRow}>
-                <View style={styles.compactRouteInfo}>
-                  <Ionicons name="navigate" size={14} color={colors.primary} />
-                  <Text style={styles.compactRouteText}>{formatDistance(routeInfo.distanceMeters)}</Text>
+            {/* Expandable Route Details Section */}
+            {showRouteDetails && routeInfo && suggestedFare && (
+              <>
+                {/* Compact Route Summary Row */}
+                <View style={styles.compactRouteRow}>
+                  <View style={styles.compactRouteInfo}>
+                    <Ionicons name="navigate" size={14} color={colors.primary} />
+                    <Text style={styles.compactRouteText}>{formatDistance(routeInfo.distanceMeters)}</Text>
+                  </View>
+                  <View style={styles.compactRouteDot} />
+                  <View style={styles.compactRouteInfo}>
+                    <Ionicons name="time" size={14} color={colors.primary} />
+                    <Text style={styles.compactRouteText}>{formatDuration(routeInfo.durationMinutes)}</Text>
+                  </View>
+                  <View style={styles.compactRouteDot} />
+                  <TouchableOpacity 
+                    style={styles.compactSuggestedFare}
+                    onPress={() => setShowFareBreakdown(!showFareBreakdown)}
+                  >
+                    <Text style={styles.compactSuggestedLabel}>Suggested:</Text>
+                    <Text style={styles.compactSuggestedAmount}>₱{suggestedFare.suggestedFare}</Text>
+                    <Ionicons 
+                      name={showFareBreakdown ? "chevron-up" : "chevron-down"} 
+                      size={14} 
+                      color={colors.orangeShade5} 
+                    />
+                  </TouchableOpacity>
                 </View>
-                <View style={styles.compactRouteDot} />
-                <View style={styles.compactRouteInfo}>
-                  <Ionicons name="time" size={14} color={colors.primary} />
-                  <Text style={styles.compactRouteText}>{formatDuration(routeInfo.durationMinutes)}</Text>
-                </View>
-                <View style={styles.compactRouteDot} />
-                <TouchableOpacity 
-                  style={styles.compactSuggestedFare}
-                  onPress={() => setShowFareBreakdown(!showFareBreakdown)}
-                >
-                  <Text style={styles.compactSuggestedLabel}>Suggested:</Text>
-                  <Text style={styles.compactSuggestedAmount}>₱{suggestedFare.suggestedFare}</Text>
-                  <Ionicons 
-                    name={showFareBreakdown ? "chevron-up" : "chevron-down"} 
-                    size={14} 
-                    color={colors.orangeShade5} 
-                  />
-                </TouchableOpacity>
-              </View>
+                
+                {/* Expandable Fare Breakdown */}
+                {showFareBreakdown && (
+                  <View style={styles.compactBreakdown}>
+                    {suggestedFare.breakdown.map((item, index) => (
+                      <View key={index} style={styles.compactBreakdownRow}>
+                        <Text style={styles.compactBreakdownLabel}>{item.label}</Text>
+                        <Text style={styles.compactBreakdownAmount}>₱{item.amount}</Text>
+                      </View>
+                    ))}
+                  </View>
+                )}
+              </>
             )}
             
             {isCalculatingRoute && (
               <View style={styles.compactCalculating}>
                 <ActivityIndicator size="small" color={colors.primary} />
                 <Text style={styles.compactCalculatingText}>Calculating...</Text>
-              </View>
-            )}
-            
-            {/* Expandable Fare Breakdown */}
-            {showFareBreakdown && suggestedFare && (
-              <View style={styles.compactBreakdown}>
-                {suggestedFare.breakdown.map((item, index) => (
-                  <View key={index} style={styles.compactBreakdownRow}>
-                    <Text style={styles.compactBreakdownLabel}>{item.label}</Text>
-                    <Text style={styles.compactBreakdownAmount}>₱{item.amount}</Text>
-                  </View>
-                ))}
               </View>
             )}
             
@@ -1765,6 +1769,20 @@ const BookingScreen = ({ navigation }) => {
               >
                 <Ionicons name="arrow-back" size={20} color={colors.orangeShade6} />
               </TouchableOpacity>
+              
+              {/* Info Toggle Button */}
+              {routeInfo && suggestedFare && (
+                <TouchableOpacity
+                  style={[styles.compactInfoToggle, showRouteDetails && styles.compactInfoToggleActive]}
+                  onPress={() => setShowRouteDetails(!showRouteDetails)}
+                >
+                  <Ionicons 
+                    name={showRouteDetails ? "information-circle" : "information-circle-outline"} 
+                    size={20} 
+                    color={showRouteDetails ? colors.primary : colors.orangeShade5} 
+                  />
+                </TouchableOpacity>
+              )}
               
               <View style={styles.compactFareInputWrapper}>
                 <Text style={styles.compactCurrencySymbol}>₱</Text>
@@ -4723,6 +4741,19 @@ const styles = StyleSheet.create({
     backgroundColor: colors.ivory4,
     justifyContent: 'center',
     alignItems: 'center',
+  },
+  compactInfoToggle: {
+    width: 44,
+    height: 44,
+    borderRadius: 10,
+    backgroundColor: colors.ivory4,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  compactInfoToggleActive: {
+    backgroundColor: colors.ivory2,
+    borderWidth: 1,
+    borderColor: colors.primary,
   },
   compactFareInputWrapper: {
     flex: 1,
