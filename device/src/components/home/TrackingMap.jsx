@@ -117,6 +117,7 @@ export default function TrackingMap({
   isPickedUp = false,
   isRerouting = false,
   onRerouteNeeded = null,
+  onQueuePress = null,
 }) {
   const mapRef = useRef(null);
   const [region, setRegion] = useState(null);
@@ -2055,21 +2056,7 @@ ${trackPoints}
         </View>
       )}
 
-      {/* Navigation Mode Recenter Button — appears when user pans away during Waze-style nav */}
-      {isNavigationMode && !reliveActive && (
-        <TouchableOpacity
-          style={styles.navRecenterBtn}
-          activeOpacity={0.85}
-          onPress={() => {
-            if (positions.length > 0 && mapRef.current) {
-              const lastPos = positions[positions.length - 1];
-              updateNavigationCamera(lastPos, heading || 0, speedKph || 0);
-            }
-          }}
-        >
-          <Ionicons name="navigate" size={20} color="#fff" />
-        </TouchableOpacity>
-      )}
+
 
       {/* Navigation Mode Top Info Bar — shows speed + heading in Waze-style */}
       {isNavigationMode && !reliveActive && (
@@ -2138,25 +2125,18 @@ ${trackPoints}
           </View>
           {/* Quick-action icons visible even when collapsed */}
           <View style={styles.controlsQuickActions}>
-            <TouchableOpacity
-              style={styles.quickActionBtn}
-              onPress={async (e) => {
-                e.stopPropagation();
-                try {
-                  const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
-                  const center = { latitude: loc.coords.latitude, longitude: loc.coords.longitude };
-                  mapRef.current?.animateCamera({ center, zoom: 17 }, { duration: 500 });
-                } catch {
-                  // Fallback to last tracked position if GPS fails
-                  if (positions.length) {
-                    const last = positions[positions.length - 1];
-                    mapRef.current?.animateCamera({ center: last, zoom: 17 }, { duration: 500 });
-                  }
-                }
-              }}
-            >
-              <Ionicons name="locate-outline" size={18} color={colors.primary} />
-            </TouchableOpacity>
+            {onQueuePress && (
+              <TouchableOpacity
+                style={styles.quickActionQueueBtn}
+                onPress={(e) => {
+                  e.stopPropagation();
+                  onQueuePress();
+                }}
+              >
+                <Ionicons name="list" size={14} color="#fff" />
+                <Text style={styles.quickActionQueueText}>Queue</Text>
+              </TouchableOpacity>
+            )}
             <TouchableOpacity
               style={styles.quickActionBtn}
               onPress={() => {
@@ -2293,13 +2273,30 @@ ${trackPoints}
               </Text>
             </TouchableOpacity>
 
-            <TouchableOpacity
-              onPress={openHistory}
-              style={styles.historyBtn}
-            >
-              <Ionicons name="time-outline" size={20} color="#fff" />
-              <Text style={styles.historyBtnText}>History</Text>
-            </TouchableOpacity>
+            <View style={styles.rightControlsCol}>
+              {/* Navigation Recenter Button — above History */}
+              {isNavigationMode && !reliveActive && (
+                <TouchableOpacity
+                  style={styles.navRecenterBtnInline}
+                  activeOpacity={0.85}
+                  onPress={() => {
+                    if (positions.length > 0 && mapRef.current) {
+                      const lastPos = positions[positions.length - 1];
+                      updateNavigationCamera(lastPos, heading || 0, speedKph || 0);
+                    }
+                  }}
+                >
+                  <Ionicons name="navigate" size={18} color="#fff" />
+                </TouchableOpacity>
+              )}
+              <TouchableOpacity
+                onPress={openHistory}
+                style={styles.historyBtn}
+              >
+                <Ionicons name="time-outline" size={20} color="#fff" />
+                <Text style={styles.historyBtnText}>History</Text>
+              </TouchableOpacity>
+            </View>
           </View>
         </RNAnimated.View>
       </View>
@@ -2617,6 +2614,16 @@ const styles = StyleSheet.create({
     elevation: 8,
     zIndex: 100,
   },
+  navRecenterBtnInline: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#4A89F3',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    borderRadius: 8,
+    marginBottom: 6,
+  },
   navInfoBar: {
     position: 'absolute',
     top: 10,
@@ -2749,6 +2756,24 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: 'flex-end',
     marginRight: 8,
+  },
+  quickActionQueueBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.orangeShade7,
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 14,
+    gap: 4,
+  },
+  quickActionQueueText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  rightControlsCol: {
+    flexDirection: 'column',
+    alignItems: 'stretch',
   },
   quickActionBtn: {
     width: 34,
@@ -3009,7 +3034,7 @@ const styles = StyleSheet.create({
   // Recording Panel
   recordingPanel: {
     position: 'absolute',
-    top: 10,
+    top: 55,
     left: spacing.medium,
     right: spacing.medium,
     backgroundColor: 'rgba(255,255,255,0.95)',

@@ -153,6 +153,7 @@ const MapsTab = () => {
         bookingRoute={bookingRoute}
         isPickedUp={isPickedUp}
         isRerouting={isRerouting}
+        onQueuePress={() => setQueueVisible(true)}
         onEnterTerminalZone={(terminal) => {
           // Don't allow queue actions on coding day
           if (codingDayStatus?.isCodingDay) {
@@ -204,13 +205,6 @@ const MapsTab = () => {
           }}
         />
       )}
-
-      <View style={styles.fabContainer}>
-        <TouchableOpacity style={styles.fab} onPress={() => setQueueVisible(true)}>
-          <Ionicons name="list" size={18} color="#fff" />
-          <Text style={styles.fabText}>Queue</Text>
-        </TouchableOpacity>
-      </View>
 
       <Modal
         visible={queueVisible}
@@ -287,30 +281,7 @@ const styles = StyleSheet.create({
     fontSize: 13,
     marginLeft: spacing.small,
   },
-  fabContainer: {
-    position: 'absolute',
-    right: spacing.large,
-    top: 80,
-    zIndex: 5,
-  },
-  fab: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.orangeShade7,
-    paddingHorizontal: spacing.large,
-    paddingVertical: spacing.small,
-    borderRadius: 24,
-    shadowColor: '#000',
-    shadowOpacity: 0.2,
-    shadowOffset: { width: 0, height: 2 },
-    shadowRadius: 6,
-    elevation: 4,
-  },
-  fabText: {
-    color: '#fff',
-    fontWeight: '700',
-    marginLeft: spacing.small,
-  },
+
   modalOverlay: {
     flex: 1,
     backgroundColor: 'rgba(0,0,0,0.25)',
