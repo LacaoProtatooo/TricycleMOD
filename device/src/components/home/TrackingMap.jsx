@@ -1927,10 +1927,18 @@ ${trackPoints}
           <View style={styles.controlsQuickActions}>
             <TouchableOpacity
               style={styles.quickActionBtn}
-              onPress={() => {
-                if (positions.length) {
-                  const last = positions[positions.length - 1];
-                  mapRef.current?.animateCamera({ center: last }, { duration: 300 });
+              onPress={async (e) => {
+                e.stopPropagation();
+                try {
+                  const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.High });
+                  const center = { latitude: loc.coords.latitude, longitude: loc.coords.longitude };
+                  mapRef.current?.animateCamera({ center, zoom: 17 }, { duration: 500 });
+                } catch {
+                  // Fallback to last tracked position if GPS fails
+                  if (positions.length) {
+                    const last = positions[positions.length - 1];
+                    mapRef.current?.animateCamera({ center: last, zoom: 17 }, { duration: 500 });
+                  }
                 }
               }}
             >

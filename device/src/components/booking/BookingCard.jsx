@@ -2,11 +2,12 @@
  * BookingCard.jsx - Single booking request card for the list view
  */
 
-import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import React, { useState, useEffect, useRef } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, Platform } from 'react-native';
+import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { colors, spacing } from '../common/theme';
-import { formatDistance } from '../../utils/routeService';
+import { formatDistance, getRoute } from '../../utils/routeService';
 
 const BookingCard = ({
   booking,
@@ -37,6 +38,32 @@ const BookingCard = ({
   const passengerName = booking.user?.firstname 
     ? `${booking.user.firstname} ${booking.user.lastname || ''}`.trim()
     : 'Passenger';
+
+  // Fetch actual road route on mount
+  const [routeCoords, setRouteCoords] = useState([]);
+  const mapRef = useRef(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    const fetchRoute = async () => {
+      if (!booking?.pickup || !booking?.destination) return;
+      try {
+        const result = await getRoute(booking.pickup, booking.destination);
+        if (cancelled) return;
+        if (result?.success && result?.route?.coordinates?.length > 1) {
+          setRouteCoords(result.route.coordinates);
+        } else if (result?.fallback?.coordinates?.length > 0) {
+          setRouteCoords(result.fallback.coordinates);
+        } else {
+          setRouteCoords([booking.pickup, booking.destination]);
+        }
+      } catch {
+        if (!cancelled) setRouteCoords([booking.pickup, booking.destination]);
+      }
+    };
+    fetchRoute();
+    return () => { cancelled = true; };
+  }, [booking?.pickup?.latitude, booking?.pickup?.longitude, booking?.destination?.latitude, booking?.destination?.longitude]);
 
   return (
     <View style={styles.card}>
@@ -90,6 +117,63 @@ const BookingCard = ({
           </View>
         )}
       </View>
+
+      {/* Inline Route Map */}
+      {booking.pickup && booking.destination && (
+        <View style={styles.mapContainer}>
+          <MapView
+            ref={mapRef}
+            provider={PROVIDER_GOOGLE}
+            style={styles.inlineMap}
+            initialRegion={{
+              latitude: (booking.pickup.latitude + booking.destination.latitude) / 2,
+              longitude: (booking.pickup.longitude + booking.destination.longitude) / 2,
+              latitudeDelta: Math.max(Math.abs(booking.pickup.latitude - booking.destination.latitude) * 2.2, 0.015),
+              longitudeDelta: Math.max(Math.abs(booking.pickup.longitude - booking.destination.longitude) * 2.2, 0.015),
+            }}
+            onMapReady={() => {
+              if (routeCoords.length > 1 && mapRef.current) {
+                mapRef.current.fitToCoordinates(routeCoords, {
+                  edgePadding: { top: 40, right: 40, bottom: 40, left: 40 },
+                  animated: false,
+                });
+              }
+            }}
+            scrollEnabled={true}
+            zoomEnabled={true}
+            rotateEnabled={false}
+            pitchEnabled={false}
+            toolbarEnabled={false}
+          >
+            <Marker
+              coordinate={booking.pickup}
+              title="Pickup"
+              pinColor="green"
+            />
+            <Marker
+              coordinate={booking.destination}
+              title="Destination"
+              pinColor="orange"
+            />
+            {routeCoords.length > 1 && (
+              <Polyline
+                coordinates={routeCoords}
+                strokeColor="#2196F3"
+                strokeWidth={3}
+              />
+            )}
+          </MapView>
+          {/* Labels */}
+          <View style={styles.mapLabelPickup}>
+            <View style={[styles.mapLabelDot, { backgroundColor: '#28a745' }]} />
+            <Text style={styles.mapLabelText}>Pickup</Text>
+          </View>
+          <View style={styles.mapLabelDest}>
+            <View style={[styles.mapLabelDot, { backgroundColor: colors.primary }]} />
+            <Text style={styles.mapLabelText}>Destination</Text>
+          </View>
+        </View>
+      )}
 
       {/* Action buttons */}
       <View style={styles.actionsRow}>
@@ -246,5 +330,62 @@ const styles = StyleSheet.create({
   btnDisabledOutline: {
     borderColor: '#ccc',
     opacity: 0.6,
+  },
+  // Inline map styles
+  mapContainer: {
+    height: 150,
+    borderRadius: 10,
+    overflow: 'hidden',
+    marginTop: spacing.small,
+    marginBottom: 4,
+    borderWidth: 1,
+    borderColor: '#e0e4ea',
+    position: 'relative',
+  },
+  inlineMap: {
+    flex: 1,
+  },
+  mapLabelPickup: {
+    position: 'absolute',
+    top: 8,
+    left: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.15,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  mapLabelDest: {
+    position: 'absolute',
+    top: 8,
+    right: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: 'rgba(255,255,255,0.92)',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 6,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.15,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  mapLabelDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    marginRight: 5,
+  },
+  mapLabelText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#333',
   },
 });
