@@ -33,6 +33,7 @@ const MapsTab = () => {
     driverArrivedAt,
     noShowWaitMinutes,
     bookingRoute,
+    isRerouting,
     confirmPickup,
     completeTrip,
     cancelTrip,
@@ -151,6 +152,7 @@ const MapsTab = () => {
         activeBooking={activeBooking}
         bookingRoute={bookingRoute}
         isPickedUp={isPickedUp}
+        isRerouting={isRerouting}
         onEnterTerminalZone={(terminal) => {
           // Don't allow queue actions on coding day
           if (codingDayStatus?.isCodingDay) {

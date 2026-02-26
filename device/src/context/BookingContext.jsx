@@ -42,6 +42,7 @@ const SAFE_DEFAULTS = {
   driverArrivedAt: null,
   noShowWaitMinutes: 5,
   bookingRoute: null,
+  isRerouting: false,
   confirmPickup: () => {},
   completeTrip: () => {},
   cancelTrip: () => {},
@@ -87,6 +88,9 @@ export const BookingProvider = ({ children }) => {
   // Tricycle info
   const [assignedTricycle, setAssignedTricycle] = useState(null);
   
+  // Rerouting visual state
+  const [isRerouting, setIsRerouting] = useState(false);
+
   // Refs
   const pollIntervalRef = useRef(null);
   const watchRef = useRef(null);
@@ -278,6 +282,7 @@ export const BookingProvider = ({ children }) => {
     console.log('Driver off route by', Math.round(minDist), 'm — rerouting...');
     lastRerouteTimeRef.current = now;
     isReroutingRef.current = true;
+    setIsRerouting(true);
     
     const target = isPickedUp ? activeBooking.destination : activeBooking.pickup;
     
@@ -292,6 +297,7 @@ export const BookingProvider = ({ children }) => {
         console.warn('Reroute failed:', err);
       } finally {
         isReroutingRef.current = false;
+        setIsRerouting(false);
       }
     })();
   }, [userLocation?.latitude, userLocation?.longitude, activeBooking?._id, isPickedUp, calculateDistance]);
@@ -643,6 +649,7 @@ export const BookingProvider = ({ children }) => {
     driverArrivedAt,
     noShowWaitMinutes,
     bookingRoute,
+    isRerouting,
     
     // Constants
     PICKUP_RADIUS_METERS,

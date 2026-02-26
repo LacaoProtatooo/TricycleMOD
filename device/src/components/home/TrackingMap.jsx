@@ -115,6 +115,7 @@ export default function TrackingMap({
   activeBooking = null,
   bookingRoute = null,
   isPickedUp = false,
+  isRerouting = false,
   onRerouteNeeded = null,
 }) {
   const mapRef = useRef(null);
@@ -197,6 +198,105 @@ export default function TrackingMap({
   const [simActive, setSimActive] = useState(false);
   const simActiveRef = useRef(false); // Ref mirror to avoid stale closures in watcher
   const simLastPosRef = useRef(null);
+
+  // ── Waze-style navigation POV state ──
+  const smoothedHeadingRef = useRef(0); // Smoothed heading for fluid camera rotation
+  const [isNavigationMode, setIsNavigationMode] = useState(false); // True when actively navigating a booking route
+  const lastCameraUpdateRef = useRef(0); // Throttle camera updates
+  const NAV_CAMERA_THROTTLE_MS = 100; // Minimum ms between camera updates in nav mode
+
+  /**
+   * Smoothly interpolate heading to avoid jarring camera rotation jumps.
+   * Takes the shortest angular path (handles 359° → 1° wrap-around).
+   * @param {number} current - current smoothed heading (degrees)
+   * @param {number} target - new raw heading from GPS (degrees)
+   * @param {number} factor - smoothing factor 0-1 (lower = smoother, default 0.3)
+   * @returns {number} new smoothed heading in 0-360 range
+   */
+  const smoothHeading = useCallback((current, target, factor = 0.3) => {
+    let diff = target - current;
+    // Normalize to shortest arc (-180 to +180)
+    if (diff > 180) diff -= 360;
+    if (diff < -180) diff += 360;
+    const result = current + diff * factor;
+    return ((result % 360) + 360) % 360; // Normalize to 0-360
+  }, []);
+
+  /**
+   * Get adaptive zoom level based on current speed.
+   * Faster speed → zooms out a bit for better road visibility.
+   * Slower speed → tighter zoom for precision.
+   */
+  const getAdaptiveZoom = useCallback((speedKmh) => {
+    if (speedKmh <= 5) return 18.5;   // Walking/stopped — tight zoom
+    if (speedKmh <= 15) return 18;     // Slow tricycle movement
+    if (speedKmh <= 30) return 17.5;   // Normal city speed
+    if (speedKmh <= 50) return 17;     // Moderate speed
+    return 16.5;                        // Fast speed — wider view
+  }, []);
+
+  /**
+   * Update the Waze-style navigation camera with smooth heading interpolation.
+   * Call this from GPS watcher and simulation poller when in navigation mode.
+   */
+  const updateNavigationCamera = useCallback((center, rawHeading, speedKmh) => {
+    if (!mapRef.current) return;
+
+    const now = Date.now();
+    if (now - lastCameraUpdateRef.current < NAV_CAMERA_THROTTLE_MS) return;
+    lastCameraUpdateRef.current = now;
+
+    // Smooth the heading to prevent jarring rotation
+    const newSmoothedHeading = smoothHeading(smoothedHeadingRef.current, rawHeading || 0, 0.35);
+    smoothedHeadingRef.current = newSmoothedHeading;
+
+    const adaptiveZoom = getAdaptiveZoom(speedKmh || 0);
+
+    mapRef.current.animateCamera(
+      {
+        center,
+        pitch: 60,                          // Steeper tilt for Waze-style 3D perspective
+        heading: newSmoothedHeading,         // Smoothed heading for fluid rotation
+        zoom: adaptiveZoom,                  // Speed-adaptive zoom
+      },
+      { duration: 800 }                     // Smooth 800ms transition (Waze feel)
+    );
+  }, [smoothHeading, getAdaptiveZoom]);
+
+  // Track navigation mode based on active booking + route presence
+  // When navigation starts, snap camera to Waze-style POV; when ending, reset to top-down
+  useEffect(() => {
+    const entering = !!(activeBooking && bookingRoute && bookingRoute.length > 1);
+    const wasNavigating = isNavigationMode;
+    setIsNavigationMode(entering);
+
+    if (entering && !wasNavigating && mapRef.current && positions.length > 0) {
+      // Entering navigation mode — animate camera to Waze 3D POV
+      const lastPos = positions[positions.length - 1];
+      smoothedHeadingRef.current = heading || 0;
+      mapRef.current.animateCamera(
+        {
+          center: lastPos,
+          pitch: 60,
+          heading: heading || 0,
+          zoom: 18,
+        },
+        { duration: 1200 } // Smooth 1.2s transition into navigation view
+      );
+    } else if (!entering && wasNavigating && mapRef.current && positions.length > 0) {
+      // Exiting navigation mode — animate back to top-down view
+      const lastPos = positions[positions.length - 1];
+      mapRef.current.animateCamera(
+        {
+          center: lastPos,
+          pitch: 0,
+          heading: 0,
+          zoom: 16,
+        },
+        { duration: 800 }
+      );
+    }
+  }, [activeBooking, bookingRoute]);
 
   useEffect(() => {
     onEnterRef.current = onEnterTerminalZone;
@@ -284,7 +384,16 @@ export default function TrackingMap({
 
         // Move camera to follow simulated position
         if (mapRef.current && !reliveActiveRef.current) {
-          mapRef.current.animateCamera({ center: newPoint }, { duration: 200 });
+          if (activeBooking && bookingRoute) {
+            // Waze-style navigation POV with smooth heading
+            updateNavigationCamera(
+              newPoint,
+              data.heading || 0,
+              data.speed ? data.speed * 3.6 : 0
+            );
+          } else {
+            mapRef.current.animateCamera({ center: newPoint }, { duration: 200 });
+          }
         }
       } catch (_) {}
     };
@@ -583,7 +692,16 @@ export default function TrackingMap({
           lastPosRef.current = { coords: loc.coords, timestamp: loc.timestamp };
 
           if (follow && !reliveActiveRef.current && mapRef.current) {
-            mapRef.current.animateCamera({ center: { latitude, longitude } }, { duration: 300 });
+            // When navigating with booking route, use Waze-style tilted + heading-locked camera
+            if (activeBooking && bookingRoute) {
+              updateNavigationCamera(
+                { latitude, longitude },
+                hdg || 0,
+                kph || 0
+              );
+            } else {
+              mapRef.current.animateCamera({ center: { latitude, longitude } }, { duration: 300 });
+            }
           }
 
           // Handle trip recording
@@ -1772,8 +1890,8 @@ ${trackPoints}
                 </Marker>
               ))}
 
-              {/* Current position polyline - needs at least 2 points */}
-              {positions.length > 1 && !reliveActive && (
+              {/* Current position polyline - only show when recording */}
+              {positions.length > 1 && !reliveActive && isRecording && (
                 <Polyline
                   key="position-polyline"
                   coordinates={positions}
@@ -1782,30 +1900,75 @@ ${trackPoints}
                 />
               )}
 
-              {/* Current position marker */}
+              {/* Current position marker - Waze-style navigation arrow when navigating */}
               {positions.length > 0 && !reliveActive && (
                 <Marker
                   key="position-marker"
                   coordinate={positions[positions.length - 1]}
                   anchor={{ x: 0.5, y: 0.5 }}
-                  tracksViewChanges={false}
+                  flat={true}
+                  rotation={heading || 0}
+                  tracksViewChanges={true}
                 >
-                  <View style={styles.marker}>
-                    <Ionicons name="bicycle" size={20} color="#fff" />
-                  </View>
+                  {activeBooking && bookingRoute ? (
+                    <View style={styles.wazeNavContainer}>
+                      {/* Outer pulsing accuracy ring */}
+                      <View style={styles.wazeNavPulseRing} />
+                      {/* Navigation beam / cone showing direction */}
+                      <View style={styles.wazeNavBeam} />
+                      {/* Main Waze-style arrow body */}
+                      <View style={styles.wazeNavArrowBody}>
+                        {/* Arrow chevron pointing up (forward) */}
+                        <View style={styles.wazeNavChevron} />
+                        {/* Inner dot */}
+                        <View style={styles.wazeNavDot} />
+                      </View>
+                    </View>
+                  ) : (
+                    <View style={styles.marker}>
+                      <Ionicons name="bicycle" size={20} color="#fff" />
+                    </View>
+                  )}
                 </Marker>
               )}
 
-              {/* Booking route polyline - shows route to pickup/destination */}
-              {bookingRoute && bookingRoute.length > 1 && !reliveActive && (
-                <Polyline
-                  key="booking-route-polyline"
-                  coordinates={bookingRoute}
-                  strokeColor="#17a2b8"
-                  strokeWidth={4}
-                  lineDashPattern={[1]}
-                />
-              )}
+              {/* Booking route polyline - Google Maps style solid navigation line */}
+              {bookingRoute && bookingRoute.length > 1 && !reliveActive && (() => {
+                // Trim route to only show remaining path ahead of driver
+                const driverPos = positions.length > 0 ? positions[positions.length - 1] : null;
+                let trimmedRoute = bookingRoute;
+                if (driverPos && bookingRoute.length > 2) {
+                  let closestIdx = 0;
+                  let closestDist = Infinity;
+                  for (let i = 0; i < bookingRoute.length; i++) {
+                    const d = haversineMeters(driverPos, bookingRoute[i]);
+                    if (d < closestDist) {
+                      closestDist = d;
+                      closestIdx = i;
+                    }
+                  }
+                  // Start from closest point on route, prepend driver position
+                  trimmedRoute = [driverPos, ...bookingRoute.slice(closestIdx)];
+                }
+                return (
+                  <>
+                    {/* Route border/outline for depth */}
+                    <Polyline
+                      key="booking-route-border"
+                      coordinates={trimmedRoute}
+                      strokeColor="#1a53a0"
+                      strokeWidth={8}
+                    />
+                    {/* Main route line - Google Maps blue */}
+                    <Polyline
+                      key="booking-route-polyline"
+                      coordinates={trimmedRoute}
+                      strokeColor="#4A89F3"
+                      strokeWidth={5}
+                    />
+                  </>
+                );
+              })()}
 
               {/* Booking pickup marker */}
               {activeBooking?.pickup && !isPickedUp && !reliveActive && (
@@ -1882,6 +2045,56 @@ ${trackPoints}
         </MapView>
       ) : (
         <View style={styles.loading}><Text>Getting location…</Text></View>
+      )}
+
+      {/* Rerouting Indicator */}
+      {isRerouting && activeBooking && (
+        <View style={styles.reroutingBanner}>
+          <ActivityIndicator size="small" color="#fff" />
+          <Text style={styles.reroutingText}>Rerouting...</Text>
+        </View>
+      )}
+
+      {/* Navigation Mode Recenter Button — appears when user pans away during Waze-style nav */}
+      {isNavigationMode && !reliveActive && (
+        <TouchableOpacity
+          style={styles.navRecenterBtn}
+          activeOpacity={0.85}
+          onPress={() => {
+            if (positions.length > 0 && mapRef.current) {
+              const lastPos = positions[positions.length - 1];
+              updateNavigationCamera(lastPos, heading || 0, speedKph || 0);
+            }
+          }}
+        >
+          <Ionicons name="navigate" size={20} color="#fff" />
+        </TouchableOpacity>
+      )}
+
+      {/* Navigation Mode Top Info Bar — shows speed + heading in Waze-style */}
+      {isNavigationMode && !reliveActive && (
+        <View style={styles.navInfoBar}>
+          <View style={styles.navInfoItem}>
+            <Ionicons name="speedometer" size={16} color="#fff" />
+            <Text style={styles.navInfoText}>{speedKph} km/h</Text>
+          </View>
+          <View style={styles.navInfoDivider} />
+          <View style={styles.navInfoItem}>
+            <Ionicons name="compass" size={16} color="#fff" />
+            <Text style={styles.navInfoText}>{heading}°</Text>
+          </View>
+          {activeBooking?.destination && (
+            <>
+              <View style={styles.navInfoDivider} />
+              <View style={styles.navInfoItem}>
+                <Ionicons name="flag" size={16} color="#4ADE80" />
+                <Text style={styles.navInfoText}>
+                  {isPickedUp ? 'To Drop-off' : 'To Pickup'}
+                </Text>
+              </View>
+            </>
+          )}
+        </View>
       )}
 
       {/* Recording Info Panel */}
@@ -2299,6 +2512,147 @@ const styles = StyleSheet.create({
   container: { flex: 1 },
   map: { flex: 1 },
   loading: { flex: 1, alignItems: 'center', justifyContent: 'center' },
+  // Google Maps-style navigation arrow marker
+  // Waze-style navigation arrow marker
+  wazeNavContainer: {
+    width: 70,
+    height: 70,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  wazeNavPulseRing: {
+    position: 'absolute',
+    width: 64,
+    height: 64,
+    borderRadius: 32,
+    backgroundColor: 'rgba(74, 137, 243, 0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(74, 137, 243, 0.2)',
+  },
+  wazeNavBeam: {
+    position: 'absolute',
+    top: 0,
+    width: 0,
+    height: 0,
+    borderLeftWidth: 18,
+    borderRightWidth: 18,
+    borderBottomWidth: 28,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+    borderBottomColor: 'rgba(74, 137, 243, 0.18)',
+  },
+  wazeNavArrowBody: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: '#4A89F3',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#1a53a0',
+    shadowOpacity: 0.5,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 8,
+    borderWidth: 3,
+    borderColor: '#fff',
+  },
+  wazeNavChevron: {
+    width: 0,
+    height: 0,
+    borderLeftWidth: 7,
+    borderRightWidth: 7,
+    borderBottomWidth: 12,
+    borderLeftColor: 'transparent',
+    borderRightColor: 'transparent',
+    borderBottomColor: '#fff',
+    marginTop: -4,
+  },
+  wazeNavDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: '#fff',
+    marginTop: 1,
+  },
+  // Rerouting banner
+  reroutingBanner: {
+    position: 'absolute',
+    top: 60,
+    alignSelf: 'center',
+    backgroundColor: '#4A89F3',
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+    paddingVertical: 10,
+    borderRadius: 24,
+    shadowColor: '#000',
+    shadowOpacity: 0.25,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 8,
+    zIndex: 999,
+  },
+  reroutingText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '700',
+    marginLeft: 10,
+    letterSpacing: 0.5,
+  },
+  // ── Waze-style navigation mode UI ──
+  navRecenterBtn: {
+    position: 'absolute',
+    right: 16,
+    bottom: 200,
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: '#4A89F3',
+    alignItems: 'center',
+    justifyContent: 'center',
+    shadowColor: '#1a53a0',
+    shadowOpacity: 0.4,
+    shadowRadius: 6,
+    shadowOffset: { width: 0, height: 3 },
+    elevation: 8,
+    zIndex: 100,
+  },
+  navInfoBar: {
+    position: 'absolute',
+    top: 10,
+    left: 12,
+    right: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(30, 30, 30, 0.88)',
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    borderRadius: 28,
+    shadowColor: '#000',
+    shadowOpacity: 0.3,
+    shadowRadius: 8,
+    shadowOffset: { width: 0, height: 2 },
+    elevation: 8,
+    zIndex: 100,
+  },
+  navInfoItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  navInfoText: {
+    color: '#fff',
+    fontSize: 14,
+    fontWeight: '700',
+    fontFamily: Platform.OS === 'ios' ? 'Menlo' : 'monospace',
+  },
+  navInfoDivider: {
+    width: 1,
+    height: 18,
+    backgroundColor: 'rgba(255,255,255,0.25)',
+    marginHorizontal: 14,
+  },
   marker: {
     backgroundColor: colors.primary,
     padding: 8,

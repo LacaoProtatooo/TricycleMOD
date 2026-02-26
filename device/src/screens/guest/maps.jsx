@@ -1,18 +1,23 @@
 /**
  * maps.jsx - Guest Maps Screen
  *
- * Displays a map of Taguig City with terminal locations
+ * Displays a map of Taguig City with terminal locations,
+ * the WEBTODA service route, and service area polygon.
  */
 
 import React, { useState, useEffect, useRef } from 'react';
 import { View, StyleSheet, Text, TouchableOpacity, Alert, ActivityIndicator, Platform } from 'react-native';
-import MapView, { Marker, Circle, PROVIDER_GOOGLE } from 'react-native-maps';
+import MapView, { Marker, Circle, Polyline, Polygon, PROVIDER_GOOGLE } from 'react-native-maps';
 import * as Location from 'expo-location';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useIsFocused } from '@react-navigation/native';
 
 import { colors, spacing } from '../../components/common/theme';
+import {
+  WEBTODA_ROUTE_COORDINATES,
+  getServiceAreaPolygon,
+} from '../../utils/gpxParser';
 
 // Taguig City center coordinates
 const TAGUIG_CENTER = { latitude: 14.5176, longitude: 121.0509 };
@@ -122,6 +127,57 @@ const GuestMaps = () => {
           showsCompass={true}
           showsScale={true}
         >
+          {/* WEBTODA Service Area Polygon Boundary */}
+          <Polygon
+            coordinates={getServiceAreaPolygon()}
+            strokeColor="rgba(255,140,0,0.6)"
+            fillColor="rgba(255,140,0,0.08)"
+            strokeWidth={2}
+            zIndex={0}
+          />
+
+          {/* WEBTODA GPX Route - Main service route (along the route) */}
+          {WEBTODA_ROUTE_COORDINATES.length > 1 && (
+            <Polyline
+              coordinates={WEBTODA_ROUTE_COORDINATES}
+              strokeColor={colors.primary}
+              strokeWidth={4}
+              lineCap="round"
+              lineJoin="round"
+              zIndex={2}
+            />
+          )}
+
+          {/* Route start marker */}
+          {WEBTODA_ROUTE_COORDINATES.length > 0 && (
+            <Marker
+              coordinate={WEBTODA_ROUTE_COORDINATES[0]}
+              title="Route Start"
+              description="WEBTODA route starting point"
+              anchor={{ x: 0.5, y: 0.5 }}
+              zIndex={10}
+            >
+              <View style={styles.routeStartMarker}>
+                <Ionicons name="play" size={14} color="#fff" />
+              </View>
+            </Marker>
+          )}
+
+          {/* Route end / destination marker */}
+          {WEBTODA_ROUTE_COORDINATES.length > 1 && (
+            <Marker
+              coordinate={WEBTODA_ROUTE_COORDINATES[WEBTODA_ROUTE_COORDINATES.length - 1]}
+              title="Route End"
+              description="WEBTODA route end point (destination)"
+              anchor={{ x: 0.5, y: 0.5 }}
+              zIndex={10}
+            >
+              <View style={styles.routeEndMarker}>
+                <Ionicons name="flag" size={14} color="#fff" />
+              </View>
+            </Marker>
+          )}
+
           {/* Terminal markers and geofence circles */}
           {TERMINALS.map((terminal) => (
             <React.Fragment key={terminal.id}>
@@ -185,17 +241,41 @@ const GuestMaps = () => {
       {/* Legend */}
       <View style={styles.legend}>
         <Text style={styles.legendTitle}>Map Legend</Text>
+
+        <View style={styles.legendItem}>
+          <View style={[styles.legendLine, { backgroundColor: colors.primary }]} />
+          <Text style={styles.legendText}>WEBTODA Route (Along the Route)</Text>
+        </View>
+
+        <View style={styles.legendItem}>
+          <View style={[styles.legendDot, { backgroundColor: 'rgba(255,140,0,0.6)' }]} />
+          <Text style={styles.legendText}>Service Area</Text>
+        </View>
+
+        <View style={styles.legendItem}>
+          <View style={[styles.legendIcon, { backgroundColor: '#28a745' }]}>
+            <Ionicons name="play" size={10} color="#fff" />
+          </View>
+          <Text style={styles.legendText}>Route Start</Text>
+        </View>
+
+        <View style={styles.legendItem}>
+          <View style={[styles.legendIcon, { backgroundColor: '#dc3545' }]}>
+            <Ionicons name="flag" size={10} color="#fff" />
+          </View>
+          <Text style={styles.legendText}>Route End (Destination)</Text>
+        </View>
         
         <View style={styles.legendItem}>
           <View style={[styles.legendIcon, { backgroundColor: '#f97316' }]}>
-            <Ionicons name="flag" size={14} color="#fff" />
+            <Ionicons name="flag" size={10} color="#fff" />
           </View>
           <Text style={styles.legendText}>Tricycle Terminals</Text>
         </View>
 
         <View style={styles.legendItem}>
           <View style={[styles.legendIcon, { backgroundColor: colors.primary }]}>
-            <Ionicons name="person" size={14} color="#fff" />
+            <Ionicons name="person" size={10} color="#fff" />
           </View>
           <Text style={styles.legendText}>Your Location</Text>
         </View>
@@ -323,9 +403,46 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,102,0,0.15)',
     marginRight: spacing.small,
   },
+  legendLine: {
+    width: 24,
+    height: 4,
+    borderRadius: 2,
+    marginRight: spacing.small,
+  },
+  legendDot: {
+    width: 24,
+    height: 14,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: 'rgba(255,140,0,0.4)',
+    marginRight: spacing.small,
+  },
   legendText: {
     fontSize: 12,
     color: colors.orangeShade6,
+    flex: 1,
+  },
+  routeStartMarker: {
+    backgroundColor: '#28a745',
+    padding: 8,
+    borderRadius: 20,
+    borderWidth: 2,
+    borderColor: '#fff',
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 5,
+  },
+  routeEndMarker: {
+    backgroundColor: '#dc3545',
+    padding: 8,
+    borderRadius: 20,
+    borderWidth: 2,
+    borderColor: '#fff',
+    shadowColor: '#000',
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 5,
   },
 });
 
