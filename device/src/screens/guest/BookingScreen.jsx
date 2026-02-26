@@ -1576,126 +1576,108 @@ const BookingScreen = ({ navigation }) => {
           </View>
         )}
 
-        {/* SELECTING_LOCATIONS State */}
+        {/* SELECTING_LOCATIONS State - Compact Design */}
         {bookingStatus === BOOKING_STATUS.SELECTING_LOCATIONS && (
-          <View style={styles.panelContent}>
-            <Text style={styles.panelTitle}>Set Trip Locations</Text>
-            
-            {/* Pickup Location */}
-            <View style={styles.locationRow}>
-              <TouchableOpacity
-                style={[
-                  styles.locationButton,
-                  styles.locationButtonFlex,
-                  selectingLocationType === 'pickup' && styles.locationButtonActive,
-                  pickupLocation && styles.locationButtonSet,
-                ]}
-                onPress={() => setSelectingLocationType('pickup')}
-              >
-                <View style={[styles.locationIcon, { backgroundColor: '#28a745' }]}>
-                  <Ionicons name="locate" size={16} color="#fff" />
-                </View>
-                <View style={styles.locationInfo}>
-                  <Text style={styles.locationLabel}>Pickup Location</Text>
-                  <Text style={styles.locationValue}>
-                    {pickupLocation 
-                      ? 'Location set ✓' 
-                      : 'Tap map or search'}
-                  </Text>
-                </View>
-                {pickupLocation && (
-                  <Ionicons name="checkmark-circle" size={20} color="#28a745" />
-                )}
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={styles.searchLocationButton}
-                onPress={() => openLocationSearch('pickup')}
-              >
-                <Ionicons name="search" size={20} color="#fff" />
-              </TouchableOpacity>
-            </View>
-
-            {/* Destination Location */}
-            <View style={styles.locationRow}>
-              <TouchableOpacity
-                style={[
-                  styles.locationButton,
-                  styles.locationButtonFlex,
-                  selectingLocationType === 'destination' && styles.locationButtonActive,
-                  destinationLocation && styles.locationButtonSet,
-                  destinationWarning && styles.locationButtonWarning,
-                ]}
-                onPress={() => setSelectingLocationType('destination')}
-              >
+          <View style={styles.panelContentCompact}>
+            {/* Compact Location Rows */}
+            <View style={styles.compactLocationsContainer}>
+              {/* Pickup Location - Compact */}
+              <View style={styles.compactLocationRow}>
                 <View style={[
-                  styles.locationIcon, 
-                  { backgroundColor: destinationWarning ? '#dc3545' : colors.primary }
-                ]}>
-                  <Ionicons 
-                    name={destinationWarning ? "warning" : "flag"} 
-                    size={16} 
-                    color="#fff" 
-                  />
-                </View>
-                <View style={styles.locationInfo}>
-                  <Text style={styles.locationLabel}>Destination</Text>
-                  <Text style={[
-                    styles.locationValue,
-                    destinationWarning && styles.locationValueWarning
-                  ]}>
-                    {destinationLocation 
-                      ? (destinationWarning 
-                          ? 'Outside area - Extra charges' 
-                          : 'Location set ✓')
-                      : 'Tap map or search'}
+                  styles.compactLocationDot, 
+                  { backgroundColor: '#28a745' },
+                  selectingLocationType === 'pickup' && styles.compactLocationDotActive
+                ]} />
+                <TouchableOpacity
+                  style={[
+                    styles.compactLocationButton,
+                    selectingLocationType === 'pickup' && styles.compactLocationButtonActive,
+                    pickupLocation && styles.compactLocationButtonSet,
+                  ]}
+                  onPress={() => setSelectingLocationType('pickup')}
+                >
+                  <Text style={styles.compactLocationLabel}>Pickup</Text>
+                  <Text style={styles.compactLocationValue} numberOfLines={1}>
+                    {pickupLocation ? 'Set ✓' : 'Tap map'}
                   </Text>
-                </View>
-                {destinationLocation && !destinationWarning && (
-                  <Ionicons name="checkmark-circle" size={20} color="#28a745" />
-                )}
-                {destinationWarning && (
-                  <Ionicons name="alert-circle" size={20} color="#dc3545" />
-                )}
-              </TouchableOpacity>
-              <TouchableOpacity
-                style={[
-                  styles.searchLocationButton,
-                  destinationWarning && styles.searchLocationButtonWarning
-                ]}
-                onPress={() => openLocationSearch('destination')}
-              >
-                <Ionicons name="search" size={20} color="#fff" />
-              </TouchableOpacity>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.compactSearchButton}
+                  onPress={() => openLocationSearch('pickup')}
+                >
+                  <Ionicons name="search" size={16} color={colors.primary} />
+                </TouchableOpacity>
+              </View>
+              
+              {/* Connector Line */}
+              <View style={styles.compactConnectorLine} />
+              
+              {/* Destination Location - Compact */}
+              <View style={styles.compactLocationRow}>
+                <View style={[
+                  styles.compactLocationDot, 
+                  { backgroundColor: destinationWarning ? '#dc3545' : colors.primary },
+                  selectingLocationType === 'destination' && styles.compactLocationDotActive
+                ]} />
+                <TouchableOpacity
+                  style={[
+                    styles.compactLocationButton,
+                    selectingLocationType === 'destination' && styles.compactLocationButtonActive,
+                    destinationLocation && styles.compactLocationButtonSet,
+                    destinationWarning && styles.compactLocationButtonWarning,
+                  ]}
+                  onPress={() => setSelectingLocationType('destination')}
+                >
+                  <Text style={styles.compactLocationLabel}>Destination</Text>
+                  <Text style={[
+                    styles.compactLocationValue,
+                    destinationWarning && styles.compactLocationValueWarning
+                  ]} numberOfLines={1}>
+                    {destinationLocation 
+                      ? (destinationWarning ? 'Outside area!' : 'Set ✓')
+                      : 'Tap map'}
+                  </Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[
+                    styles.compactSearchButton,
+                    destinationWarning && styles.compactSearchButtonWarning
+                  ]}
+                  onPress={() => openLocationSearch('destination')}
+                >
+                  <Ionicons name="search" size={16} color={destinationWarning ? '#dc3545' : colors.primary} />
+                </TouchableOpacity>
+              </View>
             </View>
 
-            {/* Warning banner if destination is outside area */}
+            {/* Compact Warning Banner */}
             {destinationWarning && (
-              <View style={styles.areaWarningBanner}>
-                <Ionicons name="information-circle" size={18} color="#856404" />
-                <Text style={styles.areaWarningText}>
-                  Destination is {Math.round(destinationWarning.distance)}m outside WEBTODA area. 
-                  Additional charges expected.
+              <View style={styles.compactWarningBanner}>
+                <Ionicons name="alert-circle" size={14} color="#dc3545" />
+                <Text style={styles.compactWarningText}>
+                  +{Math.round(destinationWarning.distance)}m outside area
                 </Text>
               </View>
             )}
 
-            <View style={styles.buttonRow}>
+            {/* Compact Button Row */}
+            <View style={styles.compactButtonRow}>
               <TouchableOpacity
-                style={styles.secondaryButton}
+                style={styles.compactCancelButton}
                 onPress={resetBooking}
               >
-                <Text style={styles.secondaryButtonText}>Cancel</Text>
+                <Ionicons name="close" size={20} color={colors.orangeShade6} />
               </TouchableOpacity>
               <TouchableOpacity
                 style={[
-                  styles.primaryButton,
-                  styles.buttonFlex,
+                  styles.compactContinueButton,
                   (!pickupLocation || !destinationLocation) && styles.buttonDisabled,
                 ]}
                 onPress={handleConfirmLocations}
                 disabled={!pickupLocation || !destinationLocation}
               >
-                <Text style={styles.primaryButtonText}>Continue</Text>
+                <Text style={styles.compactContinueText}>Set Fare</Text>
+                <Ionicons name="arrow-forward" size={18} color="#fff" />
               </TouchableOpacity>
             </View>
           </View>
@@ -4795,6 +4777,126 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '700',
     marginLeft: 6,
+  },
+
+  // Compact Location Selector Styles
+  compactLocationsContainer: {
+    marginBottom: spacing.small,
+  },
+  compactLocationRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  compactLocationDot: {
+    width: 10,
+    height: 10,
+    borderRadius: 5,
+    marginRight: 8,
+  },
+  compactLocationDotActive: {
+    width: 14,
+    height: 14,
+    borderRadius: 7,
+    borderWidth: 2,
+    borderColor: colors.orangeShade7,
+  },
+  compactLocationButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    backgroundColor: colors.ivory4,
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: 'transparent',
+  },
+  compactLocationButtonActive: {
+    borderColor: colors.primary,
+    backgroundColor: colors.ivory2,
+  },
+  compactLocationButtonSet: {
+    backgroundColor: colors.ivory3,
+  },
+  compactLocationButtonWarning: {
+    borderColor: '#dc3545',
+    backgroundColor: '#fff5f5',
+  },
+  compactLocationLabel: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.orangeShade7,
+  },
+  compactLocationValue: {
+    fontSize: 12,
+    color: colors.orangeShade5,
+  },
+  compactLocationValueWarning: {
+    color: '#dc3545',
+    fontWeight: '500',
+  },
+  compactSearchButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 8,
+    backgroundColor: colors.ivory3,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginLeft: 6,
+  },
+  compactSearchButtonWarning: {
+    backgroundColor: '#fff5f5',
+  },
+  compactConnectorLine: {
+    width: 2,
+    height: 8,
+    backgroundColor: colors.orangeShade4,
+    marginLeft: 4,
+    marginVertical: 2,
+  },
+  compactWarningBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff5f5',
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 6,
+    marginBottom: spacing.small,
+  },
+  compactWarningText: {
+    fontSize: 11,
+    color: '#dc3545',
+    marginLeft: 6,
+    fontWeight: '500',
+  },
+  compactButtonRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  compactCancelButton: {
+    width: 44,
+    height: 44,
+    borderRadius: 10,
+    backgroundColor: colors.ivory4,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  compactContinueButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.primary,
+    height: 44,
+    borderRadius: 10,
+  },
+  compactContinueText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '700',
+    marginRight: 6,
   },
 });
 
