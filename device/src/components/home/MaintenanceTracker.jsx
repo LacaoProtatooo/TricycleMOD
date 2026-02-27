@@ -703,6 +703,34 @@ const MaintenanceTracker = ({ tricycleId, serverHistory }) => {
 			}
 
 			setLastServiceDates(lastDates);
+
+			// 6. Build maintenanceRecords from serverHistory (INCLUDING pending records for display)
+			const records = {};
+			if (serverHistory && Array.isArray(serverHistory)) {
+				serverHistory.forEach(log => {
+					const k = log.itemKey;
+					if (k) {
+						if (!records[k]) records[k] = [];
+						records[k].push({
+							status: log.status || 'completed',
+							reading: log.reading || null,
+							notes: log.notes || null,
+							cost: log.cost || null,
+							km: log.lastServiceKm,
+							date: log.completedAt || log.createdAt,
+							approvalStatus: log.approvalStatus || 'approved',
+						});
+					}
+				});
+				// Sort each item's records by date descending and keep last 10
+				Object.keys(records).forEach(k => {
+					records[k].sort((a, b) => new Date(b.date) - new Date(a.date));
+					if (records[k].length > 10) {
+						records[k] = records[k].slice(0, 10);
+					}
+				});
+			}
+			setMaintenanceRecords(records);
 		} catch (e) {
 			console.warn('MaintenanceTracker load error', e);
 		} finally {

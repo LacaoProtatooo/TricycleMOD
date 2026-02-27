@@ -100,7 +100,14 @@ const CompletionModal = ({
 		setProofImage(null);
 	};
 
+	// Check if form is valid for submission
+	const isFormValid = reading !== '';
+
 	const handleSubmit = () => {
+		if (!isFormValid) {
+			Alert.alert('Required Field', 'Please select a condition/reading before submitting.');
+			return;
+		}
 		setUploading(true);
 		onSubmit({
 			status,
@@ -358,9 +365,9 @@ const CompletionModal = ({
 								<Text style={styles.completionCancelBtnText}>Cancel</Text>
 							</TouchableOpacity>
 							<TouchableOpacity 
-								style={[styles.completionSubmitBtn, uploading && { opacity: 0.7 }]}
+								style={[styles.completionSubmitBtn, (uploading || !isFormValid) && { opacity: 0.5 }]}
 								onPress={handleSubmit}
-								disabled={uploading}
+								disabled={uploading || !isFormValid}
 							>
 								{uploading ? (
 									<ActivityIndicator size="small" color="#FFF" />

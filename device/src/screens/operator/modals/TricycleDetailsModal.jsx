@@ -14,6 +14,7 @@ import {
   TextInput,
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
 import { colors, spacing } from '../../../components/common/theme';
 import VehicleDiagnostic, { getWearColor } from '../../../components/home/VehicleDiagnostic';
 import { getCodingDayName, isTodayCodingDay } from '../../../utils/codingDayUtils';
@@ -128,6 +129,7 @@ export default function TricycleDetailsModal({
   onTricycleUpdated
 }) {
   const db = useAsyncSQLiteContext();
+  const navigation = useNavigation();
   const [activeTab, setActiveTab] = useState('info');
   const [tricycleData, setTricycleData] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -511,7 +513,17 @@ export default function TricycleDetailsModal({
               </Text>
               <Text style={localStyles.driverUsername}>@{tricycle.driver.username}</Text>
             </View>
-            <TouchableOpacity style={localStyles.messageBtn}>
+            <TouchableOpacity 
+              style={localStyles.messageBtn}
+              onPress={() => {
+                onClose();
+                navigation.navigate('Chat', {
+                  userId: tricycle.driver._id || tricycle.driver.id,
+                  userName: `${tricycle.driver.firstname} ${tricycle.driver.lastname}`,
+                  userImage: tricycle.driver.image?.url || null,
+                });
+              }}
+            >
               <Ionicons name="chatbubble" size={18} color={colors.primary} />
             </TouchableOpacity>
           </View>

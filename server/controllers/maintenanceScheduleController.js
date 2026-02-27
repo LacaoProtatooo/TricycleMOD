@@ -642,9 +642,17 @@ export const getMaintenanceStatus = async (req, res) => {
     try {
         const { tricycleId } = req.params;
 
-        // Get the latest log for each item
+        // Get the latest APPROVED log for each item
         const latestLogs = await MaintenanceLog.aggregate([
-            { $match: { tricycleId: new mongoose.Types.ObjectId(tricycleId) } },
+            { 
+                $match: { 
+                    tricycleId: new mongoose.Types.ObjectId(tricycleId),
+                    $or: [
+                        { approvalStatus: 'approved' },
+                        { approvalStatus: { $exists: false } } // Legacy records without status field
+                    ]
+                } 
+            },
             { $sort: { completedAt: -1 } },
             {
                 $group: {

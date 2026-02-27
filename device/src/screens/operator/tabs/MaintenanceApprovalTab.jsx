@@ -511,7 +511,7 @@ const MaintenanceApprovalTab = ({ token, BACKEND }) => {
               <TouchableOpacity
                 style={styles.modalRejectBtn}
                 onPress={handleReject}
-                disabled={rejecting}
+                disabled={!!rejecting}
               >
                 {rejecting ? (
                   <ActivityIndicator size="small" color="#fff" />
