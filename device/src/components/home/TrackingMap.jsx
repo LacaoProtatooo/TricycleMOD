@@ -22,6 +22,7 @@ const ACTIVE_TRIP_KEY = 'driver_tracking_active_trip_v1';
 const BOOKING_TRIGGER_RECORDING_KEY = 'booking_trigger_recording_v1';
 const BG_COORDS_KEY = 'bg_trip_coords_v1'; // coordinates accumulated in background task
 const BG_DISTANCE_KEY = 'bg_trip_distance_v1'; // distance accumulated in background task
+const BG_SYNCED_INDEX_KEY = 'bg_trip_synced_index_v1'; // server-sync index (managed by bg task)
 const SIM_BROADCAST_KEY = 'dev_sim_broadcast_v1'; // DEV: shared with DriverBookingScreen simulation
 
 // Sync settings
@@ -426,7 +427,17 @@ export default function TrackingMap({
         if (isRecordingRef.current && activeTripIdRef.current) {
           console.log('App going to background while recording — starting background tracking');
           try {
-            const bgPermission = await Location.requestBackgroundPermissionsAsync();
+            // Save current last position so bg task has a reference point
+            if (lastPosRef.current) {
+              await AsyncStorage.setItem('bg_last_position_v1', JSON.stringify({
+                latitude: lastPosRef.current.coords.latitude,
+                longitude: lastPosRef.current.coords.longitude,
+              }));
+              await AsyncStorage.setItem('bg_last_ts_v1', String(lastPosRef.current.timestamp || Date.now()));
+            }
+
+            // Check permission (already requested when recording started)
+            const bgPermission = await Location.getBackgroundPermissionsAsync();
             if (bgPermission.status === 'granted') {
               const isRegistered = await TaskManager.isTaskRegisteredAsync(BG_TASK_NAME);
               if (!isRegistered) {
@@ -441,8 +452,14 @@ export default function TrackingMap({
                   },
                   pausesUpdatesAutomatically: false,
                   activityType: Location.ActivityType.AutomotiveNavigation,
+                  showsBackgroundLocationIndicator: true,
                 });
+                console.log('Background location task started successfully');
+              } else {
+                console.log('Background location task already registered');
               }
+            } else {
+              console.warn('Background location permission not granted — cannot record in background');
             }
           } catch (e) {
             console.warn('Failed to start background tracking on app background:', e);
@@ -453,6 +470,17 @@ export default function TrackingMap({
         if (isRecordingRef.current && activeTripIdRef.current) {
           console.log('App returning to foreground — merging background coordinates');
           try {
+            // Stop the background task now that we're in foreground again
+            try {
+              const isRegistered = await TaskManager.isTaskRegisteredAsync(BG_TASK_NAME);
+              if (isRegistered) {
+                await Location.stopLocationUpdatesAsync(BG_TASK_NAME);
+                console.log('Stopped background location task on foreground return');
+              }
+            } catch (stopErr) {
+              console.warn('Error stopping bg task on foreground return:', stopErr);
+            }
+
             const [bgCoordsRaw, bgDistRaw] = await Promise.all([
               AsyncStorage.getItem(BG_COORDS_KEY),
               AsyncStorage.getItem(BG_DISTANCE_KEY),
@@ -467,11 +495,29 @@ export default function TrackingMap({
               distanceRef.current += bgDist;
               setRecordedPositions([...recordedPosRef.current]);
               setTripDistance(distanceRef.current);
-              updateLocalStorage();
 
-              // Clear background coords
-              await AsyncStorage.setItem(BG_COORDS_KEY, '[]');
-              await AsyncStorage.setItem(BG_DISTANCE_KEY, '0');
+              // Update odometer with background distance
+              setOdometerKm((prev) => {
+                const nextKm = prev + bgDist / 1000;
+                AsyncStorage.setItem(KM_KEY, String(nextKm)).catch(() => {});
+                return nextKm;
+              });
+
+              // Also add bg coords to the display polyline
+              setPositions((prev) => {
+                const bgPoints = bgCoords.map(c => ({ latitude: c.latitude, longitude: c.longitude }));
+                const merged = [...prev, ...bgPoints];
+                return merged.length > 5000 ? merged.slice(-5000) : merged;
+              });
+
+              updateLocalStorage(true);
+
+              // Clear background accumulators and synced index
+              await Promise.all([
+                AsyncStorage.setItem(BG_COORDS_KEY, '[]'),
+                AsyncStorage.setItem(BG_DISTANCE_KEY, '0'),
+                AsyncStorage.setItem(BG_SYNCED_INDEX_KEY, '0'),
+              ]);
             }
           } catch (e) {
             console.warn('Error merging background coordinates:', e);
@@ -815,6 +861,9 @@ export default function TrackingMap({
             notificationBody: 'Background location active',
             notificationColor: '#FF0000',
           },
+          pausesUpdatesAutomatically: false,
+          activityType: Location.ActivityType.AutomotiveNavigation,
+          showsBackgroundLocationIndicator: true,
         });
         Alert.alert('Tracking', 'Background tracking started');
       } else {
@@ -969,6 +1018,17 @@ export default function TrackingMap({
       // Clear any stale background coordinates (bg tracking starts when app goes to background)
       await AsyncStorage.setItem(BG_COORDS_KEY, '[]');
       await AsyncStorage.setItem(BG_DISTANCE_KEY, '0');
+      await AsyncStorage.setItem(BG_SYNCED_INDEX_KEY, '0');
+
+      // Request background location permission upfront so it's ready when app goes to background
+      try {
+        const bgPerm = await Location.requestBackgroundPermissionsAsync();
+        if (bgPerm.status !== 'granted') {
+          console.warn('Background location permission not granted — background recording may not work');
+        }
+      } catch (bgErr) {
+        console.warn('Error requesting background location permission:', bgErr);
+      }
 
       Alert.alert('Recording Started', 'Your trip is being recorded');
     } catch (error) {
@@ -1120,6 +1180,17 @@ export default function TrackingMap({
       // Clear any stale background coordinates (bg tracking starts when app goes to background)
       await AsyncStorage.setItem(BG_COORDS_KEY, '[]');
       await AsyncStorage.setItem(BG_DISTANCE_KEY, '0');
+      await AsyncStorage.setItem(BG_SYNCED_INDEX_KEY, '0');
+
+      // Request background location permission upfront so it's ready when app goes to background
+      try {
+        const bgPerm = await Location.requestBackgroundPermissionsAsync();
+        if (bgPerm.status !== 'granted') {
+          console.warn('Background location permission not granted — background recording may not work');
+        }
+      } catch (bgErr) {
+        console.warn('Error requesting background location permission:', bgErr);
+      }
 
       console.log('Auto-started recording from booking:', tripId);
     } catch (error) {
@@ -1901,35 +1972,30 @@ ${trackPoints}
                 />
               )}
 
-              {/* Current position marker - Waze-style navigation arrow when navigating */}
-              {positions.length > 0 && !reliveActive && (
+              {/* Current position marker - Waze-style navigation arrow (only when navigating a booking) */}
+              {/* When not navigating, the native blue dot (showsUserLocation) is used instead */}
+              {positions.length > 0 && !reliveActive && activeBooking && bookingRoute && (
                 <Marker
                   key="position-marker"
                   coordinate={positions[positions.length - 1]}
                   anchor={{ x: 0.5, y: 0.5 }}
                   flat={true}
                   rotation={heading || 0}
-                  tracksViewChanges={true}
+                  tracksViewChanges={false}
                 >
-                  {activeBooking && bookingRoute ? (
-                    <View style={styles.wazeNavContainer}>
-                      {/* Outer pulsing accuracy ring */}
-                      <View style={styles.wazeNavPulseRing} />
-                      {/* Navigation beam / cone showing direction */}
-                      <View style={styles.wazeNavBeam} />
-                      {/* Main Waze-style arrow body */}
-                      <View style={styles.wazeNavArrowBody}>
-                        {/* Arrow chevron pointing up (forward) */}
-                        <View style={styles.wazeNavChevron} />
-                        {/* Inner dot */}
-                        <View style={styles.wazeNavDot} />
-                      </View>
+                  <View style={styles.wazeNavContainer}>
+                    {/* Outer pulsing accuracy ring */}
+                    <View style={styles.wazeNavPulseRing} />
+                    {/* Navigation beam / cone showing direction */}
+                    <View style={styles.wazeNavBeam} />
+                    {/* Main Waze-style arrow body */}
+                    <View style={styles.wazeNavArrowBody}>
+                      {/* Arrow chevron pointing up (forward) */}
+                      <View style={styles.wazeNavChevron} />
+                      {/* Inner dot */}
+                      <View style={styles.wazeNavDot} />
                     </View>
-                  ) : (
-                    <View style={styles.marker}>
-                      <Ionicons name="bicycle" size={20} color="#fff" />
-                    </View>
-                  )}
+                  </View>
                 </Marker>
               )}
 

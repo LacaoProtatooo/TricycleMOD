@@ -14,6 +14,7 @@ export const BG_TASK_NAME = 'TRICYCLE_BG_LOCATION_TASK';
 const ACTIVE_TRIP_KEY = 'driver_tracking_active_trip_v1';
 const BG_COORDS_KEY = 'bg_trip_coords_v1'; // coordinates accumulated in background
 const BG_DISTANCE_KEY = 'bg_trip_distance_v1'; // distance accumulated in background
+const BG_SYNCED_INDEX_KEY = 'bg_trip_synced_index_v1'; // how many coords have been synced to server (don't re-send)
 
 function toRad(v) { return (v * Math.PI) / 180; }
 function haversineMeters(a, b) {
@@ -38,13 +39,14 @@ TaskManager.defineTask(BG_TASK_NAME, async ({ data, error }) => {
 
   try {
     // load last position and odometer
-    const [lastPosRaw, odometerRaw, lastTsRaw, activeTripRaw, bgCoordsRaw, bgDistRaw] = await Promise.all([
+    const [lastPosRaw, odometerRaw, lastTsRaw, activeTripRaw, bgCoordsRaw, bgDistRaw, bgSyncedIdxRaw] = await Promise.all([
       AsyncStorage.getItem(LAST_POS_KEY),
       AsyncStorage.getItem(KM_KEY),
       AsyncStorage.getItem(LAST_TS_KEY),
       AsyncStorage.getItem(ACTIVE_TRIP_KEY),
       AsyncStorage.getItem(BG_COORDS_KEY),
       AsyncStorage.getItem(BG_DISTANCE_KEY),
+      AsyncStorage.getItem(BG_SYNCED_INDEX_KEY),
     ]);
     let lastPos = lastPosRaw ? JSON.parse(lastPosRaw) : null;
     let odometer = odometerRaw ? Number(odometerRaw) || 0 : 0;
@@ -56,6 +58,7 @@ TaskManager.defineTask(BG_TASK_NAME, async ({ data, error }) => {
     const hasActiveTrip = activeTrip && activeTrip.tripId;
     let bgCoords = bgCoordsRaw ? JSON.parse(bgCoordsRaw) : [];
     let bgDistance = bgDistRaw ? Number(bgDistRaw) || 0 : 0;
+    let bgSyncedIndex = bgSyncedIdxRaw ? Number(bgSyncedIdxRaw) || 0 : 0;
     let tripCoordsChanged = false;
 
     for (const loc of locations) {
@@ -99,9 +102,12 @@ TaskManager.defineTask(BG_TASK_NAME, async ({ data, error }) => {
             });
             bgDistance += meters;
             tripCoordsChanged = true;
-            // Cap stored coords to prevent memory issues (keep last 500)
-            if (bgCoords.length > 500) {
-              bgCoords = bgCoords.slice(-500);
+            // Cap stored coords to prevent memory issues (keep last 2000 ≈ ~67 min at 2s intervals)
+            if (bgCoords.length > 2000) {
+              const dropped = bgCoords.length - 2000;
+              bgCoords = bgCoords.slice(-2000);
+              // Adjust synced index since we dropped old entries
+              bgSyncedIndex = Math.max(0, bgSyncedIndex - dropped);
             }
           }
         }
@@ -144,18 +150,23 @@ TaskManager.defineTask(BG_TASK_NAME, async ({ data, error }) => {
         }
     }
 
-    // Sync trip coordinates to server periodically in background
-    if (hasActiveTrip && bgCoords.length >= 10) {
+    // Sync only NEW (un-synced) trip coordinates to server periodically in background.
+    // IMPORTANT: Do NOT clear BG_COORDS_KEY here — the foreground merge handler owns that.
+    const unsyncedCoords = bgCoords.slice(bgSyncedIndex);
+    if (hasActiveTrip && unsyncedCoords.length >= 10) {
       try {
+        const token = await AsyncStorage.getItem('auth_token_str');
+        const headers = { 'Content-Type': 'application/json' };
+        if (token) headers['Authorization'] = `Bearer ${token}`;
         const response = await fetch(`${BACKEND}/api/tracking/${activeTrip.tripId}/sync`, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ coordinates: bgCoords }),
+          headers,
+          body: JSON.stringify({ coordinates: unsyncedCoords }),
         });
         if (response.ok) {
-          // Clear synced coords
-          await AsyncStorage.setItem(BG_COORDS_KEY, '[]');
-          await AsyncStorage.setItem(BG_DISTANCE_KEY, '0');
+          // Mark these as synced — do NOT clear coords, foreground merge will handle that
+          bgSyncedIndex = bgCoords.length;
+          await AsyncStorage.setItem(BG_SYNCED_INDEX_KEY, String(bgSyncedIndex));
         }
       } catch (syncErr) {
         console.warn('BG trip coord sync failed', syncErr);

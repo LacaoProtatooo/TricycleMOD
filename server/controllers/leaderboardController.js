@@ -1,5 +1,6 @@
 import User from '../models/userModel.js';
 import QueueEntry from '../models/queueEntryModel.js';
+import Booking from '../models/bookingModel.js';
 
 /**
  * Get leaderboard - top drivers by trip count
@@ -17,7 +18,7 @@ export const getLeaderboard = async (req, res) => {
     const endOfMonth = new Date(targetYear, targetMonth + 1, 0, 23, 59, 59, 999);
 
     // Aggregate completed queue entries (trips) for the month
-    const tripCounts = await QueueEntry.aggregate([
+    const queueTripCounts = await QueueEntry.aggregate([
       {
         $match: {
           status: 'done',
@@ -29,14 +30,42 @@ export const getLeaderboard = async (req, res) => {
           _id: '$driver',
           monthlyTrips: { $sum: 1 }
         }
-      },
-      {
-        $sort: { monthlyTrips: -1 }
-      },
-      {
-        $limit: parseInt(limit)
       }
     ]);
+
+    // Aggregate completed booking trips for the month
+    const bookingTripCounts = await Booking.aggregate([
+      {
+        $match: {
+          status: 'completed',
+          driver: { $ne: null },
+          completedAt: { $gte: startOfMonth, $lte: endOfMonth }
+        }
+      },
+      {
+        $group: {
+          _id: '$driver',
+          monthlyTrips: { $sum: 1 }
+        }
+      }
+    ]);
+
+    // Merge queue + booking counts per driver
+    const mergedMap = {};
+    for (const entry of queueTripCounts) {
+      const key = entry._id?.toString();
+      if (key) mergedMap[key] = (mergedMap[key] || 0) + entry.monthlyTrips;
+    }
+    for (const entry of bookingTripCounts) {
+      const key = entry._id?.toString();
+      if (key) mergedMap[key] = (mergedMap[key] || 0) + entry.monthlyTrips;
+    }
+
+    // Convert to sorted array
+    const tripCounts = Object.entries(mergedMap)
+      .map(([id, count]) => ({ _id: id, monthlyTrips: count }))
+      .sort((a, b) => b.monthlyTrips - a.monthlyTrips)
+      .slice(0, parseInt(limit));
 
     // Get driver details
     const driverIds = tripCounts.map(t => t._id);
@@ -70,35 +99,27 @@ export const getLeaderboard = async (req, res) => {
     // Get current user's rank if authenticated
     let userRank = null;
     if (req.user?.id) {
-      const userTrips = await QueueEntry.countDocuments({
+      // Count user's queue trips for the month
+      const userQueueTrips = await QueueEntry.countDocuments({
         driver: req.user.id,
         status: 'done',
         updatedAt: { $gte: startOfMonth, $lte: endOfMonth }
       });
 
-      // Find user's position
-      const higherCount = await QueueEntry.aggregate([
-        {
-          $match: {
-            status: 'done',
-            updatedAt: { $gte: startOfMonth, $lte: endOfMonth }
-          }
-        },
-        {
-          $group: {
-            _id: '$driver',
-            count: { $sum: 1 }
-          }
-        },
-        {
-          $match: {
-            count: { $gt: userTrips }
-          }
-        }
-      ]);
+      // Count user's booking trips for the month
+      const userBookingTrips = await Booking.countDocuments({
+        driver: req.user.id,
+        status: 'completed',
+        completedAt: { $gte: startOfMonth, $lte: endOfMonth }
+      });
+
+      const userTrips = userQueueTrips + userBookingTrips;
+
+      // Find user's position (count how many drivers have more trips)
+      const driversAbove = Object.values(mergedMap).filter(count => count > userTrips).length;
 
       userRank = {
-        rank: higherCount.length + 1,
+        rank: driversAbove + 1,
         monthlyTrips: userTrips,
       };
     }
@@ -182,7 +203,8 @@ export const getAllTimeLeaderboard = async (req, res) => {
  */
 export const getAvailableMonths = async (req, res) => {
   try {
-    const months = await QueueEntry.aggregate([
+    // Get months from queue entries
+    const queueMonths = await QueueEntry.aggregate([
       { $match: { status: 'done' } },
       {
         $group: {
@@ -192,17 +214,47 @@ export const getAvailableMonths = async (req, res) => {
           },
           count: { $sum: 1 }
         }
-      },
-      { $sort: { '_id.year': -1, '_id.month': -1 } },
-      { $limit: 12 }
+      }
     ]);
 
-    const available = months.map(m => ({
-      year: m._id.year,
-      month: m._id.month,
-      monthName: new Date(m._id.year, m._id.month - 1).toLocaleString('en-US', { month: 'long' }),
-      tripCount: m.count,
-    }));
+    // Get months from completed bookings
+    const bookingMonths = await Booking.aggregate([
+      { $match: { status: 'completed', completedAt: { $ne: null } } },
+      {
+        $group: {
+          _id: {
+            year: { $year: '$completedAt' },
+            month: { $month: '$completedAt' }
+          },
+          count: { $sum: 1 }
+        }
+      }
+    ]);
+
+    // Merge months from both sources
+    const monthMap = {};
+    for (const m of queueMonths) {
+      const key = `${m._id.year}-${m._id.month}`;
+      monthMap[key] = { year: m._id.year, month: m._id.month, count: m.count };
+    }
+    for (const m of bookingMonths) {
+      const key = `${m._id.year}-${m._id.month}`;
+      if (monthMap[key]) {
+        monthMap[key].count += m.count;
+      } else {
+        monthMap[key] = { year: m._id.year, month: m._id.month, count: m.count };
+      }
+    }
+
+    const available = Object.values(monthMap)
+      .sort((a, b) => b.year - a.year || b.month - a.month)
+      .slice(0, 12)
+      .map(m => ({
+        year: m.year,
+        month: m.month,
+        monthName: new Date(m.year, m.month - 1).toLocaleString('en-US', { month: 'long' }),
+        tripCount: m.count,
+      }));
 
     res.status(200).json({ success: true, data: available });
   } catch (error) {
