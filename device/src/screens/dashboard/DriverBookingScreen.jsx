@@ -306,7 +306,24 @@ const DriverBookingScreen = () => {
       activeBooking.destination.longitude
     );
 
+    // In dev builds, allow bypassing the distance check with confirmation
     if (distance > COMPLETION_RADIUS_METERS) {
+      if (__DEV__) {
+        // Dev build: prompt to bypass
+        Alert.alert(
+          'DEV: Not at Destination',
+          `You are ${Math.round(distance)}m away (limit: ${COMPLETION_RADIUS_METERS}m).\n\nBypass distance check for testing?`,
+          [
+            { text: 'Cancel', style: 'cancel' },
+            {
+              text: 'Bypass (DEV)',
+              style: 'destructive',
+              onPress: () => executeCompleteTrip(true),
+            },
+          ]
+        );
+        return;
+      }
       Alert.alert(
         'Not at Destination',
         `You must be within ${COMPLETION_RADIUS_METERS}m of the destination. Current distance: ${Math.round(distance)}m`
@@ -314,10 +331,23 @@ const DriverBookingScreen = () => {
       return;
     }
 
+    await executeCompleteTrip(false);
+  };
+
+  const executeCompleteTrip = async (bypassDistance = false) => {
     try {
+      const body = {
+        userLat: userLocation.latitude,
+        userLon: userLocation.longitude,
+      };
+      // Only send devBypass in dev builds
+      if (__DEV__ && bypassDistance) {
+        body.devBypass = true;
+      }
+
       const response = await axios.post(
         `${BACKEND}/api/booking/${activeBooking._id}/complete`,
-        { userLat: userLocation.latitude, userLon: userLocation.longitude },
+        body,
         { headers: { Authorization: `Bearer ${authToken}` } }
       );
 

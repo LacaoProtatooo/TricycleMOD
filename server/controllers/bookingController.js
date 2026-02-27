@@ -740,7 +740,7 @@ export const startTrip = async (req, res) => {
  */
 export const completeTrip = async (req, res) => {
   try {
-    const { userLat, userLon, driverLat, driverLon } = req.body;
+    const { userLat, userLon, driverLat, driverLon, devBypass } = req.body;
     const userId = req.user._id;
     const booking = await Booking.findById(req.params.id);
 
@@ -771,8 +771,8 @@ export const completeTrip = async (req, res) => {
         });
       }
 
-      // Verify driver is near destination (within 300m)
-      if (driverLat && driverLon) {
+      // Verify driver is near destination (within 300m) — skip if devBypass is set (dev builds only)
+      if (driverLat && driverLon && !devBypass) {
         const distance = calculateDistance(
           driverLat,
           driverLon,

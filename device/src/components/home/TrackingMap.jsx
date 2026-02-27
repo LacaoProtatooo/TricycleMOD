@@ -4,6 +4,7 @@ import MapView, { Polyline, Marker, PROVIDER_GOOGLE, AnimatedRegion, Circle } fr
 import * as Location from 'expo-location';
 import * as TaskManager from 'expo-task-manager';
 import * as Application from 'expo-application';
+import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Ionicons } from '@expo/vector-icons';
 import axios from 'axios';
@@ -106,6 +107,24 @@ function generateSimulatedRoute(start, end, numPoints = 30) {
   return points;
 }
 
+// Interpolate waypoints with more granularity for smooth simulation
+function interpolateWaypoints(waypoints, pointsPerSegment = 8) {
+  const result = [];
+  for (let i = 0; i < waypoints.length - 1; i++) {
+    const a = waypoints[i];
+    const b = waypoints[i + 1];
+    for (let j = 0; j < pointsPerSegment; j++) {
+      const t = j / pointsPerSegment;
+      result.push({
+        latitude: a.latitude + (b.latitude - a.latitude) * t,
+        longitude: a.longitude + (b.longitude - a.longitude) * t,
+      });
+    }
+  }
+  result.push(waypoints[waypoints.length - 1]);
+  return result;
+}
+
 export default function TrackingMap({ 
   follow = true, 
   onEnterTerminalZone, 
@@ -200,6 +219,16 @@ export default function TrackingMap({
   const [simActive, setSimActive] = useState(false);
   const simActiveRef = useRef(false); // Ref mirror to avoid stale closures in watcher
   const simLastPosRef = useRef(null);
+
+  // ── DEV-ONLY: Booking route simulation ──
+  const [devSimRunning, setDevSimRunning] = useState(false);
+  const devSimRunningRef = useRef(false);
+  const devSimCancelRef = useRef(false);
+  const devSimPausedRef = useRef(false);
+  const [devSimPaused, setDevSimPaused] = useState(false);
+  const [devSimProgress, setDevSimProgress] = useState(0); // 0-1
+  const devSimSpeedRef = useRef(1); // speed multiplier (0.5x, 1x, 2x, 4x, 8x)
+  const [devSimSpeed, setDevSimSpeed] = useState(1);
 
   // ── Waze-style navigation POV state ──
   const smoothedHeadingRef = useRef(0); // Smoothed heading for fluid camera rotation
@@ -304,7 +333,8 @@ export default function TrackingMap({
     onEnterRef.current = onEnterTerminalZone;
   }, [onEnterTerminalZone]);
 
-  // DEV: Poll for simulated positions broadcast from DriverBookingScreen
+  // DEV: Poll for simulated positions broadcast — only handles camera following.
+  // Recording, odometer, speed, and positions are handled directly in startDevSimulation.
   useEffect(() => {
     let simPollInterval;
     const pollSimBroadcast = async () => {
@@ -325,64 +355,7 @@ export default function TrackingMap({
         setSimActive(true);
         simActiveRef.current = true;
         const newPoint = { latitude: data.latitude, longitude: data.longitude };
-
-        // Add to positions array so polyline trail and relive data build up
-        setPositions(prev => {
-          const next = [...prev, newPoint].slice(-5000);
-          return next;
-        });
-
-        // === RECORD simulated position into active trip so whole journey is captured ===
-        if (activeTripIdRef.current && isRecordingRef.current) {
-          const simCoord = {
-            latitude: data.latitude,
-            longitude: data.longitude,
-            altitude: data.altitude || 0,
-            accuracy: data.accuracy || 5,
-            speed: data.speed || 0,
-            heading: data.heading || 0,
-            timestamp: data.timestamp || Date.now(),
-          };
-
-          if (recordedPosRef.current.length > 0) {
-            const lastRecorded = recordedPosRef.current[recordedPosRef.current.length - 1];
-            const meters = haversineMeters(lastRecorded, simCoord);
-            // Same jitter/teleport filter as real GPS recording
-            if (meters >= 1 && meters <= 500) {
-              distanceRef.current += meters;
-              setTripDistance(distanceRef.current);
-              recordedPosRef.current.push(simCoord);
-              const now = Date.now();
-              if (now - lastRecordedStateUpdateRef.current >= RECORDED_STATE_THROTTLE_MS) {
-                lastRecordedStateUpdateRef.current = now;
-                setRecordedPositions([...recordedPosRef.current]);
-              }
-              updateLocalStorage();
-            }
-          } else {
-            recordedPosRef.current.push(simCoord);
-            setRecordedPositions([...recordedPosRef.current]);
-            updateLocalStorage(true);
-          }
-        }
-
-        // Update odometer from simulated movement
-        if (simLastPosRef.current) {
-          const meters = haversineMeters(simLastPosRef.current, newPoint);
-          if (meters > 0.5 && meters < 500) {
-            setOdometerKm(prev => {
-              const nextKm = prev + meters / 1000;
-              AsyncStorage.setItem(KM_KEY, String(nextKm)).catch(() => {});
-              return nextKm;
-            });
-          }
-        }
         simLastPosRef.current = newPoint;
-
-        // Update speed display
-        if (data.speed) {
-          setSpeedKph(Math.round(data.speed * 3.6 * 10) / 10);
-        }
 
         // Move camera to follow simulated position
         if (mapRef.current && !reliveActiveRef.current) {
@@ -400,7 +373,7 @@ export default function TrackingMap({
       } catch (_) {}
     };
 
-    simPollInterval = setInterval(pollSimBroadcast, 300); // poll every 300ms for smooth movement
+    simPollInterval = setInterval(pollSimBroadcast, 300); // poll every 300ms for smooth camera
     return () => clearInterval(simPollInterval);
   }, [simActive]);
 
@@ -686,20 +659,25 @@ export default function TrackingMap({
         (loc) => {
           const { latitude, longitude, speed, altitude: alt, accuracy: acc, heading: hdg } = loc.coords;
           const newPoint = { latitude, longitude };
-          setPositions((p) => {
-            // Filter out inaccurate GPS readings to prevent ghost lines
-            if (acc && acc > 50) return p;
-            if (p.length > 0) {
-              const lastDisplayed = p[p.length - 1];
-              const jumpDist = haversineMeters(lastDisplayed, newPoint);
-              // Skip teleportation jumps (GPS glitch drawing lines far away)
-              if (jumpDist > 500) return p;
-            }
-            // Cap stored positions at 2000 to prevent memory bloat
-            const next = [...p, newPoint];
-            if (next.length > 2000) return next.slice(-2000);
-            return next;
-          });
+
+          // When DEV simulation is active, skip real GPS positions to prevent
+          // spaghetti polyline between stationary real position and sim path
+          if (!simActiveRef.current) {
+            setPositions((p) => {
+              // Filter out inaccurate GPS readings to prevent ghost lines
+              if (acc && acc > 50) return p;
+              if (p.length > 0) {
+                const lastDisplayed = p[p.length - 1];
+                const jumpDist = haversineMeters(lastDisplayed, newPoint);
+                // Skip teleportation jumps (GPS glitch drawing lines far away)
+                if (jumpDist > 500) return p;
+              }
+              // Cap stored positions at 2000 to prevent memory bloat
+              const next = [...p, newPoint];
+              if (next.length > 2000) return next.slice(-2000);
+              return next;
+            });
+          }
 
           // Update additional GPS stats
           setAltitude(alt ? Math.round(alt * 10) / 10 : 0);
@@ -720,25 +698,28 @@ export default function TrackingMap({
             }
           }
 
-          if (last) {
-            const meters = haversineMeters(
-              { latitude: last.coords.latitude, longitude: last.coords.longitude },
-              { latitude, longitude }
-            );
-            // Use meters > 0.5 to filter micro-jitter; keep decimal precision (no Math.round)
-            if (meters > 0.5 && meters < 500) {
-              setOdometerKm((prev) => {
-                const nextKm = prev + meters / 1000;
-                AsyncStorage.setItem(KM_KEY, String(nextKm)).catch(() => {});
-                return nextKm;
-              });
+          // Skip odometer, speed, camera from real GPS when sim is active
+          if (!simActiveRef.current) {
+            if (last) {
+              const meters = haversineMeters(
+                { latitude: last.coords.latitude, longitude: last.coords.longitude },
+                { latitude, longitude }
+              );
+              // Use meters > 0.5 to filter micro-jitter; keep decimal precision (no Math.round)
+              if (meters > 0.5 && meters < 500) {
+                setOdometerKm((prev) => {
+                  const nextKm = prev + meters / 1000;
+                  AsyncStorage.setItem(KM_KEY, String(nextKm)).catch(() => {});
+                  return nextKm;
+                });
+              }
             }
-          }
 
-          setSpeedKph(Math.round(kph * 10) / 10);
+            setSpeedKph(Math.round(kph * 10) / 10);
+          }
           lastPosRef.current = { coords: loc.coords, timestamp: loc.timestamp };
 
-          if (follow && !reliveActiveRef.current && mapRef.current) {
+          if (follow && !reliveActiveRef.current && !simActiveRef.current && mapRef.current) {
             // When navigating with booking route, use Waze-style tilted + heading-locked camera
             if (activeBooking && bookingRoute) {
               updateNavigationCamera(
@@ -887,6 +868,225 @@ export default function TrackingMap({
       Alert.alert('Error', String(e));
     }
   }
+
+  // ============== DEV-ONLY: BOOKING ROUTE SIMULATION ==============
+  // Simulates a trip along the actual booking route while the driver stays stationary.
+  // Records positions directly, updates odometer, and builds a relive-able path.
+  // Only available in __DEV__ (development) builds when a booking is active.
+  // Uses expo-keep-awake to keep the screen on during simulation.
+
+  const cycleDevSimSpeed = useCallback(() => {
+    const speeds = [0.5, 1, 2, 4, 8];
+    const curIdx = speeds.indexOf(devSimSpeedRef.current);
+    const nextIdx = (curIdx + 1) % speeds.length;
+    devSimSpeedRef.current = speeds[nextIdx];
+    setDevSimSpeed(speeds[nextIdx]);
+  }, []);
+
+  const startDevSimulation = useCallback(async () => {
+    if (!__DEV__) return; // safety guard
+    if (devSimRunningRef.current) {
+      Alert.alert('Simulation', 'A simulation is already running');
+      return;
+    }
+    if (!bookingRoute || bookingRoute.length < 2) {
+      Alert.alert('Simulation', 'No booking route available to simulate');
+      return;
+    }
+
+    const routeCoords = bookingRoute; // [{latitude, longitude}, ...]
+    const routeLabel = activeBooking?.passengerName
+      ? `Booking - ${activeBooking.passengerName}`
+      : 'Booking Route';
+
+    // Prevent screen from sleeping during simulation
+    try { await activateKeepAwakeAsync('dev_sim'); } catch (_) {}
+
+    // Auto-start trip recording if not already recording
+    if (!isRecordingRef.current && !activeTripIdRef.current) {
+      try {
+        const initialCoord = {
+          latitude: routeCoords[0].latitude,
+          longitude: routeCoords[0].longitude,
+          altitude: 15,
+          accuracy: 5,
+          speed: 0,
+          heading: 0,
+          timestamp: Date.now(),
+        };
+
+        const response = await axios.post(`${BASE_URL}/api/tracking/start`, {
+          deviceId: deviceId || 'dev_sim_device',
+          name: `DEV Sim: ${routeLabel} ${new Date().toLocaleDateString()}`,
+          initialCoordinate: initialCoord,
+        });
+
+        if (response.data.success) {
+          const { tripId, startTime } = response.data;
+          setActiveTripId(tripId);
+          activeTripIdRef.current = tripId;
+          setIsRecording(true);
+          isRecordingRef.current = true;
+          tripStartRef.current = new Date(startTime).getTime();
+          recordedPosRef.current = [initialCoord];
+          distanceRef.current = 0;
+          lastSyncedIndexRef.current = 0;
+          setRecordedPositions([initialCoord]);
+          setTripDistance(0);
+          setTripDuration(0);
+          await AsyncStorage.setItem(ACTIVE_TRIP_KEY, JSON.stringify({
+            tripId,
+            startTime: tripStartRef.current,
+            positions: [initialCoord],
+          }));
+          syncIntervalRef.current = setInterval(syncToServer, SYNC_INTERVAL_MS);
+          await AsyncStorage.setItem(BG_COORDS_KEY, '[]');
+          await AsyncStorage.setItem(BG_DISTANCE_KEY, '0');
+          await AsyncStorage.setItem(BG_SYNCED_INDEX_KEY, '0');
+        }
+      } catch (err) {
+        console.warn('DEV sim: failed to auto-start recording', err);
+      }
+    }
+
+    // Interpolate the booking route for smoother movement
+    const points = interpolateWaypoints(routeCoords, 10);
+
+    // Reset positions to start clean (no stale real GPS points)
+    setPositions([{ latitude: points[0].latitude, longitude: points[0].longitude }]);
+
+    devSimRunningRef.current = true;
+    devSimCancelRef.current = false;
+    devSimPausedRef.current = false;
+    setDevSimRunning(true);
+    setDevSimPaused(false);
+    setDevSimProgress(0);
+    setSimActive(true);
+    simActiveRef.current = true;
+
+    console.log(`DEV SIM: Starting "${routeLabel}" with ${points.length} points (from ${routeCoords.length} booking route coords)`);
+
+    // Simulate walking through points with realistic timing
+    const SIM_SPEED_MPS = 8; // ~29 km/h tricycle speed
+    let lastSimPos = null;
+
+    for (let i = 0; i < points.length; i++) {
+      if (devSimCancelRef.current) break;
+
+      // Pause loop
+      while (devSimPausedRef.current && !devSimCancelRef.current) {
+        await new Promise(r => setTimeout(r, 200));
+      }
+      if (devSimCancelRef.current) break;
+
+      const pt = points[i];
+      const now = Date.now();
+      const hdg = lastSimPos ? headingBetween(lastSimPos, pt) : 0;
+      const dist = lastSimPos ? haversineMeters(lastSimPos, pt) : 0;
+      const speedMps = dist > 0 ? SIM_SPEED_MPS + (Math.random() * 2 - 1) : 0;
+
+      const simCoord = {
+        latitude: pt.latitude,
+        longitude: pt.longitude,
+        altitude: 15 + Math.random() * 3,
+        accuracy: 3 + Math.random() * 2,
+        speed: speedMps,
+        heading: hdg,
+        timestamp: now,
+      };
+
+      // ── Write sim broadcast for camera/UI updates via poll listener ──
+      await AsyncStorage.setItem(SIM_BROADCAST_KEY, JSON.stringify({
+        isActive: true,
+        ...simCoord,
+      }));
+
+      // ── Directly add to positions array (polyline + current-session relive) ──
+      const newPoint = { latitude: pt.latitude, longitude: pt.longitude };
+      setPositions(prev => [...prev, newPoint].slice(-5000));
+
+      // ── Directly record into trip for server sync + history relive ──
+      if (activeTripIdRef.current && isRecordingRef.current) {
+        if (recordedPosRef.current.length > 0) {
+          const lastRecorded = recordedPosRef.current[recordedPosRef.current.length - 1];
+          const meters = haversineMeters(lastRecorded, simCoord);
+          if (meters >= 0.5 && meters <= 500) {
+            distanceRef.current += meters;
+            setTripDistance(distanceRef.current);
+            recordedPosRef.current.push(simCoord);
+            const tn = Date.now();
+            if (tn - lastRecordedStateUpdateRef.current >= RECORDED_STATE_THROTTLE_MS) {
+              lastRecordedStateUpdateRef.current = tn;
+              setRecordedPositions([...recordedPosRef.current]);
+            }
+            updateLocalStorage();
+          }
+        } else {
+          recordedPosRef.current.push(simCoord);
+          setRecordedPositions([...recordedPosRef.current]);
+          updateLocalStorage(true);
+        }
+      }
+
+      // ── Update odometer directly ──
+      if (lastSimPos) {
+        const meters = haversineMeters(lastSimPos, newPoint);
+        if (meters > 0.5 && meters < 500) {
+          setOdometerKm(prev => {
+            const nextKm = prev + meters / 1000;
+            AsyncStorage.setItem(KM_KEY, String(nextKm)).catch(() => {});
+            return nextKm;
+          });
+        }
+      }
+
+      // ── Update speed display ──
+      if (speedMps > 0) {
+        setSpeedKph(Math.round(speedMps * 3.6 * 10) / 10);
+      }
+
+      // Update progress
+      setDevSimProgress((i + 1) / points.length);
+
+      // Wait realistic interval based on distance, divided by speed multiplier
+      const baseDelayMs = dist > 0 ? (dist / SIM_SPEED_MPS) * 1000 : 300;
+      const adjustedDelay = Math.min(Math.max(baseDelayMs / devSimSpeedRef.current, 50), 2000);
+      await new Promise(r => setTimeout(r, adjustedDelay));
+
+      lastSimPos = pt;
+    }
+
+    // Cleanup
+    await AsyncStorage.setItem(SIM_BROADCAST_KEY, JSON.stringify({ isActive: false }));
+    devSimRunningRef.current = false;
+    setDevSimRunning(false);
+    setDevSimProgress(0);
+    // Allow screen to sleep again
+    try { deactivateKeepAwake('dev_sim'); } catch (_) {}
+
+    if (!devSimCancelRef.current) {
+      // Force a final recordedPositions state update so relive has all points
+      setRecordedPositions([...recordedPosRef.current]);
+      Alert.alert('DEV Simulation Complete', `Route "${routeLabel}" finished.\nCheck odometer and relive for recorded data.`);
+    }
+  }, [deviceId, bookingRoute, activeBooking]);
+
+  const stopDevSimulation = useCallback(async () => {
+    devSimCancelRef.current = true;
+    devSimPausedRef.current = false;
+    setDevSimPaused(false);
+    await AsyncStorage.setItem(SIM_BROADCAST_KEY, JSON.stringify({ isActive: false }));
+    devSimRunningRef.current = false;
+    setDevSimRunning(false);
+    setDevSimProgress(0);
+    try { deactivateKeepAwake('dev_sim'); } catch (_) {}
+  }, []);
+
+  const toggleDevSimPause = useCallback(() => {
+    const next = !devSimPausedRef.current;
+    devSimPausedRef.current = next;
+    setDevSimPaused(next);
+  }, []);
 
   // ============== TRIP RECORDING ==============
 
@@ -2320,6 +2520,41 @@ ${trackPoints}
             </View>
           )}
 
+          {/* DEV-ONLY: Booking route simulation controls (only when booking is active with a route) */}
+          {__DEV__ && activeBooking && bookingRoute && bookingRoute.length > 1 && (
+            <View style={styles.devSimSection}>
+              {!devSimRunning ? (
+                <TouchableOpacity
+                  onPress={startDevSimulation}
+                  style={styles.devSimBtn}
+                >
+                  <Ionicons name="flask-outline" size={16} color="#fff" />
+                  <Text style={styles.devSimBtnText}>DEV Simulate Route</Text>
+                </TouchableOpacity>
+              ) : (
+                <View style={styles.devSimRunningPanel}>
+                  <View style={styles.devSimProgressRow}>
+                    <View style={styles.devSimProgressTrack}>
+                      <View style={[styles.devSimProgressFill, { width: `${Math.round(devSimProgress * 100)}%` }]} />
+                    </View>
+                    <Text style={styles.devSimProgressText}>{Math.round(devSimProgress * 100)}%</Text>
+                  </View>
+                  <View style={styles.devSimRunningControls}>
+                    <TouchableOpacity onPress={cycleDevSimSpeed} style={[styles.devSimControlBtn, styles.devSimSpeedBtn]}>
+                      <Text style={styles.devSimSpeedText}>{devSimSpeed}x</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={toggleDevSimPause} style={styles.devSimControlBtn}>
+                      <Ionicons name={devSimPaused ? 'play' : 'pause'} size={14} color="#fff" />
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={stopDevSimulation} style={[styles.devSimControlBtn, { backgroundColor: '#dc3545' }]}>
+                      <Ionicons name="stop" size={14} color="#fff" />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )}
+            </View>
+          )}
+
           {/* Trip Recording Controls */}
           <View style={styles.recordingControls}>
             <TouchableOpacity
@@ -3452,5 +3687,76 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 16,
     marginTop: spacing.medium,
+  },
+  // ── DEV-ONLY: Simulation styles ──
+  devSimSection: {
+    marginBottom: 6,
+  },
+  devSimBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#6f42c1',
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    gap: 6,
+  },
+  devSimBtnText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  devSimRunningPanel: {
+    backgroundColor: '#6f42c120',
+    borderRadius: 8,
+    padding: 8,
+    borderWidth: 1,
+    borderColor: '#6f42c1',
+  },
+  devSimProgressRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginBottom: 6,
+  },
+  devSimProgressTrack: {
+    flex: 1,
+    height: 6,
+    backgroundColor: '#e0d4f5',
+    borderRadius: 3,
+    overflow: 'hidden',
+  },
+  devSimProgressFill: {
+    height: '100%',
+    backgroundColor: '#6f42c1',
+    borderRadius: 3,
+  },
+  devSimProgressText: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#6f42c1',
+    width: 36,
+    textAlign: 'right',
+  },
+  devSimRunningControls: {
+    flexDirection: 'row',
+    gap: 8,
+    justifyContent: 'flex-end',
+  },
+  devSimControlBtn: {
+    backgroundColor: '#6f42c1',
+    borderRadius: 6,
+    padding: 6,
+    minWidth: 32,
+    alignItems: 'center',
+  },
+  devSimSpeedBtn: {
+    backgroundColor: '#5a32a3',
+    paddingHorizontal: 10,
+  },
+  devSimSpeedText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '700',
   },
 });
