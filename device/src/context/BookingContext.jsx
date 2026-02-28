@@ -555,16 +555,21 @@ export const BookingProvider = ({ children }) => {
   }, [activeBooking, authToken, getAuthHeaders]);
 
   // Mark driver arrived at pickup location
-  const markDriverArrived = useCallback(async () => {
-    if (!activeBooking || !authToken || !userLocation) return false;
+  const markDriverArrived = useCallback(async (options = {}) => {
+    if (!activeBooking || !authToken) return false;
     
     try {
+      const body = {};
+      if (userLocation) {
+        body.latitude = userLocation.latitude;
+        body.longitude = userLocation.longitude;
+      }
+      if (options.devBypass) {
+        body.devBypass = true;
+      }
       const response = await axios.post(
         `${API_URL}/${activeBooking._id}/driver-arrived`,
-        {
-          latitude: userLocation.latitude,
-          longitude: userLocation.longitude,
-        },
+        body,
         getAuthHeaders()
       );
       

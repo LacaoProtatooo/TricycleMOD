@@ -346,9 +346,15 @@ export default function TrackingMap({
         }
         const data = JSON.parse(raw);
         if (!data.isActive) {
-          if (simActive) setSimActive(false);
-          simActiveRef.current = false;
-          simLastPosRef.current = null;
+          if (data.reachedDestination) {
+            // Sim completed naturally at destination — keep simActive so blue dot stays hidden
+            if (!simActive) setSimActive(true);
+            simActiveRef.current = true;
+          } else {
+            if (simActive) setSimActive(false);
+            simActiveRef.current = false;
+            simLastPosRef.current = null;
+          }
           return;
         }
 
@@ -356,6 +362,9 @@ export default function TrackingMap({
         simActiveRef.current = true;
         const newPoint = { latitude: data.latitude, longitude: data.longitude };
         simLastPosRef.current = newPoint;
+
+        // Update heading state so the Waze arrow rotates correctly during sim
+        setHeading(Math.round(data.heading || 0));
 
         // Move camera to follow simulated position
         if (mapRef.current && !reliveActiveRef.current) {
@@ -875,12 +884,22 @@ export default function TrackingMap({
   // Only available in __DEV__ (development) builds when a booking is active.
   // Uses expo-keep-awake to keep the screen on during simulation.
 
-  const cycleDevSimSpeed = useCallback(() => {
-    const speeds = [0.5, 1, 2, 4, 8];
+  const devSimSpeedUp = useCallback(() => {
+    const speeds = [0.5, 1, 2, 4, 8, 16];
     const curIdx = speeds.indexOf(devSimSpeedRef.current);
-    const nextIdx = (curIdx + 1) % speeds.length;
-    devSimSpeedRef.current = speeds[nextIdx];
-    setDevSimSpeed(speeds[nextIdx]);
+    if (curIdx < speeds.length - 1) {
+      devSimSpeedRef.current = speeds[curIdx + 1];
+      setDevSimSpeed(speeds[curIdx + 1]);
+    }
+  }, []);
+
+  const devSimSlowDown = useCallback(() => {
+    const speeds = [0.5, 1, 2, 4, 8, 16];
+    const curIdx = speeds.indexOf(devSimSpeedRef.current);
+    if (curIdx > 0) {
+      devSimSpeedRef.current = speeds[curIdx - 1];
+      setDevSimSpeed(speeds[curIdx - 1]);
+    }
   }, []);
 
   const startDevSimulation = useCallback(async () => {
@@ -1057,17 +1076,26 @@ export default function TrackingMap({
     }
 
     // Cleanup
-    await AsyncStorage.setItem(SIM_BROADCAST_KEY, JSON.stringify({ isActive: false }));
+    const reachedEnd = !devSimCancelRef.current;
+    await AsyncStorage.setItem(SIM_BROADCAST_KEY, JSON.stringify({
+      isActive: false,
+      reachedDestination: reachedEnd,
+      ...(reachedEnd && lastSimPos ? { latitude: lastSimPos.latitude, longitude: lastSimPos.longitude } : {}),
+    }));
     devSimRunningRef.current = false;
     setDevSimRunning(false);
-    setDevSimProgress(0);
+    setDevSimProgress(reachedEnd ? 1 : 0);
     // Allow screen to sleep again
     try { deactivateKeepAwake('dev_sim'); } catch (_) {}
 
-    if (!devSimCancelRef.current) {
+    if (reachedEnd) {
+      // Keep simActive true so the blue dot stays hidden and icon stays at destination
+      // (will be cleared when trip is completed/cancelled or manual stop)
+      setSimActive(true);
+      simActiveRef.current = true;
       // Force a final recordedPositions state update so relive has all points
       setRecordedPositions([...recordedPosRef.current]);
-      Alert.alert('DEV Simulation Complete', `Route "${routeLabel}" finished.\nCheck odometer and relive for recorded data.`);
+      Alert.alert('DEV Simulation Complete', `Route "${routeLabel}" reached destination.\nYou can now complete the trip from the booking screen.`);
     }
   }, [deviceId, bookingRoute, activeBooking]);
 
@@ -1075,10 +1103,13 @@ export default function TrackingMap({
     devSimCancelRef.current = true;
     devSimPausedRef.current = false;
     setDevSimPaused(false);
-    await AsyncStorage.setItem(SIM_BROADCAST_KEY, JSON.stringify({ isActive: false }));
+    await AsyncStorage.setItem(SIM_BROADCAST_KEY, JSON.stringify({ isActive: false, reachedDestination: false }));
     devSimRunningRef.current = false;
     setDevSimRunning(false);
     setDevSimProgress(0);
+    // Clear sim so native blue dot comes back
+    setSimActive(false);
+    simActiveRef.current = false;
     try { deactivateKeepAwake('dev_sim'); } catch (_) {}
   }, []);
 
@@ -1087,6 +1118,15 @@ export default function TrackingMap({
     devSimPausedRef.current = next;
     setDevSimPaused(next);
   }, []);
+
+  // Clear sim state when booking ends (trip completed/cancelled)
+  useEffect(() => {
+    if (!activeBooking && simActive) {
+      setSimActive(false);
+      simActiveRef.current = false;
+      AsyncStorage.setItem(SIM_BROADCAST_KEY, JSON.stringify({ isActive: false, reachedDestination: false })).catch(() => {});
+    }
+  }, [activeBooking, simActive]);
 
   // ============== TRIP RECORDING ==============
 
@@ -2127,7 +2167,7 @@ ${trackPoints}
           style={styles.map}
           mapType={mapType}
           initialRegion={region}
-          showsUserLocation
+          showsUserLocation={!simActive}
           followsUserLocation={false}
           showsMyLocationButton={true}
           onMapReady={handleMapReady}
@@ -2540,8 +2580,14 @@ ${trackPoints}
                     <Text style={styles.devSimProgressText}>{Math.round(devSimProgress * 100)}%</Text>
                   </View>
                   <View style={styles.devSimRunningControls}>
-                    <TouchableOpacity onPress={cycleDevSimSpeed} style={[styles.devSimControlBtn, styles.devSimSpeedBtn]}>
+                    <TouchableOpacity onPress={devSimSlowDown} style={styles.devSimControlBtn}>
+                      <Ionicons name="remove" size={14} color="#fff" />
+                    </TouchableOpacity>
+                    <View style={[styles.devSimControlBtn, styles.devSimSpeedBtn]}>
                       <Text style={styles.devSimSpeedText}>{devSimSpeed}x</Text>
+                    </View>
+                    <TouchableOpacity onPress={devSimSpeedUp} style={styles.devSimControlBtn}>
+                      <Ionicons name="add" size={14} color="#fff" />
                     </TouchableOpacity>
                     <TouchableOpacity onPress={toggleDevSimPause} style={styles.devSimControlBtn}>
                       <Ionicons name={devSimPaused ? 'play' : 'pause'} size={14} color="#fff" />
@@ -2694,7 +2740,7 @@ ${trackPoints}
             
             {/* Speed Buttons */}
             <View style={styles.speedControls}>
-              {[1, 2, 4].map((speed) => (
+              {[1, 2, 4, 8, 16].map((speed) => (
                 <TouchableOpacity
                   key={speed}
                   onPress={() => changeReliveSpeed(speed)}

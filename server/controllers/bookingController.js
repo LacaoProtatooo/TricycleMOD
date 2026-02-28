@@ -988,7 +988,7 @@ export const confirmCompletion = async (req, res) => {
 export const driverArrived = async (req, res) => {
   try {
     const driverId = req.user._id;
-    const { latitude, longitude } = req.body;
+    const { latitude, longitude, devBypass } = req.body;
     const booking = await Booking.findById(req.params.id);
 
     if (!booking) {
@@ -1014,8 +1014,8 @@ export const driverArrived = async (req, res) => {
       });
     }
 
-    // Optionally verify driver is near pickup location (within 100m)
-    if (latitude && longitude) {
+    // Optionally verify driver is near pickup location (within 100m) — skip if devBypass
+    if (latitude && longitude && !devBypass) {
       const R = 6371e3; // Earth's radius in meters
       const φ1 = (latitude * Math.PI) / 180;
       const φ2 = (booking.pickup.latitude * Math.PI) / 180;

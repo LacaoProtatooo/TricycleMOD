@@ -34,10 +34,12 @@ import { colors, spacing } from '../../components/common/theme';
 import { getToken } from '../../utils/jwtStorage';
 import { useAsyncSQLiteContext } from '../../utils/asyncSQliteProvider';
 import { getCodingDayStatus, getCodingDayName } from '../../utils/codingDayUtils';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_URL } from '../../utils/config';
 
 const BACKEND = API_URL;
 const COMPLETION_RADIUS_METERS = 300;
+const SIM_BROADCAST_KEY = 'dev_sim_broadcast_v1';
 
 const DriverBookingScreen = () => {
   const dispatch = useDispatch();
@@ -71,6 +73,8 @@ const DriverBookingScreen = () => {
   // Trip tracking
   const [distanceToDestination, setDistanceToDestination] = useState(null);
   const watchRef = useRef(null);
+  // DEV: Track whether simulation reached destination (for 300m bypass)
+  const [devSimAtDestination, setDevSimAtDestination] = useState(false);
 
   const [region, setRegion] = useState({
     latitude: 14.5176,
@@ -96,6 +100,29 @@ const DriverBookingScreen = () => {
     }
     return () => clearInterval(interval);
   }, [isOnline, activeBooking, userLocation]);
+
+  // DEV: Poll sim broadcast to know if simulation reached destination (for bypass button)
+  useEffect(() => {
+    if (!__DEV__ || !activeBooking) {
+      setDevSimAtDestination(false);
+      return;
+    }
+    let simPoll;
+    const check = async () => {
+      try {
+        const raw = await AsyncStorage.getItem(SIM_BROADCAST_KEY);
+        if (raw) {
+          const d = JSON.parse(raw);
+          setDevSimAtDestination(!!d.reachedDestination);
+        } else {
+          setDevSimAtDestination(false);
+        }
+      } catch (_) { setDevSimAtDestination(false); }
+    };
+    check();
+    simPoll = setInterval(check, 1000);
+    return () => clearInterval(simPoll);
+  }, [activeBooking]);
 
   const initializeDriver = async () => {
     try {
@@ -306,8 +333,13 @@ const DriverBookingScreen = () => {
       activeBooking.destination.longitude
     );
 
-    // In dev builds, allow bypassing the distance check with confirmation
+    // In dev builds with active simulation, auto-bypass the distance check
     if (distance > COMPLETION_RADIUS_METERS) {
+      if (__DEV__ && devSimAtDestination) {
+        // Sim reached destination: bypass directly without prompt
+        await executeCompleteTrip(true);
+        return;
+      }
       if (__DEV__) {
         // Dev build: prompt to bypass
         Alert.alert(
@@ -353,6 +385,10 @@ const DriverBookingScreen = () => {
 
       if (response.data.success) {
         Alert.alert('Trip Completed', 'The trip has been marked as completed.');
+        // Clear sim broadcast so TrackingMap can restore normal state
+        if (__DEV__) {
+          AsyncStorage.setItem(SIM_BROADCAST_KEY, JSON.stringify({ isActive: false, reachedDestination: false })).catch(() => {});
+        }
         setActiveBooking(null);
         setDistanceToDestination(null);
         
@@ -390,6 +426,45 @@ const DriverBookingScreen = () => {
         },
       ]
     );
+  };
+
+  // ── DEV-ONLY: Simulation bypass handlers ──
+  const handleSimArrived = async () => {
+    if (!__DEV__ || !activeBooking || !authToken) return;
+    try {
+      const res = await axios.post(
+        `${BACKEND}/api/booking/${activeBooking._id}/driver-arrived`,
+        {
+          latitude: activeBooking.pickup.latitude,
+          longitude: activeBooking.pickup.longitude,
+          devBypass: true,
+        },
+        { headers: { Authorization: `Bearer ${authToken}` } }
+      );
+      if (res.data.success) {
+        setActiveBooking(res.data.booking);
+        Alert.alert('SIM', 'Marked as arrived at pickup (bypassed).');
+      }
+    } catch (err) {
+      Alert.alert('Error', err.response?.data?.message || 'Failed to mark arrival');
+    }
+  };
+
+  const handleSimConfirmPickup = async () => {
+    if (!__DEV__ || !activeBooking || !authToken) return;
+    try {
+      const res = await axios.post(
+        `${BACKEND}/api/booking/${activeBooking._id}/start-trip`,
+        {},
+        { headers: { Authorization: `Bearer ${authToken}` } }
+      );
+      if (res.data.success) {
+        setActiveBooking(res.data.booking);
+        Alert.alert('SIM', 'Trip started — pickup confirmed (bypassed).');
+      }
+    } catch (err) {
+      Alert.alert('Error', err.response?.data?.message || 'Failed to start trip');
+    }
   };
 
   const onRefresh = async () => {
@@ -611,13 +686,17 @@ const DriverBookingScreen = () => {
               <TouchableOpacity
                 style={[
                   styles.completeButton,
-                  distanceToDestination > COMPLETION_RADIUS_METERS && styles.buttonDisabled,
+                  distanceToDestination > COMPLETION_RADIUS_METERS && !devSimAtDestination && styles.buttonDisabled,
                 ]}
                 onPress={handleCompleteTrip}
-                disabled={distanceToDestination > COMPLETION_RADIUS_METERS}
+                disabled={distanceToDestination > COMPLETION_RADIUS_METERS && !devSimAtDestination}
               >
                 <Ionicons name="checkmark-circle" size={20} color="#fff" />
-                <Text style={styles.completeButtonText}>Complete Trip</Text>
+                <Text style={styles.completeButtonText}>
+                  {devSimAtDestination && distanceToDestination > COMPLETION_RADIUS_METERS
+                    ? 'Complete (Sim at Destination)'
+                    : 'Complete Trip'}
+                </Text>
               </TouchableOpacity>
               
               <TouchableOpacity style={styles.cancelTripButton} onPress={handleCancelTrip}>
@@ -625,10 +704,77 @@ const DriverBookingScreen = () => {
               </TouchableOpacity>
             </View>
             
-            {distanceToDestination > COMPLETION_RADIUS_METERS && (
+            {distanceToDestination > COMPLETION_RADIUS_METERS && !devSimAtDestination && (
               <Text style={styles.completionHint}>
                 Must be within {COMPLETION_RADIUS_METERS}m to complete
               </Text>
+            )}
+            {devSimAtDestination && distanceToDestination > COMPLETION_RADIUS_METERS && (
+              <Text style={[styles.completionHint, { color: '#6f42c1' }]}>
+                Simulation reached destination — complete trip now
+              </Text>
+            )}
+
+            {/* DEV-ONLY: Simulation bypass panel */}
+            {__DEV__ && (
+              <View style={styles.simPanel}>
+                <View style={styles.simPanelHeader}>
+                  <Ionicons name="flask" size={14} color="#6f42c1" />
+                  <Text style={styles.simPanelTitle}>DEV Simulation Trip</Text>
+                </View>
+                <Text style={styles.simPanelHint}>
+                  Status: {activeBooking.status || 'accepted'}
+                  {activeBooking.driverArrivedAt ? ' • Arrived' : ''}
+                </Text>
+                <View style={styles.simPanelButtons}>
+                  {/* Step 1: I've Arrived */}
+                  <TouchableOpacity
+                    style={[
+                      styles.simBtn,
+                      activeBooking.driverArrivedAt && styles.simBtnDone,
+                    ]}
+                    onPress={handleSimArrived}
+                    disabled={!!activeBooking.driverArrivedAt}
+                  >
+                    <Ionicons
+                      name={activeBooking.driverArrivedAt ? 'checkmark-circle' : 'location'}
+                      size={14}
+                      color="#fff"
+                    />
+                    <Text style={styles.simBtnText}>
+                      {activeBooking.driverArrivedAt ? 'Arrived ✓' : "I've Arrived"}
+                    </Text>
+                  </TouchableOpacity>
+
+                  {/* Step 2: Confirm Pickup (Start Trip) */}
+                  <TouchableOpacity
+                    style={[
+                      styles.simBtn,
+                      activeBooking.status === 'in_progress' && styles.simBtnDone,
+                      activeBooking.status !== 'accepted' && activeBooking.status !== 'in_progress' && styles.buttonDisabled,
+                    ]}
+                    onPress={handleSimConfirmPickup}
+                    disabled={activeBooking.status !== 'accepted'}
+                  >
+                    <Ionicons
+                      name={activeBooking.status === 'in_progress' ? 'checkmark-circle' : 'people'}
+                      size={14}
+                      color="#fff"
+                    />
+                    <Text style={styles.simBtnText}>
+                      {activeBooking.status === 'in_progress' ? 'Picked Up ✓' : 'Confirm Pickup'}
+                    </Text>
+                  </TouchableOpacity>
+
+                  {/* Step 3: Complete — uses main Complete Trip button above */}
+                  <View style={[styles.simBtn, styles.simBtnInfo]}>
+                    <Ionicons name="flag" size={14} color="#fff" />
+                    <Text style={styles.simBtnText}>
+                      {devSimAtDestination ? 'At Dest ✓' : 'Run Sim →'}
+                    </Text>
+                  </View>
+                </View>
+              </View>
             )}
           </View>
         </View>
@@ -1169,6 +1315,58 @@ const styles = StyleSheet.create({
   sendOfferText: {
     color: '#fff',
     fontWeight: '700',
+  },
+
+  // DEV Sim Panel
+  simPanel: {
+    marginTop: spacing.small,
+    padding: spacing.small,
+    backgroundColor: '#f3f0ff',
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#d4c5f9',
+  },
+  simPanelHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginBottom: 4,
+  },
+  simPanelTitle: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#6f42c1',
+  },
+  simPanelHint: {
+    fontSize: 11,
+    color: '#6f42c1',
+    marginBottom: 8,
+  },
+  simPanelButtons: {
+    flexDirection: 'row',
+    gap: 6,
+  },
+  simBtn: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    backgroundColor: '#6f42c1',
+    paddingVertical: 8,
+    borderRadius: 8,
+  },
+  simBtnDone: {
+    backgroundColor: '#28a745',
+    opacity: 0.7,
+  },
+  simBtnInfo: {
+    backgroundColor: '#0d6efd',
+  },
+  simBtnText: {
+    color: '#fff',
+    fontSize: 11,
+    fontWeight: '600',
   },
 });
 

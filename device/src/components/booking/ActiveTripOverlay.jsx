@@ -8,8 +8,11 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { View, Text, TouchableOpacity, StyleSheet, Alert, Animated, PanResponder, Dimensions, ScrollView } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { colors, spacing } from '../common/theme';
 import { formatDistance } from '../../utils/routeService';
+
+const SIM_BROADCAST_KEY = 'dev_sim_broadcast_v1';
 
 const { width: SCREEN_W } = Dimensions.get('window');
 const DRAWER_WIDTH = 280;
@@ -38,6 +41,27 @@ const ActiveTripOverlay = ({
 }) => {
   const [timeRemaining, setTimeRemaining] = useState(null);
   const [canMarkNoShow, setCanMarkNoShow] = useState(false);
+
+  // DEV: Poll sim broadcast to enable bypass buttons
+  const [devSimActive, setDevSimActive] = useState(false);
+  useEffect(() => {
+    if (!__DEV__ || !booking) { setDevSimActive(false); return; }
+    let interval;
+    const check = async () => {
+      try {
+        const raw = await AsyncStorage.getItem(SIM_BROADCAST_KEY);
+        if (raw) {
+          const d = JSON.parse(raw);
+          setDevSimActive(!!d.isActive);
+        } else {
+          setDevSimActive(false);
+        }
+      } catch (_) { setDevSimActive(false); }
+    };
+    check();
+    interval = setInterval(check, 1000);
+    return () => clearInterval(interval);
+  }, [booking]);
 
   
 
@@ -148,9 +172,10 @@ const ActiveTripOverlay = ({
     ? `${booking.user.firstname} ${booking.user.lastname || ''}`.trim()
     : 'Passenger';
 
-  const canPickup = distanceToPickup !== null && distanceToPickup <= PICKUP_RADIUS_METERS;
-  const canComplete = distanceToDestination !== null && distanceToDestination <= COMPLETION_RADIUS_METERS;
-  const canMarkArrival = distanceToPickup !== null && distanceToPickup <= ARRIVAL_RADIUS_METERS;
+  const devBypassEnabled = __DEV__; // In dev builds, always allow bypassing distance checks
+  const canPickup = devBypassEnabled || (distanceToPickup !== null && distanceToPickup <= PICKUP_RADIUS_METERS);
+  const canComplete = devBypassEnabled || (distanceToDestination !== null && distanceToDestination <= COMPLETION_RADIUS_METERS);
+  const canMarkArrival = devBypassEnabled || (distanceToPickup !== null && distanceToPickup <= ARRIVAL_RADIUS_METERS);
   const hasArrived = !!driverArrivedAt;
 
   const handlePickup = () => {
@@ -181,6 +206,11 @@ const ActiveTripOverlay = ({
         'Too Far from Pickup',
         `You must be within ${ARRIVAL_RADIUS_METERS}m of the pickup location to mark arrival.\n\nCurrent distance: ${formatDistance(distanceToPickup)}`,
       );
+      return;
+    }
+    // DEV: In dev builds, skip confirmation and pass devBypass
+    if (__DEV__) {
+      onMarkArrived({ devBypass: true });
       return;
     }
     Alert.alert(
@@ -293,7 +323,7 @@ const ActiveTripOverlay = ({
                   onPress={handleMarkArrived}
                 >
                   <Ionicons name="location" size={18} color="#fff" />
-                  <Text style={styles.primaryBtnText}>I've Arrived</Text>
+                  <Text style={styles.primaryBtnText}>{__DEV__ ? "I've Arrived (DEV)" : "I've Arrived"}</Text>
                 </TouchableOpacity>
               )}
 
@@ -313,7 +343,7 @@ const ActiveTripOverlay = ({
                     onPress={handlePickup}
                   >
                     <Ionicons name="enter-outline" size={18} color="#fff" />
-                    <Text style={styles.primaryBtnText}>Confirm Pickup</Text>
+                    <Text style={styles.primaryBtnText}>{__DEV__ ? 'Confirm Pickup (DEV)' : 'Confirm Pickup'}</Text>
                   </TouchableOpacity>
                 </View>
               )}
@@ -336,7 +366,7 @@ const ActiveTripOverlay = ({
                       onPress={handlePickup}
                     >
                       <Ionicons name="enter-outline" size={18} color="#fff" />
-                      <Text style={styles.primaryBtnText}>Pickup</Text>
+                      <Text style={styles.primaryBtnText}>{__DEV__ ? 'Pickup (DEV)' : 'Pickup'}</Text>
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -348,7 +378,7 @@ const ActiveTripOverlay = ({
               onPress={handleComplete}
             >
               <Ionicons name="checkmark-circle" size={18} color="#fff" />
-              <Text style={styles.primaryBtnText}>Complete Trip</Text>
+              <Text style={styles.primaryBtnText}>{__DEV__ ? 'Complete Trip (DEV)' : 'Complete Trip'}</Text>
             </TouchableOpacity>
           )}
         </View>
@@ -370,7 +400,13 @@ const ActiveTripOverlay = ({
           </Text>
         )}
 
-        {/* DEV-only simulator removed */}
+        {/* DEV: Sim active indicator */}
+        {__DEV__ && (
+          <View style={styles.simBanner}>
+            <Ionicons name="flask" size={14} color="#6f42c1" />
+            <Text style={styles.simBannerText}>DEV mode — distance checks bypassed</Text>
+          </View>
+        )}
 
         {/* Back to bookings button */}
         <TouchableOpacity style={styles.backBtn} onPress={onBackToBookings}>
@@ -657,5 +693,22 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '600',
     marginLeft: 6,
+  },
+  simBanner: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: '#f3f0ff',
+    borderRadius: 8,
+    padding: 8,
+    marginTop: 10,
+    borderWidth: 1,
+    borderColor: '#d4c5f9',
+  },
+  simBannerText: {
+    fontSize: 11,
+    color: '#6f42c1',
+    fontWeight: '600',
+    flex: 1,
   },
 });
