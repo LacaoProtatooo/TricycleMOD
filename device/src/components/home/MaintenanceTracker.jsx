@@ -668,11 +668,13 @@ const MaintenanceTracker = ({ tricycleId, serverHistory }) => {
 				setWearPatterns(JSON.parse(patternsStr));
 			}
 
-			// 5. Build last service dates map - ONLY from approved records
+			// 5. Build last service dates map - include pending records for time tracking
+			// Time-based progress needs to track from when maintenance was performed,
+			// regardless of approval status, so drivers see accurate time progress.
 			const lastDates = {};
 			if (serverHistory && Array.isArray(serverHistory)) {
 				serverHistory
-					.filter(log => log.approvalStatus === 'approved' || !log.approvalStatus) // Only approved
+					.filter(log => log.approvalStatus !== 'rejected') // Include approved + pending, exclude rejected
 					.forEach(log => {
 						if (log.itemKey && log.completedAt) {
 							const prev = lastDates[log.itemKey];
@@ -690,8 +692,8 @@ const MaintenanceTracker = ({ tricycleId, serverHistory }) => {
 					historyArr.forEach(h => {
 						const k = h.itemKey || h.item;
 						const dateStr = h.date || h.completedAt || h.timestamp;
-						// Only use local records that are approved (or have no status - legacy)
-						if (k && dateStr && (h.approvalStatus === 'approved' || !h.approvalStatus)) {
+						// Include all non-rejected records for time tracking
+						if (k && dateStr && h.approvalStatus !== 'rejected') {
 							const prev = lastDates[k];
 							const d = new Date(dateStr);
 							if (!prev || new Date(prev) < d) lastDates[k] = d.toISOString();
@@ -812,7 +814,12 @@ const MaintenanceTracker = ({ tricycleId, serverHistory }) => {
 			const approvalStatus = serverResult.approvalStatus || 'pending';
 			const isPending = approvalStatus === 'pending';
 			
-			// Only update local data if approved (operator submitted) or if offline/local
+			// Always update lastServiceDates so time-based tracking works immediately
+			// (even for pending records — time tracking should reflect when work was done)
+			const updatedDates = { ...lastServiceDates, [itemKey]: completedAt };
+			setLastServiceDates(updatedDates);
+
+			// Only update KM data / local state if approved (operator submitted) or if offline/local
 			if (!isPending || !tricycleId) {
 				const next = { ...data, [itemKey]: kmNum };
 				
@@ -826,10 +833,6 @@ const MaintenanceTracker = ({ tricycleId, serverHistory }) => {
 
 				// Save to maintenance history with full details
 				await saveToMaintenanceHistory(itemKey, kmNum, maintenanceDetails);
-
-				// Update lastServiceDates locally so time-based checks pick this up immediately
-				const updatedDates = { ...lastServiceDates, [itemKey]: completedAt };
-				setLastServiceDates(updatedDates);
 
 				// Clear skip reason if any
 				if (skipReasons[itemKey]) {

@@ -185,6 +185,89 @@ When booking is active:
 - **No-show handling**: Wait timer + mark passenger absent
 - **Cancel trip**: Emergency cancellation
 
+#### DEV-Only: Simulation Testing (`__DEV__` builds only)
+
+A complete trip simulation system for development and testing. All features are guarded behind `__DEV__` and are stripped from production builds.
+
+##### How It Works
+
+The simulation lets you complete an entire booking trip while **staying stationary**. Your icon moves along the booking route on the map, GPS data is recorded for relive/history, and all pickup/arrival/destination distance checks are bypassed.
+
+##### Step-by-Step Flow
+
+1. **Accept a booking** in the Trips tab as normal
+2. **Bypass arrival & pickup** — In `__DEV__` builds, the Active Trip Overlay buttons bypass distance checks:
+   - **"I've Arrived (DEV)"** — Marks arrival at pickup without being within 100m (sends `devBypass` to server)
+   - **"Confirm Pickup (DEV)"** — Starts the trip (`in_progress`) without being within 50m of pickup
+   - **"Complete Trip (DEV)"** — Completes the trip without being within 300m of destination
+   - A purple banner shows: "DEV mode — distance checks bypassed"
+3. **Switch to Maps tab** — After pickup is confirmed, the route is loaded
+4. **Tap "DEV Simulate Route"** — Starts the simulation along the booking route
+5. **Icon moves along route** — The Waze-style arrow follows the simulated path; the native blue dot is hidden during simulation
+6. **Speed controls (+/−)** — Adjust simulation speed: `0.5x`, `1x`, `2x`, `4x`, `8x`, `16x`
+7. **Pause/Stop** — Pause the simulation or stop it entirely
+8. **Sim reaches destination** — When 100% complete, the "Complete Trip" button in the Trips tab overlay is enabled
+9. **Complete the trip** — Tap Complete Trip to finish the booking
+
+##### Key Files
+
+| File | Purpose |
+|------|---------|
+| [src/components/home/TrackingMap.jsx](../src/components/home/TrackingMap.jsx) | Simulation engine, icon movement, speed controls, route interpolation |
+| [src/components/booking/ActiveTripOverlay.jsx](../src/components/booking/ActiveTripOverlay.jsx) | Distance-check bypass for arrival, pickup, completion |
+| [src/context/BookingContext.jsx](../src/context/BookingContext.jsx) | `markDriverArrived` accepts `{ devBypass: true }` option |
+| [src/screens/dashboard/DriverBookingScreen.jsx](../src/screens/dashboard/DriverBookingScreen.jsx) | DEV sim panel with step-by-step bypass buttons |
+| Server: `controllers/bookingController.js` | `driverArrived` and `completeTrip` endpoints accept `devBypass` body param |
+
+##### Simulation Engine (TrackingMap)
+
+- **Route source**: Uses the actual booking route from Google Directions API (`bookingRoute` prop)
+- **Interpolation**: Each segment is split into 10 sub-points for smooth movement
+- **Position recording**: Sim loop directly records to `recordedPosRef` (for server sync) and `positions` (for polyline + relive)
+- **GPS isolation**: Real GPS watcher skips positions/odometer/speed while `simActiveRef` is true, preventing spaghetti polylines
+- **Camera follow**: Poll listener reads `SIM_BROADCAST_KEY` from AsyncStorage and updates the Waze-style navigation camera
+- **Icon display**: `showsUserLocation={!simActive}` hides the native blue dot during sim, showing only the Waze arrow at the sim position
+- **Heading updates**: Sim heading is forwarded to the arrow marker via `setHeading()` in the poll listener
+- **Screen awake**: `expo-keep-awake` prevents screen sleep during simulation
+- **Sim completion**: When sim finishes naturally, `simActive` stays true so the icon remains at the destination; `reachedDestination` flag is written to AsyncStorage for the bypass button
+- **Cleanup**: `stopDevSimulation` or booking cancellation clears all sim state
+
+##### Speed Controls
+
+| Speed | Effect |
+|-------|--------|
+| 0.5x | Half speed (slow motion) |
+| 1x | Real-time (~29 km/h tricycle speed) |
+| 2x | Double speed |
+| 4x | 4× speed |
+| 8x | 8× speed |
+| 16x | 16× speed (fastest) |
+
+Speed changes take effect immediately on the next interpolation point via `devSimSpeedRef`.
+
+##### 3D Relive
+
+After a simulated trip, the 3D Relive feature works normally because all positions are recorded directly during simulation. The relive has its own speed controls: `1x`, `2x`, `4x`, `8x`, `16x`.
+
+##### Inter-Component Communication
+
+The simulation uses `AsyncStorage` with key `dev_sim_broadcast_v1` to share state between components:
+
+```json
+{
+  "isActive": true,
+  "latitude": 14.xxxx,
+  "longitude": 121.xxxx,
+  "heading": 45,
+  "speed": 8.2,
+  "reachedDestination": false
+}
+```
+
+- **TrackingMap** writes this on every sim tick
+- **ActiveTripOverlay** polls it to detect active sim
+- **DriverBookingScreen** polls it for the `reachedDestination` flag
+
 ---
 
 ### 5. Messages
