@@ -61,12 +61,15 @@ TaskManager.defineTask(BG_TASK_NAME, async ({ data, error }) => {
     let bgSyncedIndex = bgSyncedIdxRaw ? Number(bgSyncedIdxRaw) || 0 : 0;
     let tripCoordsChanged = false;
     
-    // GPS Filter constants for background task (slightly more lenient than foreground)
-    const MAX_ACCURACY_METERS = 25;       // Allow slightly worse accuracy in background (was 30 before fix)
-    const MAX_SPEED_MPS = 33.33;          // Max ~120 km/h
-    const MIN_DISTANCE_METERS = 2;        // Minimum movement to record
-    const MAX_DISTANCE_METERS = 200;      // Maximum distance per reading
-    const MIN_TIME_INTERVAL_MS = 1500;    // Minimum time between recordings
+    // GPS Filter constants for background task
+    // NOTE: Background GPS on Android can be significantly less accurate when
+    // the screen is off (cell-tower fallback, GPS chip power saving).
+    // We use tighter speed/distance limits to compensate.
+    const MAX_ACCURACY_METERS = 20;       // Tighter accuracy gate (was 25)
+    const MAX_SPEED_MPS = 25;             // Max ~90 km/h (realistic for tricycle)
+    const MIN_DISTANCE_METERS = 3;        // Minimum movement to record (higher for bg noise)
+    const MIN_TIME_INTERVAL_MS = 2000;    // Minimum time between recordings
+    const HARD_DISTANCE_CAP_METERS = 300; // Absolute max distance per reading regardless of gap
 
     for (const loc of locations) {
       // support multiple shapes: loc.coords or loc (some platforms)
@@ -77,7 +80,7 @@ TaskManager.defineTask(BG_TASK_NAME, async ({ data, error }) => {
       const curTs = loc.timestamp ? Number(loc.timestamp) : Date.now();
       const accuracy = coords.accuracy || 0;
 
-      // Filter 1: Reject poor accuracy readings
+      // Filter 1: Reject poor accuracy readings (don't advance anchor — wait for good fix)
       if (accuracy > MAX_ACCURACY_METERS) {
         continue;
       }
@@ -86,30 +89,46 @@ TaskManager.defineTask(BG_TASK_NAME, async ({ data, error }) => {
         const meters = haversineMeters(lastPos, cur);
         const dt = curTs && lastTs ? (curTs - lastTs) / 1000 : 0;
 
-        // Filter 2: Reject teleportation (GPS glitch)
-        if (meters > MAX_DISTANCE_METERS) {
-          // Large jump — update lastPos but don't add distance
+        // Reject out-of-order timestamps only (removed MAX_STALE_SECONDS — it was
+        // causing ALL background points to be rejected after any >30s gap, which is
+        // normal when the phone screen is off. The speed check below handles stale
+        // points correctly by using gap-proportional validation.)
+        if (dt <= 0) {
+          continue;
+        }
+
+        // Filter 2: Gap-aware speed check — reject impossible speed for any gap duration.
+        // This replaces both the old stale-seconds check and the fixed distance cap.
+        // For long gaps, the speed check naturally allows larger distances.
+        const speedMps = meters / Math.max(dt, 0.5);
+        if (speedMps > MAX_SPEED_MPS) {
+          // Impossible speed — ADVANCE anchor to prevent cascading rejection.
+          // Without this, the anchor stays at the old position forever and all
+          // future points also fail the speed check (the "stale anchor deadlock").
           lastPos = cur;
           lastTs = curTs;
           continue;
         }
 
-        // Filter 3: Skip if too soon (prevent rapid-fire readings)
-        if (dt > 0 && (curTs - lastTs) < MIN_TIME_INTERVAL_MS) {
+        // Filter 3: Hard distance cap — even at reasonable speed, very large jumps
+        // between individual GPS samples indicate poor tracking (the actual path
+        // isn't a straight line). Better to skip than record inaccurate straight segments.
+        if (meters > HARD_DISTANCE_CAP_METERS) {
+          // Advance anchor so we don't get stuck
+          lastPos = cur;
+          lastTs = curTs;
           continue;
         }
 
-        // Filter 4: Reject impossible speed
-        if (dt > 0) {
-          const speedMps = meters / dt;
-          if (speedMps > MAX_SPEED_MPS) {
-            // Impossible speed — skip this point
-            continue;
-          }
+        // Filter 4: Skip if too soon (prevent rapid-fire readings)
+        if ((curTs - lastTs) < MIN_TIME_INTERVAL_MS) {
+          // Don't advance anchor — user hasn't moved enough time
+          continue;
         }
 
         // Filter 5: Minimum distance check (prevents micro-jitter)
         if (meters < MIN_DISTANCE_METERS) {
+          // Don't advance anchor — user is stationary
           continue;
         }
 

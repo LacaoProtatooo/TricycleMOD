@@ -27,9 +27,27 @@ const BG_DISTANCE_KEY = 'bg_trip_distance_v1'; // distance accumulated in backgr
 const BG_SYNCED_INDEX_KEY = 'bg_trip_synced_index_v1'; // server-sync index (managed by bg task)
 const SIM_BROADCAST_KEY = 'dev_sim_broadcast_v1'; // DEV: shared with DriverBookingScreen simulation
 
+// Offline-first storage keys
+const PENDING_TRIP_START_KEY = 'pending_trip_start_v1'; // Trip that needs to be created on server
+const PENDING_TRIP_END_KEY = 'pending_trip_end_v1'; // Trip that needs to be ended on server
+const OFFLINE_COORDS_QUEUE_KEY = 'offline_coords_queue_v1'; // Coordinates to sync when online
+
 // Sync settings
 const SYNC_INTERVAL_MS = 30000;
 const SYNC_BATCH_SIZE = 50;
+const OFFLINE_SYNC_RETRY_MS = 60000; // Retry offline sync every 60 seconds
+const MOVING_SPEED_THRESHOLD_KPH = 2.5; // Strava-style moving threshold
+const MAX_MOTION_SEGMENT_SECONDS = 30; // cap very long gaps in moving-time math
+
+// Generate a local trip ID for offline recording
+function generateLocalTripId() {
+  return `local_${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+// Check if a trip ID is a local (offline) ID
+function isLocalTripId(tripId) {
+  return tripId && tripId.startsWith('local_');
+}
 
 // Format duration to readable string
 function formatDuration(seconds) {
@@ -52,6 +70,36 @@ function formatDate(dateStr) {
     hour: '2-digit',
     minute: '2-digit',
   });
+}
+
+function computeMovingStats(coords = []) {
+  if (!Array.isArray(coords) || coords.length < 2) {
+    return { movingSeconds: 0, maxSpeedKph: 0 };
+  }
+
+  let movingSeconds = 0;
+  let maxSpeedKph = 0;
+
+  for (let i = 1; i < coords.length; i++) {
+    const prev = coords[i - 1];
+    const curr = coords[i];
+    if (!prev || !curr) continue;
+
+    const dt = ((curr.timestamp || 0) - (prev.timestamp || 0)) / 1000;
+    if (!(dt > 0)) continue;
+
+    const distance = haversineMeters(prev, curr);
+    if (!(distance > 0)) continue;
+
+    const speedKph = (distance / dt) * 3.6;
+    if (speedKph > maxSpeedKph) maxSpeedKph = speedKph;
+
+    if (speedKph >= MOVING_SPEED_THRESHOLD_KPH) {
+      movingSeconds += Math.min(dt, MAX_MOTION_SEGMENT_SECONDS);
+    }
+  }
+
+  return { movingSeconds, maxSpeedKph };
 }
 
 const TERMINALS = [
@@ -190,6 +238,9 @@ export default function TrackingMap({
   const [recordedPositions, setRecordedPositions] = useState([]);
   const [tripDistance, setTripDistance] = useState(0);
   const [tripDuration, setTripDuration] = useState(0);
+  const [tripMovingTime, setTripMovingTime] = useState(0);
+  const [tripAvgMovingSpeedKph, setTripAvgMovingSpeedKph] = useState(0);
+  const [tripMaxSpeedKph, setTripMaxSpeedKph] = useState(0);
   const [isSyncing, setIsSyncing] = useState(false);
   const [deviceId, setDeviceId] = useState(null);
   const syncIntervalRef = useRef(null);
@@ -201,15 +252,20 @@ export default function TrackingMap({
   const isRecordingRef = useRef(false); // Ref mirror of isRecording to avoid stale closures
   const bgMergeIntervalRef = useRef(null); // Interval to periodically check and merge background coordinates
   const lastMergedTimestampRef = useRef(0); // Track last merged coordinate timestamp to avoid duplicates
+  const movingTimeSecRef = useRef(0);
+  const maxTripSpeedKphRef = useRef(0);
 
   // GPS Filter instance for intelligent jitter/bounce filtering during trip recording
   const gpsFilterRef = useRef(new GPSFilter());
   // Separate filter for display positions (less strict)
   const displayFilterRef = useRef(new GPSFilter({
     ...GPS_FILTER_CONFIG,
-    MAX_ACCURACY_METERS: 50, // More lenient for display
+    MAX_ACCURACY_METERS: 40, // More lenient for display
     MIN_DISTANCE_METERS: 1,
-    MAX_DISTANCE_METERS: 500,
+    MAX_DISTANCE_METERS: 200,
+    MAX_SPEED_MPS: 30,
+    // Don't use settling for display — we want to show position ASAP
+    SETTLING_GAP_THRESHOLD_MS: 999999999,
   }));
 
   // Throttle refs to prevent excessive re-renders and AsyncStorage writes
@@ -227,6 +283,11 @@ export default function TrackingMap({
 
   // Map ready state - prevents rendering children before map is initialized
   const [mapReady, setMapReady] = useState(false);
+
+  // Offline-first recording state
+  const [isOfflineMode, setIsOfflineMode] = useState(false); // True when recording without server connection
+  const offlineSyncIntervalRef = useRef(null); // Interval to retry syncing offline data
+  const pendingServerTripIdRef = useRef(null); // Server trip ID once obtained (replaces local ID)
 
   // DEV: Simulation broadcast listener state
   const [simActive, setSimActive] = useState(false);
@@ -248,6 +309,26 @@ export default function TrackingMap({
   const [isNavigationMode, setIsNavigationMode] = useState(false); // True when actively navigating a booking route
   const lastCameraUpdateRef = useRef(0); // Throttle camera updates
   const NAV_CAMERA_THROTTLE_MS = 100; // Minimum ms between camera updates in nav mode
+
+  const applyMotionSegment = useCallback((distanceMeters, dtSeconds) => {
+    if (!(distanceMeters > 0) || !(dtSeconds > 0)) return;
+
+    const speedKph = (distanceMeters / dtSeconds) * 3.6;
+    if (speedKph > maxTripSpeedKphRef.current) {
+      maxTripSpeedKphRef.current = speedKph;
+    }
+
+    if (speedKph >= MOVING_SPEED_THRESHOLD_KPH) {
+      movingTimeSecRef.current += Math.min(dtSeconds, MAX_MOTION_SEGMENT_SECONDS);
+    }
+
+    const movingSec = movingTimeSecRef.current;
+    const avgMovingSpeed = movingSec > 0 ? (distanceRef.current / movingSec) * 3.6 : 0;
+
+    setTripMovingTime(Math.round(movingSec));
+    setTripAvgMovingSpeedKph(Math.round(avgMovingSpeed * 10) / 10);
+    setTripMaxSpeedKph(Math.round(maxTripSpeedKphRef.current * 10) / 10);
+  }, []);
 
   /**
    * Smoothly interpolate heading to avoid jarring camera rotation jumps.
@@ -488,18 +569,44 @@ export default function TrackingMap({
                 const validCoords = [];
                 
                 for (const coord of newCoords) {
-                // Apply validation filters during merge (safety net, lenient for background coords)
-                if (coord.accuracy && coord.accuracy > 30) continue; // Skip very inaccurate (background can be ~25m)
+                  // Apply strict validation filters during merge
+                  if (coord.accuracy && coord.accuracy > 20) continue; // Skip inaccurate readings
                   if (prevCoord) {
                     const d = haversineMeters(prevCoord, coord);
                     const dt = (coord.timestamp - prevTs) / 1000;
                     
-                    // Skip impossible movements
-                    if (d > 200) continue; // Teleportation
-                    if (dt > 0 && (d / dt) > 33.33) continue; // Impossible speed (>120 km/h)
-                    if (d < 2) continue; // Micro-jitter
+                    // Skip impossible or suspicious movements
+                    if (dt <= 0) continue; // Out of order
+                    // Gap-aware speed check (max ~90 km/h = 25 m/s)
+                    const speedMps = d / Math.max(dt, 0.5);
+                    if (speedMps > 25) {
+                      // Advance prevCoord to prevent cascading rejection
+                      prevCoord = coord;
+                      prevTs = coord.timestamp;
+                      continue;
+                    }
+                    if (d > 100) {
+                      // Large distance jump — advance anchor but don't accumulate distance
+                      prevCoord = coord;
+                      prevTs = coord.timestamp;
+                      continue;
+                    }
+                    if (d < 3) continue; // Micro-jitter
                     
                     newDist += d;
+                    applyMotionSegment(d, dt);
+                  } else {
+                    // First coord with no previous — validate against last recorded position
+                    const lastRecorded = recordedPosRef.current[recordedPosRef.current.length - 1];
+                    if (lastRecorded) {
+                      const d = haversineMeters(lastRecorded, coord);
+                      const dt = (coord.timestamp - (lastRecorded.timestamp || 0)) / 1000;
+                      const speedMps = dt > 0 ? d / dt : 999;
+                      if (speedMps > 25 || d > 300) {
+                        // First bg coord after gap is suspicious — skip it
+                        continue;
+                      }
+                    }
                   }
                   validCoords.push(coord);
                   prevCoord = coord;
@@ -553,7 +660,7 @@ export default function TrackingMap({
     return () => {
       appStateSubscription.remove();
     };
-  }, []);
+  }, [applyMotionSegment]);
 
   // Periodic background coordinate merge - checks every 5 seconds while recording
   // This catches screen-off scenarios where AppState may not change on some devices
@@ -582,19 +689,44 @@ export default function TrackingMap({
               const validCoords = [];
               
               for (const coord of newCoords) {
-                // Apply validation filters during merge (safety net, lenient for background coords)
-                if (coord.accuracy && coord.accuracy > 30) continue; // Skip very inaccurate (background can be ~25m)
+                // Apply strict validation filters during periodic merge
+                if (coord.accuracy && coord.accuracy > 20) continue; // Skip inaccurate readings
                 
                 if (prevCoord) {
                   const d = haversineMeters(prevCoord, coord);
                   const dt = (coord.timestamp - prevTs) / 1000;
                   
-                  // Skip impossible movements
-                  if (d > 200) continue; // Teleportation
-                  if (dt > 0 && (d / dt) > 33.33) continue; // Impossible speed (>120 km/h)
-                  if (d < 2) continue; // Micro-jitter
+                  // Skip impossible or suspicious movements
+                  if (dt <= 0) continue; // Out of order
+                  // Gap-aware speed check (max ~90 km/h = 25 m/s)
+                  const speedMps = d / Math.max(dt, 0.5);
+                  if (speedMps > 25) {
+                    // Advance anchor to prevent cascading rejection
+                    prevCoord = coord;
+                    prevTs = coord.timestamp;
+                    continue;
+                  }
+                  if (d > 100) {
+                    // Large distance jump — advance anchor but don't accumulate distance
+                    prevCoord = coord;
+                    prevTs = coord.timestamp;
+                    continue;
+                  }
+                  if (d < 3) continue; // Micro-jitter
                   
                   newDist += d;
+                  applyMotionSegment(d, dt);
+                } else {
+                  // First coord with no previous — validate against last recorded position
+                  const lastRecorded = recordedPosRef.current[recordedPosRef.current.length - 1];
+                  if (lastRecorded) {
+                    const d = haversineMeters(lastRecorded, coord);
+                    const dt = (coord.timestamp - (lastRecorded.timestamp || 0)) / 1000;
+                    const speedMps = dt > 0 ? d / dt : 999;
+                    if (speedMps > 25 || d > 300) {
+                      continue;
+                    }
+                  }
                 }
                 validCoords.push(coord);
                 prevCoord = coord;
@@ -658,11 +790,83 @@ export default function TrackingMap({
         }
       };
     }
-  }, [isRecording, activeTripId]);
+  }, [isRecording, activeTripId, applyMotionSegment]);
 
   // Initialize device ID and check for active trip
   useEffect(() => {
     initializeDeviceTracking();
+  }, []);
+
+  // Sync pending offline trips on app startup
+  useEffect(() => {
+    const syncPendingOfflineTrips = async () => {
+      try {
+        const pendingEndRaw = await AsyncStorage.getItem(PENDING_TRIP_END_KEY);
+        if (pendingEndRaw) {
+          console.log('[OfflineSync] Found pending trip to sync...');
+
+          const pendingEnd = JSON.parse(pendingEndRaw);
+          const coords = pendingEnd.coordinates || pendingEnd.positions || [];
+          const pendingStartRaw = await AsyncStorage.getItem(PENDING_TRIP_START_KEY);
+          const pendingStart = pendingStartRaw ? JSON.parse(pendingStartRaw) : null;
+
+          let serverTripId = pendingEnd.tripId && !isLocalTripId(pendingEnd.tripId)
+            ? pendingEnd.tripId
+            : null;
+
+          try {
+            if (!serverTripId) {
+              const storedDeviceId = await AsyncStorage.getItem(DEVICE_ID_KEY);
+              const initialCoordinate = pendingStart?.initialCoord || coords[0];
+
+              if (!initialCoordinate) {
+                console.log('[OfflineSync] Missing initial coordinate, keeping pending data for retry');
+                return;
+              }
+
+              const startRes = await axios.post(`${BASE_URL}/api/tracking/start`, {
+                deviceId: pendingStart?.deviceId || storedDeviceId,
+                name: pendingStart?.name || `Offline Trip ${new Date().toLocaleDateString()}`,
+                initialCoordinate,
+                bookingId: pendingStart?.bookingId,
+              }, { timeout: 10000 });
+
+              if (startRes.data?.success && startRes.data?.tripId) {
+                serverTripId = startRes.data.tripId;
+                console.log('[OfflineSync] Created server trip:', serverTripId);
+              }
+            }
+
+            if (serverTripId) {
+              const finalCoordinates = coords.length > 1 ? coords.slice(1) : coords;
+              await axios.post(`${BASE_URL}/api/tracking/${serverTripId}/end`, {
+                finalCoordinates: finalCoordinates.length > 0 ? finalCoordinates : undefined,
+              }, { timeout: 15000 });
+
+              console.log('[OfflineSync] Successfully synced offline trip');
+              await AsyncStorage.removeItem(PENDING_TRIP_END_KEY);
+              await AsyncStorage.removeItem(PENDING_TRIP_START_KEY);
+            }
+          } catch (syncErr) {
+            console.log('[OfflineSync] Sync failed, will retry later:', syncErr.message);
+          }
+        }
+        
+        // Check for trips that were started offline but never completed
+        const pendingStartData = await AsyncStorage.getItem(PENDING_TRIP_START_KEY);
+        if (pendingStartData && !isRecordingRef.current) {
+          // This shouldn't normally happen - just clean up stale data
+          console.log('[OfflineSync] Cleaning up stale pending start data');
+          await AsyncStorage.removeItem(PENDING_TRIP_START_KEY);
+        }
+      } catch (err) {
+        console.warn('[OfflineSync] Error syncing pending trips:', err);
+      }
+    };
+    
+    // Delay initial sync to let device initialize
+    const syncTimer = setTimeout(syncPendingOfflineTrips, 5000);
+    return () => clearTimeout(syncTimer);
   }, []);
 
   // Check for booking trigger to auto-start recording
@@ -749,6 +953,16 @@ export default function TrackingMap({
         }
         distanceRef.current = dist;
         setTripDistance(dist);
+        const stats = computeMovingStats(savedPositions || []);
+        movingTimeSecRef.current = stats.movingSeconds;
+        maxTripSpeedKphRef.current = stats.maxSpeedKph;
+        setTripMovingTime(Math.round(stats.movingSeconds));
+        setTripMaxSpeedKph(Math.round(stats.maxSpeedKph * 10) / 10);
+        setTripAvgMovingSpeedKph(
+          stats.movingSeconds > 0
+            ? Math.round(((dist / stats.movingSeconds) * 3.6) * 10) / 10
+            : 0
+        );
         // When resuming a trip, we don't know exactly what was synced before, 
         // so start fresh — coords may get re-synced but that's safer than missing data
         lastSyncedIndexRef.current = 0;
@@ -873,9 +1087,9 @@ export default function TrackingMap({
               );
               const dt = (timestamp - last.timestamp) / 1000;
               // Enhanced odometer filter: check accuracy, distance bounds, and speed
-              const isAccurate = !acc || acc <= 20;
-              const isReasonableDistance = meters > 0.5 && meters < 200;
-              const isReasonableSpeed = dt > 0 ? (meters / dt) * 3.6 < 120 : true; // Max 120 km/h
+              const isAccurate = !acc || acc <= 15;
+              const isReasonableDistance = meters > 0.5 && meters < 100;
+              const isReasonableSpeed = dt > 0 ? (meters / dt) * 3.6 < 90 : true; // Max 90 km/h for tricycle
               
               if (isAccurate && isReasonableDistance && isReasonableSpeed) {
                 setOdometerKm((prev) => {
@@ -928,9 +1142,14 @@ export default function TrackingMap({
 
             if (filterResult.accepted) {
               const distance = filterResult.distance || 0;
+              const prevAccepted = recordedPosRef.current[recordedPosRef.current.length - 1];
+              const dt = prevAccepted ? ((newCoord.timestamp || 0) - (prevAccepted.timestamp || 0)) / 1000 : 0;
               if (distance > 0) {
                 distanceRef.current += distance;
                 setTripDistance(distanceRef.current);
+                if (dt > 0) {
+                  applyMotionSegment(distance, dt);
+                }
               }
               recordedPosRef.current.push(newCoord);
               // Throttle state update to prevent excessive re-renders & OOM
@@ -975,7 +1194,7 @@ export default function TrackingMap({
         watchRef.current.remove();
       }
     };
-  }, [follow]);
+  }, [follow, applyMotionSegment]);
 
   useEffect(() => {
     reliveActiveRef.current = reliveActive;
@@ -1116,6 +1335,11 @@ export default function TrackingMap({
           setRecordedPositions([initialCoord]);
           setTripDistance(0);
           setTripDuration(0);
+          setTripMovingTime(0);
+          setTripAvgMovingSpeedKph(0);
+          setTripMaxSpeedKph(0);
+          movingTimeSecRef.current = 0;
+          maxTripSpeedKphRef.current = 0;
           await AsyncStorage.setItem(ACTIVE_TRIP_KEY, JSON.stringify({
             tripId,
             startTime: tripStartRef.current,
@@ -1322,6 +1546,12 @@ export default function TrackingMap({
   const syncToServer = async () => {
     if (!activeTripIdRef.current || isSyncing) return;
 
+    // Skip sync if we have a local (offline) trip ID - wait until we get a server ID
+    if (isLocalTripId(activeTripIdRef.current)) {
+      console.log('Offline mode - coordinates saved locally, waiting for server connection');
+      return;
+    }
+
     // Only sync coordinates that haven't been sent yet
     const startIdx = lastSyncedIndexRef.current;
     const allCoords = recordedPosRef.current;
@@ -1332,7 +1562,7 @@ export default function TrackingMap({
     try {
       await axios.post(`${BASE_URL}/api/tracking/${activeTripIdRef.current}/sync`, {
         coordinates: coordsToSync,
-      });
+      }, { timeout: 15000 });
       lastSyncedIndexRef.current = startIdx + coordsToSync.length;
       console.log(`Synced ${coordsToSync.length} coordinates (index ${startIdx}→${lastSyncedIndexRef.current})`);
     } catch (error) {
@@ -1344,10 +1574,168 @@ export default function TrackingMap({
           syncIntervalRef.current = null;
         }
       } else {
-        console.error('Sync error:', error.message);
+        // Network error - coordinates stay local, will retry next interval
+        console.log('Sync failed (will retry):', error.message);
       }
     } finally {
       setIsSyncing(false);
+    }
+  };
+
+  // Helper function to initialize local recording state (used by both online and offline start)
+  const initializeLocalRecording = async (tripId, startTime, initialCoord, isOffline = false) => {
+    setActiveTripId(tripId);
+    activeTripIdRef.current = tripId;
+    setIsRecording(true);
+    isRecordingRef.current = true;
+    tripStartRef.current = startTime;
+    recordedPosRef.current = [initialCoord];
+    distanceRef.current = 0;
+    lastSyncedIndexRef.current = 0;
+    lastMergedTimestampRef.current = initialCoord.timestamp;
+    setRecordedPositions([initialCoord]);
+    setTripDistance(0);
+    setTripDuration(0);
+    setTripMovingTime(0);
+    setTripAvgMovingSpeedKph(0);
+    setTripMaxSpeedKph(0);
+    setIsOfflineMode(isOffline);
+    pendingServerTripIdRef.current = null;
+    movingTimeSecRef.current = 0;
+    maxTripSpeedKphRef.current = 0;
+
+    // Reset GPS filter for new trip
+    gpsFilterRef.current.reset();
+    displayFilterRef.current.reset();
+
+    // Save to AsyncStorage for persistence
+    await AsyncStorage.setItem(ACTIVE_TRIP_KEY, JSON.stringify({
+      tripId,
+      startTime,
+      positions: [initialCoord],
+      isOffline,
+    }));
+
+    // Clear any stale background coordinates
+    await Promise.all([
+      AsyncStorage.setItem(BG_COORDS_KEY, '[]'),
+      AsyncStorage.setItem(BG_DISTANCE_KEY, '0'),
+      AsyncStorage.setItem(BG_SYNCED_INDEX_KEY, '0'),
+    ]);
+
+    // Keep screen awake while recording
+    try { await activateKeepAwakeAsync('trip_recording'); } catch (_) {}
+
+    // Start background location task
+    try {
+      const bgPerm = await Location.requestBackgroundPermissionsAsync();
+      if (bgPerm.status === 'granted') {
+        if (lastPosRef.current) {
+          await AsyncStorage.setItem('bg_last_position_v1', JSON.stringify({
+            latitude: lastPosRef.current.coords?.latitude ?? initialCoord.latitude,
+            longitude: lastPosRef.current.coords?.longitude ?? initialCoord.longitude,
+          }));
+          await AsyncStorage.setItem('bg_last_ts_v1', String(Date.now()));
+        }
+        const isRegistered = await TaskManager.isTaskRegisteredAsync(BG_TASK_NAME);
+        if (!isRegistered) {
+          await Location.startLocationUpdatesAsync(BG_TASK_NAME, {
+            accuracy: Location.Accuracy.BestForNavigation,
+            timeInterval: 2000,
+            distanceInterval: 1,
+            foregroundService: {
+              notificationTitle: 'Trip Recording Active',
+              notificationBody: isOffline ? 'Recording offline - will sync when connected' : 'Your trip is being recorded',
+              notificationColor: '#FF0000',
+            },
+            pausesUpdatesAutomatically: false,
+            activityType: Location.ActivityType.AutomotiveNavigation,
+            showsBackgroundLocationIndicator: true,
+          });
+        }
+      }
+    } catch (bgErr) {
+      console.warn('Error starting background tracking:', bgErr);
+    }
+
+    // Start sync interval (will handle both online and offline modes)
+    syncIntervalRef.current = setInterval(syncToServer, SYNC_INTERVAL_MS);
+
+    // If offline, also start the offline sync retry interval
+    if (isOffline) {
+      offlineSyncIntervalRef.current = setInterval(tryCreateTripOnServer, OFFLINE_SYNC_RETRY_MS);
+    }
+  };
+
+  // Try to create the offline trip on server (called periodically when in offline mode)
+  const tryCreateTripOnServer = async () => {
+    if (!isOfflineMode || !activeTripIdRef.current || !isLocalTripId(activeTripIdRef.current)) {
+      return;
+    }
+
+    try {
+      const pendingRaw = await AsyncStorage.getItem(PENDING_TRIP_START_KEY);
+      if (!pendingRaw) return;
+
+      const pending = JSON.parse(pendingRaw);
+      console.log('Attempting to sync offline trip to server...');
+
+      const response = await axios.post(`${BASE_URL}/api/tracking/start`, {
+        deviceId: pending.deviceId,
+        name: pending.name,
+        initialCoordinate: pending.initialCoord,
+        bookingId: pending.bookingId,
+      });
+
+      if (response.data.success) {
+        const { tripId: serverTripId, startTime } = response.data;
+        console.log(`Offline trip synced! Local: ${activeTripIdRef.current} → Server: ${serverTripId}`);
+
+        // Update trip ID to server ID
+        const oldLocalId = activeTripIdRef.current;
+        setActiveTripId(serverTripId);
+        activeTripIdRef.current = serverTripId;
+        pendingServerTripIdRef.current = serverTripId;
+        setIsOfflineMode(false);
+
+        // Update AsyncStorage
+        const activeTripRaw = await AsyncStorage.getItem(ACTIVE_TRIP_KEY);
+        if (activeTripRaw) {
+          const activeTrip = JSON.parse(activeTripRaw);
+          activeTrip.tripId = serverTripId;
+          activeTrip.isOffline = false;
+          activeTrip.localTripId = oldLocalId; // Keep reference to old ID
+          await AsyncStorage.setItem(ACTIVE_TRIP_KEY, JSON.stringify(activeTrip));
+        }
+
+        // Clear pending trip start
+        await AsyncStorage.removeItem(PENDING_TRIP_START_KEY);
+
+        // Stop the offline sync interval
+        if (offlineSyncIntervalRef.current) {
+          clearInterval(offlineSyncIntervalRef.current);
+          offlineSyncIntervalRef.current = null;
+        }
+
+        // Now sync all accumulated coordinates
+        const allCoords = recordedPosRef.current;
+        if (allCoords.length > 1) {
+          try {
+            await axios.post(`${BASE_URL}/api/tracking/${serverTripId}/sync`, {
+              coordinates: allCoords.slice(1), // Skip first coord (already sent with start)
+            });
+            lastSyncedIndexRef.current = allCoords.length;
+            console.log(`Synced ${allCoords.length - 1} offline coordinates to server`);
+          } catch (syncErr) {
+            console.warn('Failed to sync offline coordinates:', syncErr.message);
+          }
+        }
+
+        Alert.alert('Online', 'Trip synced to server. Recording continues.');
+      }
+    } catch (error) {
+      // Still offline or server error - will retry later
+      console.log('Still offline, will retry sync later:', error.message);
     }
   };
 
@@ -1382,158 +1770,106 @@ export default function TrackingMap({
         timestamp: Date.now(),
       };
 
-      // Start trip on server
-      const response = await axios.post(`${BASE_URL}/api/tracking/start`, {
-        deviceId,
-        name: `Driver Trip ${new Date().toLocaleDateString()}`,
-        initialCoordinate: initialCoord,
-      });
+      const tripName = `Driver Trip ${new Date().toLocaleDateString()}`;
+      let tripId;
+      let startTime = Date.now();
+      let isOffline = false;
 
-      if (!response.data.success) {
-        throw new Error(response.data.message);
-      }
-
-      const { tripId, startTime } = response.data;
-
-      // Initialize recording state
-      setActiveTripId(tripId);
-      activeTripIdRef.current = tripId;
-      setIsRecording(true);
-      isRecordingRef.current = true;
-      tripStartRef.current = new Date(startTime).getTime();
-      recordedPosRef.current = [initialCoord];
-      distanceRef.current = 0;
-      lastSyncedIndexRef.current = 0;
-      lastMergedTimestampRef.current = initialCoord.timestamp; // Track last merged timestamp for deduplication
-      setRecordedPositions([initialCoord]);
-      setTripDistance(0);
-      setTripDuration(0);
-
-      // Reset GPS filter for new trip
-      gpsFilterRef.current.reset();
-      displayFilterRef.current.reset();
-
-      // Save to AsyncStorage for persistence
-      await AsyncStorage.setItem(ACTIVE_TRIP_KEY, JSON.stringify({
-        tripId,
-        startTime: tripStartRef.current,
-        positions: [initialCoord],
-      }));
-
-      // Start sync interval
-      syncIntervalRef.current = setInterval(syncToServer, SYNC_INTERVAL_MS);
-
-      // Clear any stale background coordinates
-      await AsyncStorage.setItem(BG_COORDS_KEY, '[]');
-      await AsyncStorage.setItem(BG_DISTANCE_KEY, '0');
-      await AsyncStorage.setItem(BG_SYNCED_INDEX_KEY, '0');
-
-      // Keep screen awake while recording to help maintain GPS accuracy
-      try { await activateKeepAwakeAsync('trip_recording'); } catch (_) {}
-
-      // Proactively start background location task so recording survives screen-off / app-background
+      // Try to start trip on server first
       try {
-        const bgPerm = await Location.requestBackgroundPermissionsAsync();
-        if (bgPerm.status === 'granted') {
-          // Save current position reference for bg task continuity
-          if (lastPosRef.current) {
-            await AsyncStorage.setItem('bg_last_position_v1', JSON.stringify({
-              latitude: lastPosRef.current.coords?.latitude ?? initialCoord.latitude,
-              longitude: lastPosRef.current.coords?.longitude ?? initialCoord.longitude,
-            }));
-            await AsyncStorage.setItem('bg_last_ts_v1', String(Date.now()));
-          }
-          const isRegistered = await TaskManager.isTaskRegisteredAsync(BG_TASK_NAME);
-          if (!isRegistered) {
-            await Location.startLocationUpdatesAsync(BG_TASK_NAME, {
-              accuracy: Location.Accuracy.BestForNavigation,
-              timeInterval: 2000,
-              distanceInterval: 1,
-              foregroundService: {
-                notificationTitle: 'Trip Recording Active',
-                notificationBody: 'Your trip is being recorded',
-                notificationColor: '#FF0000',
-              },
-              pausesUpdatesAutomatically: false,
-              activityType: Location.ActivityType.AutomotiveNavigation,
-              showsBackgroundLocationIndicator: true,
-            });
-            console.log('Background location task started proactively on recording start');
-          }
+        const response = await axios.post(`${BASE_URL}/api/tracking/start`, {
+          deviceId,
+          name: tripName,
+          initialCoordinate: initialCoord,
+        }, { timeout: 10000 }); // 10 second timeout
+
+        if (response.data.success) {
+          tripId = response.data.tripId;
+          startTime = new Date(response.data.startTime).getTime();
         } else {
-          console.warn('Background location permission not granted — background recording may not work');
+          throw new Error(response.data.message);
         }
-      } catch (bgErr) {
-        console.warn('Error starting background tracking on recording start:', bgErr);
+      } catch (serverError) {
+        // Check if it's a network error (offline) vs server error
+        const isNetworkError = !serverError.response || 
+          serverError.code === 'ECONNABORTED' ||
+          serverError.message?.includes('Network Error') ||
+          serverError.message?.includes('timeout');
+
+        // Handle existing active trip (400 with tripId)
+        const errorData = serverError.response?.data;
+        if (errorData?.tripId) {
+          // Existing trip on server - show dialog
+          Alert.alert(
+            'Existing Trip Found',
+            'You have an active trip. Would you like to resume or cancel it?',
+            [
+              {
+                text: 'Cancel Old Trip',
+                style: 'destructive',
+                onPress: async () => {
+                  try {
+                    await axios.post(`${BASE_URL}/api/tracking/${errorData.tripId}/cancel`);
+                    await AsyncStorage.removeItem(ACTIVE_TRIP_KEY);
+                    setIsRecording(false);
+                    setActiveTripId(null);
+                    activeTripIdRef.current = null;
+                    recordedPosRef.current = [];
+                    setRecordedPositions([]);
+                    Alert.alert('Cancelled', 'Old trip cancelled. You can start a new recording now.');
+                  } catch (cancelErr) {
+                    Alert.alert('Error', 'Failed to cancel old trip.');
+                  }
+                },
+              },
+              {
+                text: 'Resume Trip',
+                onPress: async () => {
+                  await initializeLocalRecording(errorData.tripId, Date.now(), initialCoord, false);
+                  Alert.alert('Resumed', 'Continuing with existing trip recording.');
+                },
+              },
+              { text: 'Dismiss', style: 'cancel' },
+            ]
+          );
+          return;
+        }
+
+        if (isNetworkError) {
+          // Offline - generate local trip ID and continue
+          console.log('Network unavailable - starting offline recording');
+          tripId = generateLocalTripId();
+          isOffline = true;
+
+          // Save pending trip start for later sync
+          await AsyncStorage.setItem(PENDING_TRIP_START_KEY, JSON.stringify({
+            deviceId,
+            name: tripName,
+            initialCoord,
+            localTripId: tripId,
+            startTime,
+          }));
+        } else {
+          // Server error - show error
+          throw serverError;
+        }
       }
 
-      Alert.alert('Recording Started', 'Your trip is being recorded');
+      // Initialize recording (works both online and offline)
+      await initializeLocalRecording(tripId, startTime, initialCoord, isOffline);
+
+      if (isOffline) {
+        Alert.alert('Recording Started (Offline)', 'Your trip is being recorded locally. It will sync to the server when you have internet connection.');
+      } else {
+        Alert.alert('Recording Started', 'Your trip is being recorded');
+      }
     } catch (error) {
       console.error('Error starting recording:', error);
-      
-      // Handle existing active trip (400 with tripId)
-      const errorData = error.response?.data;
-      if (errorData?.tripId) {
-        Alert.alert(
-          'Existing Trip Found',
-          'You have an active trip. Would you like to resume or cancel it?',
-          [
-            {
-              text: 'Cancel Old Trip',
-              style: 'destructive',
-              onPress: async () => {
-                try {
-                  await axios.post(`${BASE_URL}/api/tracking/${errorData.tripId}/cancel`);
-                  await AsyncStorage.removeItem(ACTIVE_TRIP_KEY);
-                  setIsRecording(false);
-                  setActiveTripId(null);
-                  activeTripIdRef.current = null;
-                  recordedPosRef.current = [];
-                  setRecordedPositions([]);
-                  setTripDistance(0);
-                  setTripDuration(0);
-                  distanceRef.current = 0;
-                  tripStartRef.current = null;
-                  Alert.alert('Cancelled', 'Old trip cancelled. You can start a new recording now.');
-                } catch (cancelErr) {
-                  console.error('Failed to cancel old trip:', cancelErr);
-                  Alert.alert('Error', 'Failed to cancel old trip. Please try again.');
-                }
-              },
-            },
-            {
-              text: 'Resume Trip',
-              onPress: () => {
-                // Resume the existing trip
-                setActiveTripId(errorData.tripId);
-                activeTripIdRef.current = errorData.tripId;
-                setIsRecording(true);
-                tripStartRef.current = Date.now();
-                recordedPosRef.current = [];
-                distanceRef.current = 0;
-                lastSyncedIndexRef.current = 0;
-                setRecordedPositions([]);
-                setTripDistance(0);
-                setTripDuration(0);
-                syncIntervalRef.current = setInterval(syncToServer, SYNC_INTERVAL_MS);
-                AsyncStorage.setItem(ACTIVE_TRIP_KEY, JSON.stringify({
-                  tripId: errorData.tripId,
-                  startTime: Date.now(),
-                  positions: [],
-                })).catch(() => {});
-                Alert.alert('Resumed', 'Continuing with existing trip recording.');
-              },
-            },
-            { text: 'Dismiss', style: 'cancel' },
-          ]
-        );
-      } else {
-        Alert.alert('Error', errorData?.message || error.message || 'Failed to start recording');
-      }
+      Alert.alert('Error', error.response?.data?.message || error.message || 'Failed to start recording');
     }
   };
 
-  // Start recording triggered from booking screen (auto-start without alert)
+  // Start recording triggered from booking screen (auto-start without alert, offline-first)
   const startRecordingFromBooking = async (bookingId, passengerName) => {
     // Check if coding day restriction is active
     if (codingDayRestricted) {
@@ -1572,135 +1908,70 @@ export default function TrackingMap({
         timestamp: Date.now(),
       };
 
-      // Start trip on server with booking info
       const tripName = passengerName 
         ? `Booking Trip - ${passengerName} ${new Date().toLocaleDateString()}`
         : `Booking Trip ${new Date().toLocaleDateString()}`;
-        
-      const response = await axios.post(`${BASE_URL}/api/tracking/start`, {
-        deviceId,
-        name: tripName,
-        initialCoordinate: initialCoord,
-        bookingId, // Include booking reference
-      });
 
-      if (!response.data.success) {
-        throw new Error(response.data.message);
-      }
+      let tripId;
+      let startTime = Date.now();
+      let isOffline = false;
 
-      const { tripId, startTime } = response.data;
-
-      // Initialize recording state
-      setActiveTripId(tripId);
-      activeTripIdRef.current = tripId;
-      setIsRecording(true);
-      isRecordingRef.current = true;
-      tripStartRef.current = new Date(startTime).getTime();
-      recordedPosRef.current = [initialCoord];
-      distanceRef.current = 0;
-      lastSyncedIndexRef.current = 0;
-      lastMergedTimestampRef.current = initialCoord.timestamp; // Track last merged timestamp for deduplication
-      setRecordedPositions([initialCoord]);
-      setTripDistance(0);
-      setTripDuration(0);
-
-      // Reset GPS filter for new trip
-      gpsFilterRef.current.reset();
-      displayFilterRef.current.reset();
-
-      // Save to AsyncStorage for persistence
-      await AsyncStorage.setItem(ACTIVE_TRIP_KEY, JSON.stringify({
-        tripId,
-        startTime: tripStartRef.current,
-        positions: [initialCoord],
-        bookingId,
-      }));
-
-      // Start sync interval
-      syncIntervalRef.current = setInterval(syncToServer, SYNC_INTERVAL_MS);
-
-      // Clear any stale background coordinates
-      await AsyncStorage.setItem(BG_COORDS_KEY, '[]');
-      await AsyncStorage.setItem(BG_DISTANCE_KEY, '0');
-      await AsyncStorage.setItem(BG_SYNCED_INDEX_KEY, '0');
-
-      // Keep screen awake while recording
-      try { await activateKeepAwakeAsync('trip_recording'); } catch (_) {}
-
-      // Proactively start background location task so recording survives screen-off / app-background
+      // Try to start trip on server first
       try {
-        const bgPerm = await Location.requestBackgroundPermissionsAsync();
-        if (bgPerm.status === 'granted') {
-          if (lastPosRef.current) {
-            await AsyncStorage.setItem('bg_last_position_v1', JSON.stringify({
-              latitude: lastPosRef.current.coords?.latitude ?? initialCoord.latitude,
-              longitude: lastPosRef.current.coords?.longitude ?? initialCoord.longitude,
-            }));
-            await AsyncStorage.setItem('bg_last_ts_v1', String(Date.now()));
-          }
-          const isRegistered = await TaskManager.isTaskRegisteredAsync(BG_TASK_NAME);
-          if (!isRegistered) {
-            await Location.startLocationUpdatesAsync(BG_TASK_NAME, {
-              accuracy: Location.Accuracy.BestForNavigation,
-              timeInterval: 2000,
-              distanceInterval: 1,
-              foregroundService: {
-                notificationTitle: 'Trip Recording Active',
-                notificationBody: 'Your trip is being recorded',
-                notificationColor: '#FF0000',
-              },
-              pausesUpdatesAutomatically: false,
-              activityType: Location.ActivityType.AutomotiveNavigation,
-              showsBackgroundLocationIndicator: true,
-            });
-            console.log('Background location task started proactively (booking auto-start)');
-          }
+        const response = await axios.post(`${BASE_URL}/api/tracking/start`, {
+          deviceId,
+          name: tripName,
+          initialCoordinate: initialCoord,
+          bookingId,
+        }, { timeout: 10000 });
+
+        if (response.data.success) {
+          tripId = response.data.tripId;
+          startTime = new Date(response.data.startTime).getTime();
         } else {
-          console.warn('Background location permission not granted — background recording may not work');
+          throw new Error(response.data.message);
         }
-      } catch (bgErr) {
-        console.warn('Error starting background tracking on booking auto-start:', bgErr);
+      } catch (serverError) {
+        const isNetworkError = !serverError.response || 
+          serverError.code === 'ECONNABORTED' ||
+          serverError.message?.includes('Network Error') ||
+          serverError.message?.includes('timeout');
+
+        // Handle existing active trip
+        const errorData = serverError.response?.data;
+        if (errorData?.tripId && serverError.response?.status === 400) {
+          console.log('Resuming existing active trip from booking trigger:', errorData.tripId);
+          await initializeLocalRecording(errorData.tripId, Date.now(), initialCoord, false);
+          console.log('Resumed existing trip:', errorData.tripId);
+          return;
+        }
+
+        if (isNetworkError) {
+          // Offline - generate local trip ID
+          console.log('Network unavailable - starting offline recording from booking');
+          tripId = generateLocalTripId();
+          isOffline = true;
+
+          // Save pending trip start
+          await AsyncStorage.setItem(PENDING_TRIP_START_KEY, JSON.stringify({
+            deviceId,
+            name: tripName,
+            initialCoord,
+            bookingId,
+            localTripId: tripId,
+            startTime,
+          }));
+        } else {
+          throw serverError;
+        }
       }
 
-      console.log('Auto-started recording from booking:', tripId);
+      // Initialize recording (works both online and offline)
+      await initializeLocalRecording(tripId, startTime, initialCoord, isOffline);
+      
+      console.log(`Auto-started recording from booking: ${tripId}${isOffline ? ' (offline)' : ''}`);
     } catch (error) {
       console.error('Error auto-starting recording from booking:', error);
-      
-      // If server says there's already an active trip, RESUME it instead of cancelling
-      const errorData = error.response?.data;
-      if (errorData?.tripId && error.response?.status === 400) {
-        console.log('Resuming existing active trip from booking trigger:', errorData.tripId);
-        try {
-          // Adopt the existing server-side trip as our current recording
-          setActiveTripId(errorData.tripId);
-          activeTripIdRef.current = errorData.tripId;
-          setIsRecording(true);
-          isRecordingRef.current = true;
-          tripStartRef.current = Date.now();
-          recordedPosRef.current = [];
-          distanceRef.current = 0;
-          lastSyncedIndexRef.current = 0;
-          setRecordedPositions([]);
-          setTripDistance(0);
-          setTripDuration(0);
-
-          // Save to AsyncStorage
-          await AsyncStorage.setItem(ACTIVE_TRIP_KEY, JSON.stringify({
-            tripId: errorData.tripId,
-            startTime: tripStartRef.current,
-            positions: [],
-            bookingId,
-          }));
-
-          // Start sync interval for the resumed trip
-          if (syncIntervalRef.current) clearInterval(syncIntervalRef.current);
-          syncIntervalRef.current = setInterval(syncToServer, SYNC_INTERVAL_MS);
-
-          console.log('Resumed existing trip:', errorData.tripId);
-        } catch (resumeErr) {
-          console.error('Failed to resume existing trip:', resumeErr);
-        }
-      }
     }
   };
 
@@ -1734,6 +2005,11 @@ export default function TrackingMap({
         clearInterval(syncIntervalRef.current);
         syncIntervalRef.current = null;
       }
+      // Clear offline sync interval if running
+      if (offlineSyncIntervalRef.current) {
+        clearInterval(offlineSyncIntervalRef.current);
+        offlineSyncIntervalRef.current = null;
+      }
       // Clear periodic background merge interval
       if (bgMergeIntervalRef.current) {
         clearInterval(bgMergeIntervalRef.current);
@@ -1763,25 +2039,37 @@ export default function TrackingMap({
         ]);
         const bgCoords = bgCoordsRaw ? JSON.parse(bgCoordsRaw) : [];
         if (bgCoords.length > 0) {
-          // Filter out coordinates we've already merged (by timestamp)
           const lastTs = lastMergedTimestampRef.current;
           const newCoords = bgCoords.filter(c => c.timestamp > lastTs);
           
           if (newCoords.length > 0) {
-            // Calculate distance only for new coords
             let newDist = 0;
             const existingLast = recordedPosRef.current[recordedPosRef.current.length - 1];
             let prevCoord = existingLast || null;
+            let prevTs = existingLast?.timestamp || 0;
+            const validCoords = [];
             for (const coord of newCoords) {
+              if (coord.accuracy && coord.accuracy > 30) continue;
               if (prevCoord) {
                 const d = haversineMeters(prevCoord, coord);
-                if (d < 500) newDist += d;
+                const dt = (coord.timestamp - prevTs) / 1000;
+                if (d > 120) continue;
+                if (dt <= 0 || dt > 30) continue;
+                if ((d / dt) > 33.33) continue;
+                if (d < 2) continue;
+                newDist += d;
+                applyMotionSegment(d, dt);
               }
+              validCoords.push(coord);
               prevCoord = coord;
+              prevTs = coord.timestamp;
             }
-            console.log(`Merging ${newCoords.length} final background coords before save (${(newDist/1000).toFixed(3)} km)`);
-            recordedPosRef.current = [...recordedPosRef.current, ...newCoords];
-            distanceRef.current += newDist;
+            if (validCoords.length > 0) {
+              console.log(`Merging ${validCoords.length} final background coords before save (${(newDist/1000).toFixed(3)} km)`);
+              recordedPosRef.current = [...recordedPosRef.current, ...validCoords];
+              distanceRef.current += newDist;
+              lastMergedTimestampRef.current = validCoords[validCoords.length - 1].timestamp;
+            }
           }
         }
         await Promise.all([
@@ -1791,19 +2079,89 @@ export default function TrackingMap({
         ]);
       } catch (mergeErr) { console.warn('Error merging bg coords on save:', mergeErr); }
 
-      const tripId = activeTripIdRef.current;
+      let tripId = activeTripIdRef.current;
       if (!tripId) {
         Alert.alert('Error', 'No active trip ID found. Trip may have already been saved or discarded.');
         return;
       }
 
-      // Only send coordinates that haven't been synced yet (avoid sending duplicates)
-      const unsynced = recordedPosRef.current.slice(lastSyncedIndexRef.current);
-      console.log(`Ending trip ${tripId} with ${unsynced.length} unsent coords (total recorded: ${recordedPosRef.current.length}, already synced: ${lastSyncedIndexRef.current})`);
+      const allCoords = recordedPosRef.current;
+      const totalDistanceMeters = distanceRef.current;
+      const durationSeconds = tripStartRef.current ? Math.floor((Date.now() - tripStartRef.current) / 1000) : 0;
+
+      // Handle offline trip - need to create on server first, then end
+      if (isLocalTripId(tripId)) {
+        console.log('Saving offline trip - attempting to sync to server...');
+        
+        try {
+          // Get pending trip start data
+          const pendingRaw = await AsyncStorage.getItem(PENDING_TRIP_START_KEY);
+          if (pendingRaw) {
+            const pending = JSON.parse(pendingRaw);
+            
+            // Try to create trip on server
+            const startResponse = await axios.post(`${BASE_URL}/api/tracking/start`, {
+              deviceId: pending.deviceId,
+              name: pending.name,
+              initialCoordinate: pending.initialCoord,
+              bookingId: pending.bookingId,
+            }, { timeout: 15000 });
+
+            if (startResponse.data.success) {
+              tripId = startResponse.data.tripId;
+              console.log(`Offline trip created on server: ${tripId}`);
+              await AsyncStorage.removeItem(PENDING_TRIP_START_KEY);
+            }
+          }
+        } catch (createErr) {
+          console.log('Could not create trip on server:', createErr.message);
+          
+          // Still offline - save trip data locally for later sync
+          const pendingEndData = {
+            localTripId: tripId,
+            coordinates: allCoords,
+            totalDistance: totalDistanceMeters,
+            duration: durationSeconds,
+            savedAt: Date.now(),
+          };
+          await AsyncStorage.setItem(PENDING_TRIP_END_KEY, JSON.stringify(pendingEndData));
+          
+          // Clear state
+          await AsyncStorage.removeItem(ACTIVE_TRIP_KEY);
+          setIsRecording(false);
+          setIsOfflineMode(false);
+          setActiveTripId(null);
+          activeTripIdRef.current = null;
+          setRecordedPositions([]);
+          setTripDistance(0);
+          setTripDuration(0);
+          setTripMovingTime(0);
+          setTripAvgMovingSpeedKph(0);
+          setTripMaxSpeedKph(0);
+          recordedPosRef.current = [];
+          tripStartRef.current = null;
+          distanceRef.current = 0;
+          lastSyncedIndexRef.current = 0;
+          lastMergedTimestampRef.current = 0;
+          movingTimeSecRef.current = 0;
+          maxTripSpeedKphRef.current = 0;
+
+          Alert.alert(
+            'Trip Saved Locally',
+            `Distance: ${(totalDistanceMeters / 1000).toFixed(2)} km\nDuration: ${formatDuration(durationSeconds)}\n\nYour trip has been saved locally and will sync to the server when you have internet connection.`,
+            [{ text: 'OK' }]
+          );
+          return;
+        }
+      }
+
+      // Now end the trip on server (either regular trip or just-created offline trip)
+      const unsynced = allCoords.slice(lastSyncedIndexRef.current);
+      console.log(`Ending trip ${tripId} with ${unsynced.length} unsent coords`);
 
       const response = await axios.post(`${BASE_URL}/api/tracking/${tripId}/end`, {
         finalCoordinates: unsynced.length > 0 ? unsynced : undefined,
-      });
+      }, { timeout: 15000 });
 
       if (response.data.success) {
         const { trip } = response.data;
@@ -1834,22 +2192,77 @@ export default function TrackingMap({
 
       // Clear state
       await AsyncStorage.removeItem(ACTIVE_TRIP_KEY);
+      await AsyncStorage.removeItem(PENDING_TRIP_START_KEY);
       setIsRecording(false);
+      setIsOfflineMode(false);
       setActiveTripId(null);
       activeTripIdRef.current = null;
       setRecordedPositions([]);
       setTripDistance(0);
       setTripDuration(0);
+      setTripMovingTime(0);
+      setTripAvgMovingSpeedKph(0);
+      setTripMaxSpeedKph(0);
       recordedPosRef.current = [];
       tripStartRef.current = null;
       distanceRef.current = 0;
       lastSyncedIndexRef.current = 0;
       lastMergedTimestampRef.current = 0;
+      movingTimeSecRef.current = 0;
+      maxTripSpeedKphRef.current = 0;
 
     } catch (error) {
       const status = error.response?.status;
       const serverMsg = error.response?.data?.message;
       console.error('Error saving trip:', status, serverMsg, error.message);
+
+      // Check if it's a network error - save locally
+      const isNetworkError = !error.response || 
+        error.code === 'ECONNABORTED' ||
+        error.message?.includes('Network Error') ||
+        error.message?.includes('timeout');
+
+      if (isNetworkError) {
+        // Save trip data locally for later sync
+        const totalDistanceMeters = distanceRef.current;
+        const durationSeconds = tripStartRef.current ? Math.floor((Date.now() - tripStartRef.current) / 1000) : 0;
+        
+        const pendingEndData = {
+          tripId: activeTripIdRef.current,
+          coordinates: recordedPosRef.current,
+          totalDistance: totalDistanceMeters,
+          duration: durationSeconds,
+          savedAt: Date.now(),
+        };
+        await AsyncStorage.setItem(PENDING_TRIP_END_KEY, JSON.stringify(pendingEndData));
+        
+        // Clear state
+        await AsyncStorage.removeItem(ACTIVE_TRIP_KEY);
+        setIsRecording(false);
+        setIsOfflineMode(false);
+        setActiveTripId(null);
+        activeTripIdRef.current = null;
+        setRecordedPositions([]);
+        setTripDistance(0);
+        setTripDuration(0);
+        setTripMovingTime(0);
+        setTripAvgMovingSpeedKph(0);
+        setTripMaxSpeedKph(0);
+        recordedPosRef.current = [];
+        tripStartRef.current = null;
+        distanceRef.current = 0;
+        lastSyncedIndexRef.current = 0;
+        lastMergedTimestampRef.current = 0;
+        movingTimeSecRef.current = 0;
+        maxTripSpeedKphRef.current = 0;
+
+        Alert.alert(
+          'Trip Saved Locally',
+          `Distance: ${(totalDistanceMeters / 1000).toFixed(2)} km\nDuration: ${formatDuration(durationSeconds)}\n\nNo internet connection. Your trip has been saved locally and will sync when you reconnect.`,
+          [{ text: 'OK' }]
+        );
+        return;
+      }
 
       if (status === 404) {
         Alert.alert(
@@ -1866,10 +2279,15 @@ export default function TrackingMap({
               setRecordedPositions([]);
               setTripDistance(0);
               setTripDuration(0);
+              setTripMovingTime(0);
+              setTripAvgMovingSpeedKph(0);
+              setTripMaxSpeedKph(0);
               recordedPosRef.current = [];
               tripStartRef.current = null;
               distanceRef.current = 0;
               lastSyncedIndexRef.current = 0;
+              movingTimeSecRef.current = 0;
+              maxTripSpeedKphRef.current = 0;
             },
           }]
         );
@@ -1890,10 +2308,15 @@ export default function TrackingMap({
               setRecordedPositions([]);
               setTripDistance(0);
               setTripDuration(0);
+              setTripMovingTime(0);
+              setTripAvgMovingSpeedKph(0);
+              setTripMaxSpeedKph(0);
               recordedPosRef.current = [];
               tripStartRef.current = null;
               distanceRef.current = 0;
               lastSyncedIndexRef.current = 0;
+              movingTimeSecRef.current = 0;
+              maxTripSpeedKphRef.current = 0;
             },
           }]
         );
@@ -1908,6 +2331,11 @@ export default function TrackingMap({
       if (syncIntervalRef.current) {
         clearInterval(syncIntervalRef.current);
         syncIntervalRef.current = null;
+      }
+      // Clear offline sync interval if running
+      if (offlineSyncIntervalRef.current) {
+        clearInterval(offlineSyncIntervalRef.current);
+        offlineSyncIntervalRef.current = null;
       }
       // Clear periodic background merge interval
       if (bgMergeIntervalRef.current) {
@@ -1936,24 +2364,38 @@ export default function TrackingMap({
         AsyncStorage.setItem(BG_SYNCED_INDEX_KEY, '0'),
       ]).catch(() => {});
 
-      // Cancel on server
-      if (activeTripIdRef.current) {
-        await axios.post(`${BASE_URL}/api/tracking/${activeTripIdRef.current}/cancel`);
+      // Cancel on server (only if not a local/offline trip)
+      if (activeTripIdRef.current && !isLocalTripId(activeTripIdRef.current)) {
+        try {
+          await axios.post(`${BASE_URL}/api/tracking/${activeTripIdRef.current}/cancel`, {}, { timeout: 10000 });
+        } catch (cancelErr) {
+          console.log('Could not cancel on server (may be offline):', cancelErr.message);
+        }
       }
 
-      // Clear state
-      await AsyncStorage.removeItem(ACTIVE_TRIP_KEY);
+      // Clear state and offline pending data
+      await Promise.all([
+        AsyncStorage.removeItem(ACTIVE_TRIP_KEY),
+        AsyncStorage.removeItem(PENDING_TRIP_START_KEY),
+        AsyncStorage.removeItem(PENDING_TRIP_END_KEY),
+      ]);
       setIsRecording(false);
+      setIsOfflineMode(false);
       setActiveTripId(null);
       activeTripIdRef.current = null;
       setRecordedPositions([]);
       setTripDistance(0);
       setTripDuration(0);
+      setTripMovingTime(0);
+      setTripAvgMovingSpeedKph(0);
+      setTripMaxSpeedKph(0);
       recordedPosRef.current = [];
       tripStartRef.current = null;
       distanceRef.current = 0;
       lastSyncedIndexRef.current = 0;
       lastMergedTimestampRef.current = 0;
+      movingTimeSecRef.current = 0;
+      maxTripSpeedKphRef.current = 0;
 
       Alert.alert('Discarded', 'Trip recording has been discarded');
     } catch (error) {
@@ -2709,15 +3151,18 @@ ${trackPoints}
             </View>
             <View style={styles.recordingStatDivider} />
             <View style={styles.recordingStat}>
-              <Text style={styles.recordingStatValue}>{formatDuration(tripDuration)}</Text>
-              <Text style={styles.recordingStatLabel}>duration</Text>
+              <Text style={styles.recordingStatValue}>{formatDuration(tripMovingTime)}</Text>
+              <Text style={styles.recordingStatLabel}>moving</Text>
             </View>
             <View style={styles.recordingStatDivider} />
             <View style={styles.recordingStat}>
-              <Text style={styles.recordingStatValue}>{recordedPositions.length}</Text>
-              <Text style={styles.recordingStatLabel}>points</Text>
+              <Text style={styles.recordingStatValue}>{tripAvgMovingSpeedKph.toFixed(1)}</Text>
+              <Text style={styles.recordingStatLabel}>avg km/h</Text>
             </View>
           </View>
+          <Text style={styles.recordingMetaText}>
+            Elapsed {formatDuration(tripDuration)} · Max {tripMaxSpeedKph.toFixed(1)} km/h · {recordedPositions.length} pts
+          </Text>
         </View>
       )}
 
@@ -3729,6 +4174,12 @@ const styles = StyleSheet.create({
     color: colors.orangeShade7,
   },
   recordingStatLabel: {
+    fontSize: 11,
+    color: colors.orangeShade5,
+  },
+  recordingMetaText: {
+    marginTop: 8,
+    textAlign: 'center',
     fontSize: 11,
     color: colors.orangeShade5,
   },
