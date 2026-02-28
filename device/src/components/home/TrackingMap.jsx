@@ -198,6 +198,8 @@ export default function TrackingMap({
   const activeTripIdRef = useRef(null);
   const lastSyncedIndexRef = useRef(0); // Track which coords have been synced to server
   const isRecordingRef = useRef(false); // Ref mirror of isRecording to avoid stale closures
+  const bgMergeIntervalRef = useRef(null); // Interval to periodically check and merge background coordinates
+  const lastMergedTimestampRef = useRef(0); // Track last merged coordinate timestamp to avoid duplicates
 
   // Throttle refs to prevent excessive re-renders and AsyncStorage writes
   const lastRecordedStateUpdateRef = useRef(0); // last time we pushed recordedPositions to state
@@ -449,20 +451,11 @@ export default function TrackingMap({
         }
       } else if (nextAppState === 'active') {
         // App returning to foreground — merge any coordinates collected in background
+        // NOTE: We do NOT stop the background task here. Keeping it running ensures
+        // continuous tracking even when screen turns off (which may not trigger AppState change on some devices)
         if (isRecordingRef.current && activeTripIdRef.current) {
           console.log('App returning to foreground — merging background coordinates');
           try {
-            // Stop the background task now that we're in foreground again
-            try {
-              const isRegistered = await TaskManager.isTaskRegisteredAsync(BG_TASK_NAME);
-              if (isRegistered) {
-                await Location.stopLocationUpdatesAsync(BG_TASK_NAME);
-                console.log('Stopped background location task on foreground return');
-              }
-            } catch (stopErr) {
-              console.warn('Error stopping bg task on foreground return:', stopErr);
-            }
-
             const [bgCoordsRaw, bgDistRaw] = await Promise.all([
               AsyncStorage.getItem(BG_COORDS_KEY),
               AsyncStorage.getItem(BG_DISTANCE_KEY),
@@ -471,30 +464,51 @@ export default function TrackingMap({
             const bgDist = bgDistRaw ? Number(bgDistRaw) || 0 : 0;
 
             if (bgCoords.length > 0) {
-              console.log(`Merging ${bgCoords.length} background coordinates (${(bgDist/1000).toFixed(2)} km)`);
-              // Append background coords to recorded positions
-              recordedPosRef.current = [...recordedPosRef.current, ...bgCoords];
-              distanceRef.current += bgDist;
-              setRecordedPositions([...recordedPosRef.current]);
-              setTripDistance(distanceRef.current);
+              // Filter out coordinates we've already merged (by timestamp)
+              const lastTs = lastMergedTimestampRef.current;
+              const newCoords = bgCoords.filter(c => c.timestamp > lastTs);
+              
+              if (newCoords.length > 0) {
+                // Calculate distance only for new coords
+                let newDist = 0;
+                const existingLast = recordedPosRef.current[recordedPosRef.current.length - 1];
+                let prevCoord = existingLast || null;
+                for (const coord of newCoords) {
+                  if (prevCoord) {
+                    newDist += haversineMeters(prevCoord, coord);
+                  }
+                  prevCoord = coord;
+                }
 
-              // Update odometer with background distance
-              setOdometerKm((prev) => {
-                const nextKm = prev + bgDist / 1000;
-                AsyncStorage.setItem(KM_KEY, String(nextKm)).catch(() => {});
-                return nextKm;
-              });
+                console.log(`Merging ${newCoords.length} new background coordinates (${(newDist/1000).toFixed(2)} km)`);
+                
+                // Append new background coords to recorded positions
+                recordedPosRef.current = [...recordedPosRef.current, ...newCoords];
+                distanceRef.current += newDist;
+                setRecordedPositions([...recordedPosRef.current]);
+                setTripDistance(distanceRef.current);
 
-              // Also add bg coords to the display polyline
-              setPositions((prev) => {
-                const bgPoints = bgCoords.map(c => ({ latitude: c.latitude, longitude: c.longitude }));
-                const merged = [...prev, ...bgPoints];
-                return merged.length > 5000 ? merged.slice(-5000) : merged;
-              });
+                // Update last merged timestamp
+                lastMergedTimestampRef.current = newCoords[newCoords.length - 1].timestamp;
 
-              updateLocalStorage(true);
+                // Update odometer with new distance
+                setOdometerKm((prev) => {
+                  const nextKm = prev + newDist / 1000;
+                  AsyncStorage.setItem(KM_KEY, String(nextKm)).catch(() => {});
+                  return nextKm;
+                });
 
-              // Clear background accumulators and synced index
+                // Also add new coords to the display polyline
+                setPositions((prev) => {
+                  const bgPoints = newCoords.map(c => ({ latitude: c.latitude, longitude: c.longitude }));
+                  const merged = [...prev, ...bgPoints];
+                  return merged.length > 5000 ? merged.slice(-5000) : merged;
+                });
+
+                updateLocalStorage(true);
+              }
+
+              // Clear background accumulators and synced index after merge
               await Promise.all([
                 AsyncStorage.setItem(BG_COORDS_KEY, '[]'),
                 AsyncStorage.setItem(BG_DISTANCE_KEY, '0'),
@@ -512,6 +526,95 @@ export default function TrackingMap({
       appStateSubscription.remove();
     };
   }, []);
+
+  // Periodic background coordinate merge - checks every 5 seconds while recording
+  // This catches screen-off scenarios where AppState may not change on some devices
+  useEffect(() => {
+    if (isRecording && activeTripId) {
+      console.log('Starting periodic background coordinate merge check');
+      
+      const mergeBackgroundCoords = async () => {
+        if (!isRecordingRef.current || !activeTripIdRef.current) return;
+        
+        try {
+          const bgCoordsRaw = await AsyncStorage.getItem(BG_COORDS_KEY);
+          const bgCoords = bgCoordsRaw ? JSON.parse(bgCoordsRaw) : [];
+          
+          if (bgCoords.length > 0) {
+            // Filter out coordinates we've already merged (by timestamp)
+            const lastTs = lastMergedTimestampRef.current;
+            const newCoords = bgCoords.filter(c => c.timestamp > lastTs);
+            
+            if (newCoords.length > 0) {
+              // Calculate distance only for new coords
+              let newDist = 0;
+              const existingLast = recordedPosRef.current[recordedPosRef.current.length - 1];
+              let prevCoord = existingLast || null;
+              for (const coord of newCoords) {
+                if (prevCoord) {
+                  const d = haversineMeters(prevCoord, coord);
+                  // Skip unrealistic jumps
+                  if (d < 500) newDist += d;
+                }
+                prevCoord = coord;
+              }
+
+              console.log(`[Periodic merge] Merging ${newCoords.length} background coords (${(newDist/1000).toFixed(3)} km)`);
+              
+              // Append new coords
+              recordedPosRef.current = [...recordedPosRef.current, ...newCoords];
+              distanceRef.current += newDist;
+
+              // Update last merged timestamp
+              lastMergedTimestampRef.current = newCoords[newCoords.length - 1].timestamp;
+
+              // Throttled UI updates to prevent excessive re-renders
+              const now = Date.now();
+              if (now - lastRecordedStateUpdateRef.current > RECORDED_STATE_THROTTLE_MS) {
+                setRecordedPositions([...recordedPosRef.current]);
+                setTripDistance(distanceRef.current);
+                lastRecordedStateUpdateRef.current = now;
+              }
+
+              // Update odometer
+              setOdometerKm((prev) => {
+                const nextKm = prev + newDist / 1000;
+                AsyncStorage.setItem(KM_KEY, String(nextKm)).catch(() => {});
+                return nextKm;
+              });
+
+              // Update display polyline
+              setPositions((prev) => {
+                const bgPoints = newCoords.map(c => ({ latitude: c.latitude, longitude: c.longitude }));
+                const merged = [...prev, ...bgPoints];
+                return merged.length > 5000 ? merged.slice(-5000) : merged;
+              });
+
+              // Clear the merged coordinates from background storage
+              await Promise.all([
+                AsyncStorage.setItem(BG_COORDS_KEY, '[]'),
+                AsyncStorage.setItem(BG_DISTANCE_KEY, '0'),
+                AsyncStorage.setItem(BG_SYNCED_INDEX_KEY, '0'),
+              ]);
+            }
+          }
+        } catch (e) {
+          console.warn('[Periodic merge] Error:', e);
+        }
+      };
+
+      // Check immediately and then every 5 seconds
+      mergeBackgroundCoords();
+      bgMergeIntervalRef.current = setInterval(mergeBackgroundCoords, 5000);
+      
+      return () => {
+        if (bgMergeIntervalRef.current) {
+          clearInterval(bgMergeIntervalRef.current);
+          bgMergeIntervalRef.current = null;
+        }
+      };
+    }
+  }, [isRecording, activeTripId]);
 
   // Initialize device ID and check for active trip
   useEffect(() => {
@@ -605,6 +708,13 @@ export default function TrackingMap({
         // When resuming a trip, we don't know exactly what was synced before, 
         // so start fresh — coords may get re-synced but that's safer than missing data
         lastSyncedIndexRef.current = 0;
+        // Set last merged timestamp to the last saved position's timestamp for deduplication
+        if (savedPositions && savedPositions.length > 0) {
+          const lastSaved = savedPositions[savedPositions.length - 1];
+          lastMergedTimestampRef.current = lastSaved.timestamp || 0;
+        } else {
+          lastMergedTimestampRef.current = 0;
+        }
 
         // Start sync interval
         syncIntervalRef.current = setInterval(syncToServer, SYNC_INTERVAL_MS);
@@ -1241,6 +1351,7 @@ export default function TrackingMap({
       recordedPosRef.current = [initialCoord];
       distanceRef.current = 0;
       lastSyncedIndexRef.current = 0;
+      lastMergedTimestampRef.current = initialCoord.timestamp; // Track last merged timestamp for deduplication
       setRecordedPositions([initialCoord]);
       setTripDistance(0);
       setTripDuration(0);
@@ -1431,6 +1542,7 @@ export default function TrackingMap({
       recordedPosRef.current = [initialCoord];
       distanceRef.current = 0;
       lastSyncedIndexRef.current = 0;
+      lastMergedTimestampRef.current = initialCoord.timestamp; // Track last merged timestamp for deduplication
       setRecordedPositions([initialCoord]);
       setTripDistance(0);
       setTripDuration(0);
@@ -1561,6 +1673,11 @@ export default function TrackingMap({
         clearInterval(syncIntervalRef.current);
         syncIntervalRef.current = null;
       }
+      // Clear periodic background merge interval
+      if (bgMergeIntervalRef.current) {
+        clearInterval(bgMergeIntervalRef.current);
+        bgMergeIntervalRef.current = null;
+      }
       // Clear any pending throttled storage write
       if (pendingStorageWriteRef.current) {
         clearTimeout(pendingStorageWriteRef.current);
@@ -1584,11 +1701,27 @@ export default function TrackingMap({
           AsyncStorage.getItem(BG_DISTANCE_KEY),
         ]);
         const bgCoords = bgCoordsRaw ? JSON.parse(bgCoordsRaw) : [];
-        const bgDist = bgDistRaw ? Number(bgDistRaw) || 0 : 0;
         if (bgCoords.length > 0) {
-          console.log(`Merging ${bgCoords.length} final background coords before save`);
-          recordedPosRef.current = [...recordedPosRef.current, ...bgCoords];
-          distanceRef.current += bgDist;
+          // Filter out coordinates we've already merged (by timestamp)
+          const lastTs = lastMergedTimestampRef.current;
+          const newCoords = bgCoords.filter(c => c.timestamp > lastTs);
+          
+          if (newCoords.length > 0) {
+            // Calculate distance only for new coords
+            let newDist = 0;
+            const existingLast = recordedPosRef.current[recordedPosRef.current.length - 1];
+            let prevCoord = existingLast || null;
+            for (const coord of newCoords) {
+              if (prevCoord) {
+                const d = haversineMeters(prevCoord, coord);
+                if (d < 500) newDist += d;
+              }
+              prevCoord = coord;
+            }
+            console.log(`Merging ${newCoords.length} final background coords before save (${(newDist/1000).toFixed(3)} km)`);
+            recordedPosRef.current = [...recordedPosRef.current, ...newCoords];
+            distanceRef.current += newDist;
+          }
         }
         await Promise.all([
           AsyncStorage.setItem(BG_COORDS_KEY, '[]'),
@@ -1650,6 +1783,7 @@ export default function TrackingMap({
       tripStartRef.current = null;
       distanceRef.current = 0;
       lastSyncedIndexRef.current = 0;
+      lastMergedTimestampRef.current = 0;
 
     } catch (error) {
       const status = error.response?.status;
@@ -1714,6 +1848,11 @@ export default function TrackingMap({
         clearInterval(syncIntervalRef.current);
         syncIntervalRef.current = null;
       }
+      // Clear periodic background merge interval
+      if (bgMergeIntervalRef.current) {
+        clearInterval(bgMergeIntervalRef.current);
+        bgMergeIntervalRef.current = null;
+      }
       // Clear any pending throttled storage write
       if (pendingStorageWriteRef.current) {
         clearTimeout(pendingStorageWriteRef.current);
@@ -1753,6 +1892,7 @@ export default function TrackingMap({
       tripStartRef.current = null;
       distanceRef.current = 0;
       lastSyncedIndexRef.current = 0;
+      lastMergedTimestampRef.current = 0;
 
       Alert.alert('Discarded', 'Trip recording has been discarded');
     } catch (error) {
