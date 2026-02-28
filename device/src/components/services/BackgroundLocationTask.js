@@ -60,6 +60,13 @@ TaskManager.defineTask(BG_TASK_NAME, async ({ data, error }) => {
     let bgDistance = bgDistRaw ? Number(bgDistRaw) || 0 : 0;
     let bgSyncedIndex = bgSyncedIdxRaw ? Number(bgSyncedIdxRaw) || 0 : 0;
     let tripCoordsChanged = false;
+    
+    // GPS Filter constants for background task (slightly more lenient than foreground)
+    const MAX_ACCURACY_METERS = 25;       // Allow slightly worse accuracy in background (was 30 before fix)
+    const MAX_SPEED_MPS = 33.33;          // Max ~120 km/h
+    const MIN_DISTANCE_METERS = 2;        // Minimum movement to record
+    const MAX_DISTANCE_METERS = 200;      // Maximum distance per reading
+    const MIN_TIME_INTERVAL_MS = 1500;    // Minimum time between recordings
 
     for (const loc of locations) {
       // support multiple shapes: loc.coords or loc (some platforms)
@@ -68,47 +75,67 @@ TaskManager.defineTask(BG_TASK_NAME, async ({ data, error }) => {
 
       const cur = { latitude: coords.latitude, longitude: coords.longitude };
       const curTs = loc.timestamp ? Number(loc.timestamp) : Date.now();
+      const accuracy = coords.accuracy || 0;
+
+      // Filter 1: Reject poor accuracy readings
+      if (accuracy > MAX_ACCURACY_METERS) {
+        continue;
+      }
 
       if (lastPos) {
         const meters = haversineMeters(lastPos, cur);
+        const dt = curTs && lastTs ? (curTs - lastTs) / 1000 : 0;
 
-        // filter unrealistic jumps (GPS glitch)
-        if (meters > 2000) {
-          // large jump — skip but still update lastPos to current to avoid repeated huge jumps
+        // Filter 2: Reject teleportation (GPS glitch)
+        if (meters > MAX_DISTANCE_METERS) {
+          // Large jump — update lastPos but don't add distance
           lastPos = cur;
           lastTs = curTs;
           continue;
         }
 
-        // optional dt check
-        const dt = curTs && lastTs ? (curTs - lastTs) / 1000 : null;
-        if (meters > 0.25 && (!dt || dt >= 0)) {
-          odometer = Math.round(odometer + meters / 1000);
-          odometerChanged = true;
+        // Filter 3: Skip if too soon (prevent rapid-fire readings)
+        if (dt > 0 && (curTs - lastTs) < MIN_TIME_INTERVAL_MS) {
+          continue;
         }
 
+        // Filter 4: Reject impossible speed
+        if (dt > 0) {
+          const speedMps = meters / dt;
+          if (speedMps > MAX_SPEED_MPS) {
+            // Impossible speed — skip this point
+            continue;
+          }
+        }
+
+        // Filter 5: Minimum distance check (prevents micro-jitter)
+        if (meters < MIN_DISTANCE_METERS) {
+          continue;
+        }
+
+        // All filters passed — update odometer
+        odometer += meters / 1000;
+        odometerChanged = true;
+
         // Accumulate trip coordinates in background when there's an active trip
-        if (hasActiveTrip && meters >= 1 && meters <= 500) {
-          const accuracy = coords.accuracy || 0;
-          if (accuracy <= 30) { // skip inaccurate readings
-            bgCoords.push({
-              latitude: coords.latitude,
-              longitude: coords.longitude,
-              altitude: coords.altitude || 0,
-              accuracy: accuracy,
-              speed: coords.speed || 0,
-              heading: coords.heading || 0,
-              timestamp: curTs,
-            });
-            bgDistance += meters;
-            tripCoordsChanged = true;
-            // Cap stored coords to prevent memory issues (keep last 2000 ≈ ~67 min at 2s intervals)
-            if (bgCoords.length > 2000) {
-              const dropped = bgCoords.length - 2000;
-              bgCoords = bgCoords.slice(-2000);
-              // Adjust synced index since we dropped old entries
-              bgSyncedIndex = Math.max(0, bgSyncedIndex - dropped);
-            }
+        if (hasActiveTrip) {
+          bgCoords.push({
+            latitude: coords.latitude,
+            longitude: coords.longitude,
+            altitude: coords.altitude || 0,
+            accuracy: accuracy,
+            speed: coords.speed || 0,
+            heading: coords.heading || 0,
+            timestamp: curTs,
+          });
+          bgDistance += meters;
+          tripCoordsChanged = true;
+          // Cap stored coords to prevent memory issues (keep last 2000 ≈ ~67 min at 2s intervals)
+          if (bgCoords.length > 2000) {
+            const dropped = bgCoords.length - 2000;
+            bgCoords = bgCoords.slice(-2000);
+            // Adjust synced index since we dropped old entries
+            bgSyncedIndex = Math.max(0, bgSyncedIndex - dropped);
           }
         }
       }

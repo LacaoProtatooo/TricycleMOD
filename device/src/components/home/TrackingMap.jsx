@@ -10,6 +10,7 @@ import { Ionicons } from '@expo/vector-icons';
 import axios from 'axios';
 import { colors, spacing } from '../../components/common/theme';
 import { API_URL } from '../../utils/config';
+import GPSFilter, { GPS_FILTER_CONFIG, haversineMeters as gpsHaversine, bearingBetween } from '../../utils/gpsFilter';
 
 // ensure background task is registered at runtime
 import '../../components/services/BackgroundLocationTask';
@@ -200,6 +201,16 @@ export default function TrackingMap({
   const isRecordingRef = useRef(false); // Ref mirror of isRecording to avoid stale closures
   const bgMergeIntervalRef = useRef(null); // Interval to periodically check and merge background coordinates
   const lastMergedTimestampRef = useRef(0); // Track last merged coordinate timestamp to avoid duplicates
+
+  // GPS Filter instance for intelligent jitter/bounce filtering during trip recording
+  const gpsFilterRef = useRef(new GPSFilter());
+  // Separate filter for display positions (less strict)
+  const displayFilterRef = useRef(new GPSFilter({
+    ...GPS_FILTER_CONFIG,
+    MAX_ACCURACY_METERS: 50, // More lenient for display
+    MIN_DISTANCE_METERS: 1,
+    MAX_DISTANCE_METERS: 500,
+  }));
 
   // Throttle refs to prevent excessive re-renders and AsyncStorage writes
   const lastRecordedStateUpdateRef = useRef(0); // last time we pushed recordedPositions to state
@@ -469,43 +480,60 @@ export default function TrackingMap({
               const newCoords = bgCoords.filter(c => c.timestamp > lastTs);
               
               if (newCoords.length > 0) {
-                // Calculate distance only for new coords
+                // Calculate distance only for new coords with additional validation
                 let newDist = 0;
                 const existingLast = recordedPosRef.current[recordedPosRef.current.length - 1];
                 let prevCoord = existingLast || null;
+                let prevTs = existingLast?.timestamp || 0;
+                const validCoords = [];
+                
                 for (const coord of newCoords) {
+                // Apply validation filters during merge (safety net, lenient for background coords)
+                if (coord.accuracy && coord.accuracy > 30) continue; // Skip very inaccurate (background can be ~25m)
                   if (prevCoord) {
-                    newDist += haversineMeters(prevCoord, coord);
+                    const d = haversineMeters(prevCoord, coord);
+                    const dt = (coord.timestamp - prevTs) / 1000;
+                    
+                    // Skip impossible movements
+                    if (d > 200) continue; // Teleportation
+                    if (dt > 0 && (d / dt) > 33.33) continue; // Impossible speed (>120 km/h)
+                    if (d < 2) continue; // Micro-jitter
+                    
+                    newDist += d;
                   }
+                  validCoords.push(coord);
                   prevCoord = coord;
+                  prevTs = coord.timestamp;
                 }
 
-                console.log(`Merging ${newCoords.length} new background coordinates (${(newDist/1000).toFixed(2)} km)`);
-                
-                // Append new background coords to recorded positions
-                recordedPosRef.current = [...recordedPosRef.current, ...newCoords];
-                distanceRef.current += newDist;
-                setRecordedPositions([...recordedPosRef.current]);
-                setTripDistance(distanceRef.current);
+                if (validCoords.length > 0) {
+                  console.log(`Merging ${validCoords.length} new background coordinates (${(newDist/1000).toFixed(2)} km)`);
+                  
+                  // Append new background coords to recorded positions
+                  recordedPosRef.current = [...recordedPosRef.current, ...validCoords];
+                  distanceRef.current += newDist;
+                  setRecordedPositions([...recordedPosRef.current]);
+                  setTripDistance(distanceRef.current);
 
-                // Update last merged timestamp
-                lastMergedTimestampRef.current = newCoords[newCoords.length - 1].timestamp;
+                  // Update last merged timestamp
+                  lastMergedTimestampRef.current = validCoords[validCoords.length - 1].timestamp;
 
-                // Update odometer with new distance
-                setOdometerKm((prev) => {
-                  const nextKm = prev + newDist / 1000;
-                  AsyncStorage.setItem(KM_KEY, String(nextKm)).catch(() => {});
-                  return nextKm;
-                });
+                  // Update odometer with new distance
+                  setOdometerKm((prev) => {
+                    const nextKm = prev + newDist / 1000;
+                    AsyncStorage.setItem(KM_KEY, String(nextKm)).catch(() => {});
+                    return nextKm;
+                  });
 
-                // Also add new coords to the display polyline
-                setPositions((prev) => {
-                  const bgPoints = newCoords.map(c => ({ latitude: c.latitude, longitude: c.longitude }));
-                  const merged = [...prev, ...bgPoints];
-                  return merged.length > 5000 ? merged.slice(-5000) : merged;
-                });
+                  // Also add new coords to the display polyline
+                  setPositions((prev) => {
+                    const bgPoints = validCoords.map(c => ({ latitude: c.latitude, longitude: c.longitude }));
+                    const merged = [...prev, ...bgPoints];
+                    return merged.length > 5000 ? merged.slice(-5000) : merged;
+                  });
 
-                updateLocalStorage(true);
+                  updateLocalStorage(true);
+                }
               }
 
               // Clear background accumulators and synced index after merge
@@ -546,49 +574,65 @@ export default function TrackingMap({
             const newCoords = bgCoords.filter(c => c.timestamp > lastTs);
             
             if (newCoords.length > 0) {
-              // Calculate distance only for new coords
+              // Calculate distance only for new coords with validation
               let newDist = 0;
               const existingLast = recordedPosRef.current[recordedPosRef.current.length - 1];
               let prevCoord = existingLast || null;
+              let prevTs = existingLast?.timestamp || 0;
+              const validCoords = [];
+              
               for (const coord of newCoords) {
+                // Apply validation filters during merge (safety net, lenient for background coords)
+                if (coord.accuracy && coord.accuracy > 30) continue; // Skip very inaccurate (background can be ~25m)
+                
                 if (prevCoord) {
                   const d = haversineMeters(prevCoord, coord);
-                  // Skip unrealistic jumps
-                  if (d < 500) newDist += d;
+                  const dt = (coord.timestamp - prevTs) / 1000;
+                  
+                  // Skip impossible movements
+                  if (d > 200) continue; // Teleportation
+                  if (dt > 0 && (d / dt) > 33.33) continue; // Impossible speed (>120 km/h)
+                  if (d < 2) continue; // Micro-jitter
+                  
+                  newDist += d;
                 }
+                validCoords.push(coord);
                 prevCoord = coord;
+                prevTs = coord.timestamp;
               }
 
-              console.log(`[Periodic merge] Merging ${newCoords.length} background coords (${(newDist/1000).toFixed(3)} km)`);
-              
-              // Append new coords
-              recordedPosRef.current = [...recordedPosRef.current, ...newCoords];
-              distanceRef.current += newDist;
+              if (validCoords.length > 0) {
+                console.log(`[Periodic merge] Merging ${validCoords.length} background coords (${(newDist/1000).toFixed(3)} km)`);
+                
+                // Append new coords
+                recordedPosRef.current = [...recordedPosRef.current, ...validCoords];
+                distanceRef.current += newDist;
 
-              // Update last merged timestamp
-              lastMergedTimestampRef.current = newCoords[newCoords.length - 1].timestamp;
+                // Update last merged timestamp
+                lastMergedTimestampRef.current = validCoords[validCoords.length - 1].timestamp;
 
-              // Throttled UI updates to prevent excessive re-renders
-              const now = Date.now();
-              if (now - lastRecordedStateUpdateRef.current > RECORDED_STATE_THROTTLE_MS) {
-                setRecordedPositions([...recordedPosRef.current]);
-                setTripDistance(distanceRef.current);
-                lastRecordedStateUpdateRef.current = now;
+                // Throttled UI updates to prevent excessive re-renders
+                const now = Date.now();
+                if (now - lastRecordedStateUpdateRef.current > RECORDED_STATE_THROTTLE_MS) {
+                  setRecordedPositions([...recordedPosRef.current]);
+                  setTripDistance(distanceRef.current);
+                  lastRecordedStateUpdateRef.current = now;
+                }
+
+                // Update odometer
+                setOdometerKm((prev) => {
+                  const nextKm = prev + newDist / 1000;
+                  AsyncStorage.setItem(KM_KEY, String(nextKm)).catch(() => {});
+                  return nextKm;
+                });
+
+                // Update display polyline
+                setPositions((prev) => {
+                  const bgPoints = validCoords.map(c => ({ latitude: c.latitude, longitude: c.longitude }));
+                  const merged = [...prev, ...bgPoints];
+                  return merged.length > 5000 ? merged.slice(-5000) : merged;
+                });
               }
-
-              // Update odometer
-              setOdometerKm((prev) => {
-                const nextKm = prev + newDist / 1000;
-                AsyncStorage.setItem(KM_KEY, String(nextKm)).catch(() => {});
-                return nextKm;
-              });
-
-              // Update display polyline
-              setPositions((prev) => {
-                const bgPoints = newCoords.map(c => ({ latitude: c.latitude, longitude: c.longitude }));
-                const merged = [...prev, ...bgPoints];
-                return merged.length > 5000 ? merged.slice(-5000) : merged;
-              });
 
               // Clear the merged coordinates from background storage
               await Promise.all([
@@ -778,24 +822,27 @@ export default function TrackingMap({
         (loc) => {
           const { latitude, longitude, speed, altitude: alt, accuracy: acc, heading: hdg } = loc.coords;
           const newPoint = { latitude, longitude };
+          const timestamp = loc.timestamp || Date.now();
 
           // When DEV simulation is active, skip real GPS positions to prevent
           // spaghetti polyline between stationary real position and sim path
           if (!simActiveRef.current) {
-            setPositions((p) => {
-              // Filter out inaccurate GPS readings to prevent ghost lines
-              if (acc && acc > 50) return p;
-              if (p.length > 0) {
-                const lastDisplayed = p[p.length - 1];
-                const jumpDist = haversineMeters(lastDisplayed, newPoint);
-                // Skip teleportation jumps (GPS glitch drawing lines far away)
-                if (jumpDist > 500) return p;
-              }
-              // Cap stored positions at 2000 to prevent memory bloat
-              const next = [...p, newPoint];
-              if (next.length > 2000) return next.slice(-2000);
-              return next;
+            // Use display filter for polyline (less strict than trip recording)
+            const displayResult = displayFilterRef.current.filter({
+              latitude,
+              longitude,
+              accuracy: acc,
+              timestamp,
             });
+            
+            if (displayResult.accepted) {
+              setPositions((p) => {
+                // Cap stored positions at 2000 to prevent memory bloat
+                const next = [...p, newPoint];
+                if (next.length > 2000) return next.slice(-2000);
+                return next;
+              });
+            }
           }
 
           // Update additional GPS stats
@@ -807,7 +854,7 @@ export default function TrackingMap({
 
           const last = lastPosRef.current;
           if ((!kph || kph === 0) && last) {
-            const dt = (loc.timestamp - last.timestamp) / 1000;
+            const dt = (timestamp - last.timestamp) / 1000;
             if (dt > 0) {
               const meters = haversineMeters(
                 { latitude: last.coords.latitude, longitude: last.coords.longitude },
@@ -824,8 +871,13 @@ export default function TrackingMap({
                 { latitude: last.coords.latitude, longitude: last.coords.longitude },
                 { latitude, longitude }
               );
-              // Use meters > 0.5 to filter micro-jitter; keep decimal precision (no Math.round)
-              if (meters > 0.5 && meters < 500) {
+              const dt = (timestamp - last.timestamp) / 1000;
+              // Enhanced odometer filter: check accuracy, distance bounds, and speed
+              const isAccurate = !acc || acc <= 20;
+              const isReasonableDistance = meters > 0.5 && meters < 200;
+              const isReasonableSpeed = dt > 0 ? (meters / dt) * 3.6 < 120 : true; // Max 120 km/h
+              
+              if (isAccurate && isReasonableDistance && isReasonableSpeed) {
                 setOdometerKm((prev) => {
                   const nextKm = prev + meters / 1000;
                   AsyncStorage.setItem(KM_KEY, String(nextKm)).catch(() => {});
@@ -836,7 +888,7 @@ export default function TrackingMap({
 
             setSpeedKph(Math.round(kph * 10) / 10);
           }
-          lastPosRef.current = { coords: loc.coords, timestamp: loc.timestamp };
+          lastPosRef.current = { coords: loc.coords, timestamp };
 
           if (follow && !reliveActiveRef.current && !simActiveRef.current && mapRef.current) {
             // When navigating with booking route, use Waze-style tilted + heading-locked camera
@@ -851,7 +903,7 @@ export default function TrackingMap({
             }
           }
 
-          // Handle trip recording
+          // Handle trip recording with comprehensive GPS filtering
           // Skip real GPS recording when simulation is active — simulated coords
           // are already being recorded by the simulation broadcast listener above,
           // so real (stationary) GPS would pollute the route.
@@ -863,35 +915,36 @@ export default function TrackingMap({
               accuracy: acc || 0,
               speed: speed || 0,
               heading: hdg || 0,
-              timestamp: loc.timestamp || Date.now(),
+              timestamp,
             };
 
-            // Skip recording points with very poor GPS accuracy (prevents ghost distance)
-            if (acc && acc > 30) {
-              // Accuracy > 30m is unreliable — skip this point
-            } else if (recordedPosRef.current.length > 0) {
-              const lastRecorded = recordedPosRef.current[recordedPosRef.current.length - 1];
-              const meters = haversineMeters(lastRecorded, newCoord);
+            // Use the GPS filter for intelligent jitter/bounce detection
+            const filterResult = gpsFilterRef.current.filter({
+              latitude,
+              longitude,
+              accuracy: acc,
+              timestamp,
+            });
 
-              // Filter GPS jitter and teleportation
-              if (meters >= 1 && meters <= 500) {
-                distanceRef.current += meters;
+            if (filterResult.accepted) {
+              const distance = filterResult.distance || 0;
+              if (distance > 0) {
+                distanceRef.current += distance;
                 setTripDistance(distanceRef.current);
-                recordedPosRef.current.push(newCoord);
-                // Throttle state update to prevent excessive re-renders & OOM
-                const now = Date.now();
-                if (now - lastRecordedStateUpdateRef.current >= RECORDED_STATE_THROTTLE_MS) {
-                  lastRecordedStateUpdateRef.current = now;
-                  setRecordedPositions([...recordedPosRef.current]);
-                }
-                updateLocalStorage();
               }
-            } else {
-              // First point — only record if accuracy is reasonable
               recordedPosRef.current.push(newCoord);
-              setRecordedPositions([...recordedPosRef.current]);
-              updateLocalStorage(true); // force write for first point
+              // Throttle state update to prevent excessive re-renders & OOM
+              const now = Date.now();
+              if (now - lastRecordedStateUpdateRef.current >= RECORDED_STATE_THROTTLE_MS) {
+                lastRecordedStateUpdateRef.current = now;
+                setRecordedPositions([...recordedPosRef.current]);
+              }
+              updateLocalStorage();
             }
+            // Log filter rejections for debugging (uncomment if needed)
+            // else if (filterResult.reason !== 'too_soon' && filterResult.reason !== 'insufficient_movement') {
+            //   console.log(`GPS filtered: ${filterResult.reason}`, filterResult);
+            // }
           }
 
           // Detect entry into any terminal geofence and notify once per entry
@@ -1356,6 +1409,10 @@ export default function TrackingMap({
       setTripDistance(0);
       setTripDuration(0);
 
+      // Reset GPS filter for new trip
+      gpsFilterRef.current.reset();
+      displayFilterRef.current.reset();
+
       // Save to AsyncStorage for persistence
       await AsyncStorage.setItem(ACTIVE_TRIP_KEY, JSON.stringify({
         tripId,
@@ -1546,6 +1603,10 @@ export default function TrackingMap({
       setRecordedPositions([initialCoord]);
       setTripDistance(0);
       setTripDuration(0);
+
+      // Reset GPS filter for new trip
+      gpsFilterRef.current.reset();
+      displayFilterRef.current.reset();
 
       // Save to AsyncStorage for persistence
       await AsyncStorage.setItem(ACTIVE_TRIP_KEY, JSON.stringify({
