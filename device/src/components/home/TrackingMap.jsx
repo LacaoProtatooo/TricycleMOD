@@ -1255,19 +1255,48 @@ export default function TrackingMap({
       // Start sync interval
       syncIntervalRef.current = setInterval(syncToServer, SYNC_INTERVAL_MS);
 
-      // Clear any stale background coordinates (bg tracking starts when app goes to background)
+      // Clear any stale background coordinates
       await AsyncStorage.setItem(BG_COORDS_KEY, '[]');
       await AsyncStorage.setItem(BG_DISTANCE_KEY, '0');
       await AsyncStorage.setItem(BG_SYNCED_INDEX_KEY, '0');
 
-      // Request background location permission upfront so it's ready when app goes to background
+      // Keep screen awake while recording to help maintain GPS accuracy
+      try { await activateKeepAwakeAsync('trip_recording'); } catch (_) {}
+
+      // Proactively start background location task so recording survives screen-off / app-background
       try {
         const bgPerm = await Location.requestBackgroundPermissionsAsync();
-        if (bgPerm.status !== 'granted') {
+        if (bgPerm.status === 'granted') {
+          // Save current position reference for bg task continuity
+          if (lastPosRef.current) {
+            await AsyncStorage.setItem('bg_last_position_v1', JSON.stringify({
+              latitude: lastPosRef.current.coords?.latitude ?? initialCoord.latitude,
+              longitude: lastPosRef.current.coords?.longitude ?? initialCoord.longitude,
+            }));
+            await AsyncStorage.setItem('bg_last_ts_v1', String(Date.now()));
+          }
+          const isRegistered = await TaskManager.isTaskRegisteredAsync(BG_TASK_NAME);
+          if (!isRegistered) {
+            await Location.startLocationUpdatesAsync(BG_TASK_NAME, {
+              accuracy: Location.Accuracy.BestForNavigation,
+              timeInterval: 2000,
+              distanceInterval: 1,
+              foregroundService: {
+                notificationTitle: 'Trip Recording Active',
+                notificationBody: 'Your trip is being recorded',
+                notificationColor: '#FF0000',
+              },
+              pausesUpdatesAutomatically: false,
+              activityType: Location.ActivityType.AutomotiveNavigation,
+              showsBackgroundLocationIndicator: true,
+            });
+            console.log('Background location task started proactively on recording start');
+          }
+        } else {
           console.warn('Background location permission not granted — background recording may not work');
         }
       } catch (bgErr) {
-        console.warn('Error requesting background location permission:', bgErr);
+        console.warn('Error starting background tracking on recording start:', bgErr);
       }
 
       Alert.alert('Recording Started', 'Your trip is being recorded');
@@ -1417,19 +1446,47 @@ export default function TrackingMap({
       // Start sync interval
       syncIntervalRef.current = setInterval(syncToServer, SYNC_INTERVAL_MS);
 
-      // Clear any stale background coordinates (bg tracking starts when app goes to background)
+      // Clear any stale background coordinates
       await AsyncStorage.setItem(BG_COORDS_KEY, '[]');
       await AsyncStorage.setItem(BG_DISTANCE_KEY, '0');
       await AsyncStorage.setItem(BG_SYNCED_INDEX_KEY, '0');
 
-      // Request background location permission upfront so it's ready when app goes to background
+      // Keep screen awake while recording
+      try { await activateKeepAwakeAsync('trip_recording'); } catch (_) {}
+
+      // Proactively start background location task so recording survives screen-off / app-background
       try {
         const bgPerm = await Location.requestBackgroundPermissionsAsync();
-        if (bgPerm.status !== 'granted') {
+        if (bgPerm.status === 'granted') {
+          if (lastPosRef.current) {
+            await AsyncStorage.setItem('bg_last_position_v1', JSON.stringify({
+              latitude: lastPosRef.current.coords?.latitude ?? initialCoord.latitude,
+              longitude: lastPosRef.current.coords?.longitude ?? initialCoord.longitude,
+            }));
+            await AsyncStorage.setItem('bg_last_ts_v1', String(Date.now()));
+          }
+          const isRegistered = await TaskManager.isTaskRegisteredAsync(BG_TASK_NAME);
+          if (!isRegistered) {
+            await Location.startLocationUpdatesAsync(BG_TASK_NAME, {
+              accuracy: Location.Accuracy.BestForNavigation,
+              timeInterval: 2000,
+              distanceInterval: 1,
+              foregroundService: {
+                notificationTitle: 'Trip Recording Active',
+                notificationBody: 'Your trip is being recorded',
+                notificationColor: '#FF0000',
+              },
+              pausesUpdatesAutomatically: false,
+              activityType: Location.ActivityType.AutomotiveNavigation,
+              showsBackgroundLocationIndicator: true,
+            });
+            console.log('Background location task started proactively (booking auto-start)');
+          }
+        } else {
           console.warn('Background location permission not granted — background recording may not work');
         }
       } catch (bgErr) {
-        console.warn('Error requesting background location permission:', bgErr);
+        console.warn('Error starting background tracking on booking auto-start:', bgErr);
       }
 
       console.log('Auto-started recording from booking:', tripId);
@@ -1509,6 +1566,36 @@ export default function TrackingMap({
         clearTimeout(pendingStorageWriteRef.current);
         pendingStorageWriteRef.current = null;
       }
+
+      // Stop background tracking and keepAwake
+      try {
+        const isRegistered = await TaskManager.isTaskRegisteredAsync(BG_TASK_NAME);
+        if (isRegistered) {
+          await Location.stopLocationUpdatesAsync(BG_TASK_NAME);
+          console.log('Background tracking stopped on trip save');
+        }
+      } catch (bgStopErr) { console.warn('Error stopping bg task on save:', bgStopErr); }
+      try { deactivateKeepAwake('trip_recording'); } catch (_) {}
+
+      // Merge any remaining background coordinates before saving
+      try {
+        const [bgCoordsRaw, bgDistRaw] = await Promise.all([
+          AsyncStorage.getItem(BG_COORDS_KEY),
+          AsyncStorage.getItem(BG_DISTANCE_KEY),
+        ]);
+        const bgCoords = bgCoordsRaw ? JSON.parse(bgCoordsRaw) : [];
+        const bgDist = bgDistRaw ? Number(bgDistRaw) || 0 : 0;
+        if (bgCoords.length > 0) {
+          console.log(`Merging ${bgCoords.length} final background coords before save`);
+          recordedPosRef.current = [...recordedPosRef.current, ...bgCoords];
+          distanceRef.current += bgDist;
+        }
+        await Promise.all([
+          AsyncStorage.setItem(BG_COORDS_KEY, '[]'),
+          AsyncStorage.setItem(BG_DISTANCE_KEY, '0'),
+          AsyncStorage.setItem(BG_SYNCED_INDEX_KEY, '0'),
+        ]);
+      } catch (mergeErr) { console.warn('Error merging bg coords on save:', mergeErr); }
 
       const tripId = activeTripIdRef.current;
       if (!tripId) {
@@ -1632,6 +1719,22 @@ export default function TrackingMap({
         clearTimeout(pendingStorageWriteRef.current);
         pendingStorageWriteRef.current = null;
       }
+
+      // Stop background tracking and keepAwake
+      try {
+        const isRegistered = await TaskManager.isTaskRegisteredAsync(BG_TASK_NAME);
+        if (isRegistered) {
+          await Location.stopLocationUpdatesAsync(BG_TASK_NAME);
+          console.log('Background tracking stopped on trip discard');
+        }
+      } catch (bgStopErr) { console.warn('Error stopping bg task on discard:', bgStopErr); }
+      try { deactivateKeepAwake('trip_recording'); } catch (_) {}
+      // Clear background accumulators
+      await Promise.all([
+        AsyncStorage.setItem(BG_COORDS_KEY, '[]'),
+        AsyncStorage.setItem(BG_DISTANCE_KEY, '0'),
+        AsyncStorage.setItem(BG_SYNCED_INDEX_KEY, '0'),
+      ]).catch(() => {});
 
       // Cancel on server
       if (activeTripIdRef.current) {

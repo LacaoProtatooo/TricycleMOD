@@ -21,12 +21,15 @@ import {
   Share,
   Linking,
   Platform,
+  AppState,
 } from 'react-native';
 import MapView, { Marker, Polyline, Circle, PROVIDER_GOOGLE, AnimatedRegion } from 'react-native-maps';
 import * as Location from 'expo-location';
+import * as TaskManager from 'expo-task-manager';
 import * as Application from 'expo-application';
 import * as DocumentPicker from 'expo-document-picker';
 import * as FileSystem from 'expo-file-system/legacy';
+import { activateKeepAwakeAsync, deactivateKeepAwake } from 'expo-keep-awake';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -37,11 +40,18 @@ import { colors, spacing } from '../../components/common/theme';
 import { getUserCredentials } from '../../utils/userStorage';
 import { API_URL } from '../../utils/config';
 
+// Import background location task (shared with driver TrackingMap)
+import '../../components/services/BackgroundLocationTask';
+import { BG_TASK_NAME } from '../../components/services/BackgroundLocationTask';
+
 const BASE_URL = API_URL;
 
 // Storage keys
 const DEVICE_ID_KEY = 'tracking_device_id_v1';
 const ACTIVE_TRIP_KEY = 'tracking_active_trip_v1';
+const BG_COORDS_KEY = 'bg_trip_coords_v1';
+const BG_DISTANCE_KEY = 'bg_trip_distance_v1';
+const BG_SYNCED_INDEX_KEY = 'bg_trip_synced_index_v1';
 
 // Sync settings
 const SYNC_INTERVAL_MS = 30000; // Sync every 30 seconds
@@ -275,10 +285,109 @@ const GuestTracking = () => {
   const tripStartRef = useRef(null);
   const distanceRef = useRef(0);
   const activeTripIdRef = useRef(null);
+  const isRecordingRef = useRef(false); // Ref mirror to avoid stale closures in AppState handler
 
   // Check authentication on mount
   useEffect(() => {
     checkAuthentication();
+  }, []);
+
+  // Keep isRecordingRef in sync
+  useEffect(() => {
+    isRecordingRef.current = isRecording;
+  }, [isRecording]);
+
+  // AppState handling: start background tracking when app goes to background,
+  // merge background-collected coordinates when returning to foreground
+  useEffect(() => {
+    const appStateSubscription = AppState.addEventListener('change', async (nextAppState) => {
+      if (nextAppState === 'background' || nextAppState === 'inactive') {
+        // App going to background — ensure background task is running if recording
+        if (isRecordingRef.current && activeTripIdRef.current) {
+          console.log('[Guest] App going to background while recording — ensuring bg tracking');
+          try {
+            if (lastPosRef.current) {
+              await AsyncStorage.setItem('bg_last_position_v1', JSON.stringify({
+                latitude: lastPosRef.current.latitude,
+                longitude: lastPosRef.current.longitude,
+              }));
+              await AsyncStorage.setItem('bg_last_ts_v1', String(Date.now()));
+            }
+            const bgPermission = await Location.getBackgroundPermissionsAsync();
+            if (bgPermission.status === 'granted') {
+              const isRegistered = await TaskManager.isTaskRegisteredAsync(BG_TASK_NAME);
+              if (!isRegistered) {
+                await Location.startLocationUpdatesAsync(BG_TASK_NAME, {
+                  accuracy: Location.Accuracy.BestForNavigation,
+                  timeInterval: 2000,
+                  distanceInterval: 1,
+                  foregroundService: {
+                    notificationTitle: 'Trip Recording Active',
+                    notificationBody: 'Your trip is being recorded in the background',
+                    notificationColor: '#FF0000',
+                  },
+                  pausesUpdatesAutomatically: false,
+                  activityType: Location.ActivityType.AutomotiveNavigation,
+                  showsBackgroundLocationIndicator: true,
+                });
+                console.log('[Guest] Background location task started');
+              }
+            }
+          } catch (e) {
+            console.warn('[Guest] Failed to start bg tracking:', e);
+          }
+        }
+      } else if (nextAppState === 'active') {
+        // App returning to foreground — merge background coordinates
+        if (isRecordingRef.current && activeTripIdRef.current) {
+          console.log('[Guest] Returning to foreground — merging bg coordinates');
+          try {
+            // Stop background task (foreground watcher will take over)
+            try {
+              const isRegistered = await TaskManager.isTaskRegisteredAsync(BG_TASK_NAME);
+              if (isRegistered) {
+                await Location.stopLocationUpdatesAsync(BG_TASK_NAME);
+              }
+            } catch (stopErr) { console.warn('[Guest] Error stopping bg task:', stopErr); }
+
+            const [bgCoordsRaw, bgDistRaw] = await Promise.all([
+              AsyncStorage.getItem(BG_COORDS_KEY),
+              AsyncStorage.getItem(BG_DISTANCE_KEY),
+            ]);
+            const bgCoords = bgCoordsRaw ? JSON.parse(bgCoordsRaw) : [];
+            const bgDist = bgDistRaw ? Number(bgDistRaw) || 0 : 0;
+
+            if (bgCoords.length > 0) {
+              console.log(`[Guest] Merging ${bgCoords.length} bg coords (${(bgDist/1000).toFixed(2)} km)`);
+              recordedPosRef.current = [...recordedPosRef.current, ...bgCoords];
+              distanceRef.current += bgDist;
+              setRecordedPositions([...recordedPosRef.current]);
+              setTripDistance(distanceRef.current);
+
+              // Update last position reference
+              if (bgCoords.length > 0) {
+                lastPosRef.current = bgCoords[bgCoords.length - 1];
+              }
+
+              updateLocalStorage();
+
+              // Clear background accumulators
+              await Promise.all([
+                AsyncStorage.setItem(BG_COORDS_KEY, '[]'),
+                AsyncStorage.setItem(BG_DISTANCE_KEY, '0'),
+                AsyncStorage.setItem(BG_SYNCED_INDEX_KEY, '0'),
+              ]);
+            }
+          } catch (e) {
+            console.warn('[Guest] Error merging bg coordinates:', e);
+          }
+        }
+      }
+    });
+
+    return () => {
+      appStateSubscription.remove();
+    };
   }, []);
 
   const checkAuthentication = async () => {
@@ -354,6 +463,39 @@ const GuestTracking = () => {
 
         // Resume location watching
         await resumeLocationWatching();
+
+        // Re-activate keep awake and background task for resumed trip
+        try { await activateKeepAwakeAsync('trip_recording'); } catch (e) { /* ignore */ }
+        try {
+          const bgPerm = await Location.getBackgroundPermissionsAsync();
+          if (bgPerm.status === 'granted') {
+            const isRegistered = await TaskManager.isTaskRegisteredAsync(BG_TASK_NAME);
+            if (!isRegistered) {
+              if (positions?.length > 0) {
+                const lastPos = positions[positions.length - 1];
+                await AsyncStorage.setItem('bg_last_position_v1', JSON.stringify({
+                  latitude: lastPos.latitude,
+                  longitude: lastPos.longitude,
+                }));
+                await AsyncStorage.setItem('bg_last_ts_v1', String(Date.now()));
+              }
+              await Location.startLocationUpdatesAsync(BG_TASK_NAME, {
+                accuracy: Location.Accuracy.BestForNavigation,
+                timeInterval: 2000,
+                distanceInterval: 1,
+                foregroundService: {
+                  notificationTitle: 'Trip Recording Active',
+                  notificationBody: 'Your trip is being recorded in the background',
+                  notificationColor: '#FF0000',
+                },
+                pausesUpdatesAutomatically: false,
+                activityType: Location.ActivityType.AutomotiveNavigation,
+                showsBackgroundLocationIndicator: true,
+              });
+              console.log('[Guest] Background task resumed for active trip');
+            }
+          }
+        } catch (bgErr) { console.warn('[Guest] Could not resume bg tracking:', bgErr); }
       }
 
       // Request permission and start
@@ -530,6 +672,49 @@ const GuestTracking = () => {
 
       // Start sync interval
       syncIntervalRef.current = setInterval(syncToServer, SYNC_INTERVAL_MS);
+
+      // Keep screen awake during recording
+      try { await activateKeepAwakeAsync('trip_recording'); } catch (e) { console.warn('[Guest] keepAwake error:', e); }
+
+      // Proactively start background location task so recording continues with screen off
+      try {
+        const bgPerm = await Location.requestBackgroundPermissionsAsync();
+        if (bgPerm.status === 'granted') {
+          // Save last position for BG task continuity
+          await AsyncStorage.setItem('bg_last_position_v1', JSON.stringify({
+            latitude: initialCoord.latitude,
+            longitude: initialCoord.longitude,
+          }));
+          await AsyncStorage.setItem('bg_last_ts_v1', String(Date.now()));
+
+          // Clear BG accumulators
+          await Promise.all([
+            AsyncStorage.setItem(BG_COORDS_KEY, '[]'),
+            AsyncStorage.setItem(BG_DISTANCE_KEY, '0'),
+            AsyncStorage.setItem(BG_SYNCED_INDEX_KEY, '0'),
+          ]);
+
+          const isRegistered = await TaskManager.isTaskRegisteredAsync(BG_TASK_NAME);
+          if (!isRegistered) {
+            await Location.startLocationUpdatesAsync(BG_TASK_NAME, {
+              accuracy: Location.Accuracy.BestForNavigation,
+              timeInterval: 2000,
+              distanceInterval: 1,
+              foregroundService: {
+                notificationTitle: 'Trip Recording Active',
+                notificationBody: 'Your trip is being recorded in the background',
+                notificationColor: '#FF0000',
+              },
+              pausesUpdatesAutomatically: false,
+              activityType: Location.ActivityType.AutomotiveNavigation,
+              showsBackgroundLocationIndicator: true,
+            });
+            console.log('[Guest] Background location task proactively started');
+          }
+        }
+      } catch (bgErr) {
+        console.warn('[Guest] Could not start background tracking:', bgErr);
+      }
 
       Alert.alert('Recording Started', 'Your trip is being recorded');
     } catch (error) {
@@ -733,6 +918,18 @@ const GuestTracking = () => {
 
   const saveTrip = async () => {
     try {
+      // Stop background location task
+      try {
+        const isRegistered = await TaskManager.isTaskRegisteredAsync(BG_TASK_NAME);
+        if (isRegistered) {
+          await Location.stopLocationUpdatesAsync(BG_TASK_NAME);
+          console.log('[Guest] Background task stopped on save');
+        }
+      } catch (bgStopErr) { console.warn('[Guest] Error stopping bg task on save:', bgStopErr); }
+
+      // Deactivate keep-awake
+      try { deactivateKeepAwake('trip_recording'); } catch (e) { /* ignore */ }
+
       // Stop location watching
       if (watchRef.current) {
         watchRef.current.remove();
@@ -743,6 +940,21 @@ const GuestTracking = () => {
         clearInterval(syncIntervalRef.current);
         syncIntervalRef.current = null;
       }
+
+      // Merge any remaining background coordinates before final save
+      try {
+        const [bgCoordsRaw, bgDistRaw] = await Promise.all([
+          AsyncStorage.getItem(BG_COORDS_KEY),
+          AsyncStorage.getItem(BG_DISTANCE_KEY),
+        ]);
+        const bgCoords = bgCoordsRaw ? JSON.parse(bgCoordsRaw) : [];
+        const bgDist = bgDistRaw ? Number(bgDistRaw) || 0 : 0;
+        if (bgCoords.length > 0) {
+          console.log(`[Guest] Merging ${bgCoords.length} final bg coords before save`);
+          recordedPosRef.current = [...recordedPosRef.current, ...bgCoords];
+          distanceRef.current += bgDist;
+        }
+      } catch (mergeErr) { console.warn('[Guest] Error merging bg coords on save:', mergeErr); }
 
       // Final sync
       const response = await axios.post(`${BASE_URL}/api/tracking/${activeTripIdRef.current}/end`, {
@@ -758,8 +970,13 @@ const GuestTracking = () => {
         );
       }
 
-      // Clear state
-      await AsyncStorage.removeItem(ACTIVE_TRIP_KEY);
+      // Clear state + BG accumulators
+      await Promise.all([
+        AsyncStorage.removeItem(ACTIVE_TRIP_KEY),
+        AsyncStorage.setItem(BG_COORDS_KEY, '[]'),
+        AsyncStorage.setItem(BG_DISTANCE_KEY, '0'),
+        AsyncStorage.setItem(BG_SYNCED_INDEX_KEY, '0'),
+      ]);
       setIsRecording(false);
       setActiveTripId(null);
       activeTripIdRef.current = null;
@@ -779,6 +996,18 @@ const GuestTracking = () => {
 
   const discardTrip = async () => {
     try {
+      // Stop background location task
+      try {
+        const isRegistered = await TaskManager.isTaskRegisteredAsync(BG_TASK_NAME);
+        if (isRegistered) {
+          await Location.stopLocationUpdatesAsync(BG_TASK_NAME);
+          console.log('[Guest] Background task stopped on discard');
+        }
+      } catch (bgStopErr) { console.warn('[Guest] Error stopping bg task on discard:', bgStopErr); }
+
+      // Deactivate keep-awake
+      try { deactivateKeepAwake('trip_recording'); } catch (e) { /* ignore */ }
+
       if (watchRef.current) {
         watchRef.current.remove();
         watchRef.current = null;
@@ -794,8 +1023,13 @@ const GuestTracking = () => {
         await axios.post(`${BASE_URL}/api/tracking/${activeTripIdRef.current}/cancel`);
       }
 
-      // Clear state
-      await AsyncStorage.removeItem(ACTIVE_TRIP_KEY);
+      // Clear state + BG accumulators
+      await Promise.all([
+        AsyncStorage.removeItem(ACTIVE_TRIP_KEY),
+        AsyncStorage.setItem(BG_COORDS_KEY, '[]'),
+        AsyncStorage.setItem(BG_DISTANCE_KEY, '0'),
+        AsyncStorage.setItem(BG_SYNCED_INDEX_KEY, '0'),
+      ]);
       setIsRecording(false);
       setActiveTripId(null);
       activeTripIdRef.current = null;
