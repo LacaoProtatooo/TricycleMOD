@@ -6,11 +6,11 @@
  */
 
 import React, { useState, useEffect } from 'react';
-import { ActivityIndicator, StyleSheet } from 'react-native';
+import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { colors } from '../../components/common/theme';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 import { getUserCredentials } from '../../utils/userStorage';
 import { BookingProvider } from '../../context/BookingContext';
 
@@ -27,6 +27,7 @@ const Tab = createBottomTabNavigator();
 const Home = () => {
   const [currentUser, setCurrentUser] = useState(null);
   const [loading, setLoading] = useState(true);
+  const insets = useSafeAreaInsets();
 
   // Load user from AsyncStorage on mount
   useEffect(() => {
@@ -64,7 +65,7 @@ const Home = () => {
   // Full navigation for authenticated users (driver, operator)
   // Wrap with BookingProvider for drivers to share booking state between Trips and Maps tabs
   const tabNavigator = (
-    <SafeAreaView style={{ flex: 1 }} edges={['bottom']}>
+    <View style={{ flex: 1 }}>
       <Tab.Navigator
         screenOptions={{
           tabBarActiveTintColor: colors.primary,
@@ -73,8 +74,8 @@ const Home = () => {
             backgroundColor: colors.ivory1,
             borderTopWidth: 1,
             borderTopColor: colors.ivory3,
-            height: 60,
-            paddingBottom: 8,
+            height: 60 + insets.bottom,
+            paddingBottom: 8 + insets.bottom,
             paddingTop: 8,
           },
           headerShown: false,
@@ -134,7 +135,7 @@ const Home = () => {
           }}
         />
       </Tab.Navigator>
-    </SafeAreaView>
+    </View>
   );
 
   // For drivers, wrap with BookingProvider to share state between Trips and Maps

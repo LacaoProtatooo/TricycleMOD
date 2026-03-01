@@ -8,6 +8,7 @@ import { Provider as PaperProvider } from 'react-native-paper';
 import { useSelector } from 'react-redux';
 import { createNavigationContainerRef, CommonActions } from '@react-navigation/native';
 import * as Notifications from 'expo-notifications';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors } from '../components/common/theme';
 
@@ -45,6 +46,7 @@ const Navigator = () => {
   const [drawerVisible, setDrawerVisible] = useState(false);
   const user = useSelector((state) => state.auth.user);
   const isLoading = useSelector((state) => state.auth.loading);
+  const insets = useSafeAreaInsets();
 
   // Check if user is suspended driver
   const isDriverSuspended = user && user.role === 'driver' && user.isSuspended && 
@@ -87,10 +89,14 @@ const Navigator = () => {
   const slideAnim = useRef(new Animated.Value(-300)).current;
   const overlayAnim = useRef(new Animated.Value(0)).current;
 
-  // Draggable button position (start at middle of screen)
+  // Draggable button position (start at middle of screen, accounting for safe area)
   const initialY = (SCREEN_HEIGHT - BUTTON_HEIGHT) / 2;
   const buttonY = useRef(new Animated.Value(initialY)).current;
   const lastY = useRef(initialY);
+
+  // Calculate safe boundaries for the draggable button
+  const getMinY = () => Math.max(60, insets.top + 10); // Top boundary (below status bar/notch)
+  const getMaxY = () => SCREEN_HEIGHT - BUTTON_HEIGHT - Math.max(60, insets.bottom + 10); // Bottom boundary (above nav buttons)
 
   // PanResponder for draggable button
   const panResponder = useRef(
@@ -107,8 +113,8 @@ const Navigator = () => {
       onPanResponderMove: (_, gestureState) => {
         // Calculate new position with bounds
         const newY = lastY.current + gestureState.dy;
-        const minY = 60; // Top boundary (below status bar)
-        const maxY = SCREEN_HEIGHT - BUTTON_HEIGHT - 60; // Bottom boundary
+        const minY = getMinY();
+        const maxY = getMaxY();
         
         if (newY >= minY && newY <= maxY) {
           buttonY.setValue(gestureState.dy);
@@ -118,8 +124,8 @@ const Navigator = () => {
         buttonY.flattenOffset();
         // Calculate final position with bounds
         let finalY = lastY.current + gestureState.dy;
-        const minY = 60;
-        const maxY = SCREEN_HEIGHT - BUTTON_HEIGHT - 60;
+        const minY = getMinY();
+        const maxY = getMaxY();
         
         // Clamp to bounds
         finalY = Math.max(minY, Math.min(maxY, finalY));

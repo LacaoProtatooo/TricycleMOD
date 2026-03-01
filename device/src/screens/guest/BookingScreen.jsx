@@ -24,6 +24,7 @@ import {
   FlatList,
   Platform,
   AppState,
+  Image,
 } from 'react-native';
 import MapView, { Marker, Circle, Polyline, Polygon, PROVIDER_GOOGLE } from 'react-native-maps';
 import * as Location from 'expo-location';
@@ -173,6 +174,10 @@ const BookingScreen = ({ navigation }) => {
   const pollingRef = useRef(null);
   const driverLocationPollRef = useRef(null);
   
+  // Collapsible trip panel state
+  const [isTripPanelCollapsed, setIsTripPanelCollapsed] = useState(false);
+  const [isBookingPanelCollapsed, setIsBookingPanelCollapsed] = useState(false);
+  
   // Route calculation state
   const [routeCoordinates, setRouteCoordinates] = useState([]);
   const [routeInfo, setRouteInfo] = useState(null);
@@ -269,9 +274,29 @@ const BookingScreen = ({ navigation }) => {
   // and start background location tracking so the trip keeps recording when screen is off
   const appStateRef = useRef(AppState.currentState);
   const wasPollingRef = useRef(false);
+  const bookingStatusRef = useRef(bookingStatus);
+  const dbRef = useRef(db);
+  const userRef = useRef(user);
+
+  // Keep refs updated with latest values
+  useEffect(() => {
+    bookingStatusRef.current = bookingStatus;
+  }, [bookingStatus]);
+
+  useEffect(() => {
+    dbRef.current = db;
+    userRef.current = user;
+  }, [db, user]);
 
   useEffect(() => {
     const appStateSubscription = AppState.addEventListener('change', async (nextAppState) => {
+      // Prevent duplicate handling for the same state
+      if (appStateRef.current === nextAppState) return;
+      
+      const currentBookingStatus = bookingStatusRef.current;
+      const currentDb = dbRef.current;
+      const currentUser = userRef.current;
+
       if (nextAppState === 'background' || nextAppState === 'inactive') {
         // App going to background — pause polling to prevent token expiration errors
         if (pollingRef.current) {
@@ -282,7 +307,7 @@ const BookingScreen = ({ navigation }) => {
         }
 
         // If trip is active, start background location tracking
-        if (bookingStatus === BOOKING_STATUS.TRIP_ACTIVE) {
+        if (currentBookingStatus === BOOKING_STATUS.TRIP_ACTIVE) {
           try {
             const bgPermission = await Location.requestBackgroundPermissionsAsync();
             if (bgPermission.status === 'granted') {
@@ -307,22 +332,22 @@ const BookingScreen = ({ navigation }) => {
             console.warn('BookingScreen: Failed to start background tracking:', e);
           }
         }
-      } else if (nextAppState === 'active') {
+      } else if (nextAppState === 'active' && appStateRef.current !== 'active') {
         // App returning to foreground — resume polling if it was active before
-        if (wasPollingRef.current && db && user) {
+        if (wasPollingRef.current && currentDb && currentUser) {
           wasPollingRef.current = false;
           const shouldPoll = [
             BOOKING_STATUS.WAITING_FOR_DRIVER,
             BOOKING_STATUS.OFFERS_RECEIVED,
             BOOKING_STATUS.OFFER_RECEIVED,
             BOOKING_STATUS.TRIP_ACTIVE,
-          ].includes(bookingStatus);
+          ].includes(currentBookingStatus);
 
           if (shouldPoll) {
             // Immediately fetch once, then resume interval
-            dispatch(getActiveBooking(db));
+            dispatch(getActiveBooking(currentDb));
             pollingRef.current = setInterval(() => {
-              dispatch(getActiveBooking(db));
+              dispatch(getActiveBooking(dbRef.current));
             }, 5000);
             console.log('BookingScreen: Resumed polling (app foregrounded)');
           }
@@ -334,7 +359,7 @@ const BookingScreen = ({ navigation }) => {
     return () => {
       appStateSubscription.remove();
     };
-  }, [bookingStatus, db, user, dispatch]);
+  }, [dispatch]); // Only depend on dispatch which is stable
 
   // Poll driver's live location during active trip
   useEffect(() => {
@@ -742,10 +767,13 @@ const BookingScreen = ({ navigation }) => {
     setRouteError(null);
     
     try {
+      console.log('Calculating route from:', pickupLocation, 'to:', destinationLocation);
       const result = await getRouteWithFare(
         pickupLocation,
         destinationLocation
       );
+      
+      console.log('Route result:', result.success, 'Points:', result.route?.coordinates?.length);
       
       if (result.success) {
         setRouteCoordinates(result.route.coordinates);
@@ -758,6 +786,7 @@ const BookingScreen = ({ navigation }) => {
           setRouteError('Using estimated distance (routing service unavailable)');
         }
       } else {
+        console.warn('Route calculation failed:', result.error);
         setRouteError(result.error || 'Failed to calculate route');
         // Fallback to straight line
         setRouteCoordinates([pickupLocation, destinationLocation]);
@@ -1315,7 +1344,7 @@ const BookingScreen = ({ navigation }) => {
   }
 
   return (
-    <SafeAreaView style={styles.container} edges={['top', 'bottom']}>
+    <SafeAreaView style={styles.container} edges={['top']}>
       {/* Header */}
       <View style={styles.header}>
         <View style={styles.headerContent}>
@@ -1346,7 +1375,9 @@ const BookingScreen = ({ navigation }) => {
               <View style={styles.offersHeaderBadge}>
                 <Text style={styles.offersHeaderBadgeText}>{driverOffers.length}</Text>
               </View>
-              <Ionicons name="car-outline" size={18} color={colors.primary} />
+              <View style={styles.driverAvatarMini}>
+                <Ionicons name="person" size={14} color="#fff" />
+              </View>
             </TouchableOpacity>
           )}
           <TouchableOpacity style={styles.historyButton} onPress={openHistoryModal}>
@@ -1558,21 +1589,52 @@ const BookingScreen = ({ navigation }) => {
 
       {/* Bottom Panel */}
       <View style={styles.bottomPanel}>
-        {/* IDLE State - Start Booking */}
+        {/* IDLE State - Start Booking (Collapsible) */}
         {bookingStatus === BOOKING_STATUS.IDLE && (
           <View style={styles.panelContent}>
-            <Text style={styles.panelTitle}>Book a Special Trip</Text>
-            <Text style={styles.panelDescription}>
-              Request a private tricycle trip within the WEBTODA service area (shown on map). 
-              Pickup must be along the route. Additional charges apply for destinations outside the area.
-            </Text>
-            <TouchableOpacity
-              style={styles.primaryButton}
-              onPress={handleStartBooking}
+            {/* Collapse/Expand Handle */}
+            <TouchableOpacity 
+              style={styles.collapseHandle}
+              onPress={() => setIsBookingPanelCollapsed(!isBookingPanelCollapsed)}
+              activeOpacity={0.7}
             >
-              <Ionicons name="add-circle-outline" size={22} color="#fff" />
-              <Text style={styles.primaryButtonText}>Request Special Trip</Text>
+              <View style={styles.handleBar} />
             </TouchableOpacity>
+
+            {/* Collapsed View */}
+            {isBookingPanelCollapsed ? (
+              <View style={styles.collapsedBookingInfo}>
+                <View style={styles.collapsedBookingLeft}>
+                  <View style={styles.bookingIconSmall}>
+                    <Ionicons name="bicycle" size={18} color="#fff" />
+                  </View>
+                  <Text style={styles.collapsedBookingTitle}>Book a Special Trip</Text>
+                </View>
+                <TouchableOpacity
+                  style={styles.collapsedBookButton}
+                  onPress={handleStartBooking}
+                >
+                  <Ionicons name="add" size={18} color="#fff" />
+                </TouchableOpacity>
+                <Ionicons name="chevron-up" size={18} color={colors.orangeShade4} style={{ marginLeft: 8 }} />
+              </View>
+            ) : (
+              /* Expanded View */
+              <>
+                <Text style={styles.panelTitle}>Book a Special Trip</Text>
+                <Text style={styles.panelDescription}>
+                  Request a private tricycle trip within the WEBTODA service area (shown on map). 
+                  Pickup must be along the route. Additional charges apply for destinations outside the area.
+                </Text>
+                <TouchableOpacity
+                  style={[styles.primaryButton, { marginTop: spacing.medium }]}
+                  onPress={handleStartBooking}
+                >
+                  <Ionicons name="add-circle-outline" size={22} color="#fff" />
+                  <Text style={styles.primaryButtonText}>Request Special Trip</Text>
+                </TouchableOpacity>
+              </>
+            )}
           </View>
         )}
 
@@ -1856,7 +1918,11 @@ const BookingScreen = ({ navigation }) => {
               <View style={styles.offerPreview}>
                 <View style={styles.offerPreviewInfo}>
                   <View style={styles.driverAvatarSmall}>
-                    <Ionicons name="person" size={20} color="#fff" />
+                    {driverOffers[0].driver?.image?.url ? (
+                      <Image source={{ uri: driverOffers[0].driver.image.url }} style={styles.driverAvatarImage} />
+                    ) : (
+                      <Ionicons name="person" size={20} color="#fff" />
+                    )}
                   </View>
                   <View style={styles.offerDriverDetails}>
                     <Text style={styles.offerDriverName}>
@@ -1911,7 +1977,11 @@ const BookingScreen = ({ navigation }) => {
             {currentBooking?.driver && (
               <View style={styles.driverInfo}>
                 <View style={styles.driverAvatar}>
-                  <Ionicons name="person" size={24} color="#fff" />
+                  {currentBooking.driver.image?.url ? (
+                    <Image source={{ uri: currentBooking.driver.image.url }} style={styles.driverAvatarImageLarge} />
+                  ) : (
+                    <Ionicons name="person" size={24} color="#fff" />
+                  )}
                 </View>
                 <View style={styles.driverDetails}>
                   <Text style={styles.driverName}>
@@ -1960,52 +2030,115 @@ const BookingScreen = ({ navigation }) => {
           </View>
         )}
 
-        {/* TRIP_ACTIVE State */}
+        {/* TRIP_ACTIVE State - Collapsible Panel */}
         {bookingStatus === BOOKING_STATUS.TRIP_ACTIVE && (
           <View style={styles.panelContent}>
-            <Text style={styles.panelTitle}>Trip in Progress</Text>
-            
-            {currentBooking?.driver && (
-              <View style={styles.driverInfo}>
-                <View style={styles.driverAvatar}>
-                  <Ionicons name="person" size={24} color="#fff" />
-                </View>
-                <View style={styles.driverDetails}>
-                  <Text style={styles.driverName}>
-                    {currentBooking.driver.firstname} {currentBooking.driver.lastname}
-                  </Text>
-                  <Text style={styles.tripFare}>
-                    Fare: ₱{currentBooking.agreedFare}
-                  </Text>
-                </View>
-              </View>
-            )}
-
-            {distanceToDestination !== null && (
-              <View style={styles.distanceInfo}>
-                <Ionicons name="navigate-outline" size={20} color={colors.primary} />
-                <Text style={styles.distanceText}>
-                  {distanceToDestination < 1000
-                    ? `${Math.round(distanceToDestination)}m to destination`
-                    : `${(distanceToDestination / 1000).toFixed(1)}km to destination`}
-                </Text>
-              </View>
-            )}
-
-            <View style={styles.tripProgressInfo}>
-              <Ionicons name="car-outline" size={20} color={colors.orangeShade5} />
-              <Text style={styles.tripProgressText}>
-                Enjoy your ride! The driver will mark the trip complete when you arrive.
-              </Text>
-            </View>
-            
-            <TouchableOpacity
-              style={styles.cancelTripButton}
-              onPress={handleCancelBooking}
+            {/* Collapse/Expand Handle */}
+            <TouchableOpacity 
+              style={styles.collapseHandle}
+              onPress={() => setIsTripPanelCollapsed(!isTripPanelCollapsed)}
+              activeOpacity={0.7}
             >
-              <Ionicons name="close-circle-outline" size={20} color="#dc3545" />
-              <Text style={styles.cancelTripButtonText}>Cancel Trip</Text>
+              <View style={styles.handleBar} />
             </TouchableOpacity>
+
+            {/* Collapsed View - Minimal Info */}
+            {isTripPanelCollapsed ? (
+              <View style={styles.collapsedTripInfo}>
+                <View style={styles.collapsedLeft}>
+                  <View style={styles.driverAvatarSmall}>
+                    {currentBooking?.driver?.image?.url ? (
+                      <Image source={{ uri: currentBooking.driver.image.url }} style={styles.driverAvatarImage} />
+                    ) : (
+                      <Ionicons name="bicycle" size={18} color="#fff" />
+                    )}
+                  </View>
+                  <View style={styles.collapsedDetails}>
+                    <View style={styles.collapsedNameRow}>
+                      <Text style={styles.collapsedDriverName} numberOfLines={1}>
+                        {currentBooking?.driver?.firstname} {currentBooking?.driver?.lastname}
+                      </Text>
+                      {currentBooking?.tricycle?.bodyNumber && (
+                        <View style={styles.bodyNumberBadgeSmall}>
+                          <Text style={styles.bodyNumberTextSmall}>#{currentBooking.tricycle.bodyNumber}</Text>
+                        </View>
+                      )}
+                    </View>
+                    <Text style={styles.collapsedFare}>₱{currentBooking?.agreedFare}</Text>
+                  </View>
+                </View>
+                {distanceToDestination !== null && (
+                  <View style={styles.collapsedDistance}>
+                    <Ionicons name="navigate" size={14} color={colors.primary} />
+                    <Text style={styles.collapsedDistanceText}>
+                      {distanceToDestination < 1000
+                        ? `${Math.round(distanceToDestination)}m`
+                        : `${(distanceToDestination / 1000).toFixed(1)}km`}
+                    </Text>
+                  </View>
+                )}
+                <Ionicons name="chevron-up" size={18} color={colors.orangeShade4} style={{ marginLeft: 8 }} />
+              </View>
+            ) : (
+              /* Expanded View - Full Info */
+              <>
+                <Text style={styles.panelTitle}>Trip in Progress</Text>
+                
+                {currentBooking?.driver && (
+                  <View style={styles.driverInfoCard}>
+                    <View style={styles.driverAvatarLarge}>
+                      {currentBooking.driver.image?.url ? (
+                        <Image source={{ uri: currentBooking.driver.image.url }} style={styles.driverAvatarImageXL} />
+                      ) : (
+                        <Ionicons name="bicycle" size={28} color="#fff" />
+                      )}
+                    </View>
+                    <View style={styles.driverDetailsExpanded}>
+                      <View style={styles.driverNameRow}>
+                        <Text style={styles.driverNameLarge}>
+                          {currentBooking.driver.firstname} {currentBooking.driver.lastname}
+                        </Text>
+                        {currentBooking?.tricycle?.bodyNumber && (
+                          <View style={styles.bodyNumberBadge}>
+                            <Text style={styles.bodyNumberText}>#{currentBooking.tricycle.bodyNumber}</Text>
+                          </View>
+                        )}
+                      </View>
+                      <View style={styles.fareRow}>
+                        <Text style={styles.fareLabel}>Fare:</Text>
+                        <Text style={styles.fareAmount}>₱{currentBooking.agreedFare}</Text>
+                      </View>
+                    </View>
+                  </View>
+                )}
+
+                {distanceToDestination !== null && (
+                  <View style={styles.distanceCard}>
+                    <Ionicons name="navigate" size={22} color={colors.primary} />
+                    <Text style={styles.distanceTextLarge}>
+                      {distanceToDestination < 1000
+                        ? `${Math.round(distanceToDestination)}m to destination`
+                        : `${(distanceToDestination / 1000).toFixed(1)}km to destination`}
+                    </Text>
+                  </View>
+                )}
+
+                <View style={styles.tripProgressInfo}>
+                  <Ionicons name="information-circle-outline" size={18} color={colors.orangeShade5} />
+                  <Text style={styles.tripProgressText}>
+                    Enjoy your ride! The driver will mark the trip complete when you arrive.
+                  </Text>
+                </View>
+                
+                <TouchableOpacity
+                  style={styles.cancelTripButton}
+                  onPress={handleCancelBooking}
+                >
+                  <Ionicons name="close-circle-outline" size={18} color="#dc3545" />
+                  <Text style={styles.cancelTripButtonText}>Cancel Trip</Text>
+                </TouchableOpacity>
+              </>
+            )}
           </View>
         )}
       </View>
@@ -2030,7 +2163,11 @@ const BookingScreen = ({ navigation }) => {
             {currentBooking?.driver && (
               <View style={styles.completionDriverInfo}>
                 <View style={styles.driverAvatar}>
-                  <Ionicons name="person" size={24} color="#fff" />
+                  {currentBooking.driver.image?.url ? (
+                    <Image source={{ uri: currentBooking.driver.image.url }} style={styles.driverAvatarImageLarge} />
+                  ) : (
+                    <Ionicons name="person" size={24} color="#fff" />
+                  )}
                 </View>
                 <View style={styles.driverDetails}>
                   <Text style={styles.driverName}>
@@ -2590,7 +2727,11 @@ const BookingScreen = ({ navigation }) => {
                   
                   <View style={styles.offerDriverInfoModal}>
                     <View style={styles.driverAvatarModal}>
-                      <Ionicons name="person" size={28} color="#fff" />
+                      {offer.driver?.image?.url ? (
+                        <Image source={{ uri: offer.driver.image.url }} style={styles.driverAvatarImageModal} />
+                      ) : (
+                        <Ionicons name="person" size={28} color="#fff" />
+                      )}
                     </View>
                     <View style={styles.offerDriverDetailsModal}>
                       <Text style={styles.offerDriverNameModal}>
@@ -2926,9 +3067,12 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 10,
     elevation: 10,
+    maxHeight: '55%', // Prevent panel from taking over the screen
   },
   panelContent: {
-    padding: spacing.medium,
+    paddingHorizontal: spacing.medium,
+    paddingTop: spacing.large,
+    paddingBottom: spacing.medium,
   },
   panelTitle: {
     fontSize: 18,
@@ -3162,6 +3306,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: spacing.small,
+    overflow: 'hidden',
   },
   offerDriverDetails: {
     flex: 1,
@@ -3268,6 +3413,27 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: spacing.medium,
+    overflow: 'hidden',
+  },
+  driverAvatarImage: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+  },
+  driverAvatarImageLarge: {
+    width: 50,
+    height: 50,
+    borderRadius: 25,
+  },
+  driverAvatarImageXL: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+  },
+  driverAvatarImageModal: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
   },
   driverDetails: {
     flex: 1,
@@ -3292,6 +3458,195 @@ const styles = StyleSheet.create({
     color: colors.primary,
     fontWeight: '600',
     marginTop: 4,
+  },
+
+  // Collapsible trip panel styles
+  collapseHandle: {
+    alignItems: 'center',
+    paddingVertical: 6,
+  },
+  handleBar: {
+    width: 40,
+    height: 5,
+    backgroundColor: colors.ivory4,
+    borderRadius: 3,
+  },
+  collapsedTripInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 8,
+    paddingHorizontal: 4,
+  },
+  collapsedLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  collapsedNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+  },
+  driverAvatarSmall: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: spacing.small,
+    overflow: 'hidden',
+  },
+  collapsedDetails: {
+    flex: 1,
+  },
+  collapsedDriverName: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.orangeShade7,
+    marginRight: 6,
+  },
+  collapsedFare: {
+    fontSize: 13,
+    color: colors.primary,
+    fontWeight: '700',
+    marginTop: 2,
+  },
+  collapsedDistance: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.ivory3,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 16,
+  },
+  collapsedDistanceText: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: colors.primary,
+    marginLeft: 4,
+  },
+  // Body number badge
+  bodyNumberBadgeSmall: {
+    backgroundColor: colors.orangeShade2,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  bodyNumberTextSmall: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  bodyNumberBadge: {
+    backgroundColor: colors.orangeShade2,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 8,
+    marginLeft: 8,
+  },
+  bodyNumberText: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#fff',
+  },
+  // Expanded view styles
+  driverInfoCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.ivory3,
+    padding: spacing.medium,
+    borderRadius: 14,
+    marginBottom: spacing.small,
+  },
+  driverAvatarLarge: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: spacing.medium,
+    overflow: 'hidden',
+  },
+  driverDetailsExpanded: {
+    flex: 1,
+  },
+  driverNameRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flexWrap: 'wrap',
+    marginBottom: 6,
+  },
+  driverNameLarge: {
+    fontSize: 17,
+    fontWeight: '700',
+    color: colors.orangeShade7,
+  },
+  fareRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  fareLabel: {
+    fontSize: 14,
+    color: colors.orangeShade5,
+    marginRight: 4,
+  },
+  fareAmount: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.primary,
+  },
+  distanceCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: colors.ivory2,
+    padding: spacing.medium,
+    borderRadius: 12,
+    marginBottom: spacing.small,
+  },
+  distanceTextLarge: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.orangeShade7,
+    marginLeft: spacing.small,
+  },
+
+  // Collapsed booking panel styles
+  collapsedBookingInfo: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: 8,
+    paddingHorizontal: 4,
+  },
+  collapsedBookingLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    flex: 1,
+  },
+  bookingIconSmall: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginRight: spacing.small,
+  },
+  collapsedBookingTitle: {
+    fontSize: 15,
+    fontWeight: '600',
+    color: colors.orangeShade7,
+  },
+  collapsedBookButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    backgroundColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 
   // Offer comparison
@@ -3374,34 +3729,34 @@ const styles = StyleSheet.create({
   },
   tripProgressInfo: {
     flexDirection: 'row',
-    alignItems: 'center',
-    backgroundColor: colors.ivory3,
-    padding: spacing.medium,
-    borderRadius: 12,
-    marginBottom: spacing.medium,
+    alignItems: 'flex-start',
+    backgroundColor: colors.ivory2,
+    padding: spacing.small,
+    borderRadius: 10,
+    marginBottom: spacing.small,
   },
   tripProgressText: {
     flex: 1,
-    fontSize: 14,
-    color: colors.orangeShade6,
+    fontSize: 12,
+    color: colors.orangeShade5,
     marginLeft: spacing.small,
-    lineHeight: 20,
+    lineHeight: 18,
   },
   cancelTripButton: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 12,
-    borderRadius: 12,
+    paddingVertical: 10,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: '#dc3545',
-    backgroundColor: 'transparent',
+    backgroundColor: '#fff5f5',
   },
   cancelTripButtonText: {
     color: '#dc3545',
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '600',
-    marginLeft: spacing.small,
+    marginLeft: 6,
   },
   completeButton: {
     backgroundColor: '#28a745',
@@ -3638,6 +3993,14 @@ const styles = StyleSheet.create({
     color: '#fff',
     fontSize: 11,
     fontWeight: '700',
+  },
+  driverAvatarMini: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    backgroundColor: colors.primary,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   historyButton: {
     width: 40,
@@ -4343,13 +4706,14 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.small,
   },
   driverAvatarModal: {
-    width: 50,
-    height: 50,
-    borderRadius: 25,
+    width: 56,
+    height: 56,
+    borderRadius: 28,
     backgroundColor: colors.primary,
     justifyContent: 'center',
     alignItems: 'center',
     marginRight: spacing.medium,
+    overflow: 'hidden',
   },
   offerDriverDetailsModal: {
     flex: 1,

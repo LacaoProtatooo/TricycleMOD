@@ -5,9 +5,10 @@
  */
 
 import React from 'react';
+import { View } from 'react-native';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import Ionicons from 'react-native-vector-icons/Ionicons';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors } from '../../components/common/theme';
 import GuestWeather from './weather';
@@ -20,8 +21,10 @@ import GuestQueueScreen from './QueueScreen';
 const Tab = createBottomTabNavigator();
 
 const GuestMain = () => {
+  const insets = useSafeAreaInsets();
+  
   return (
-    <SafeAreaView style={{ flex: 1 }} edges={['bottom']}>
+    <View style={{ flex: 1 }}>
       <Tab.Navigator
         screenOptions={{
           tabBarActiveTintColor: colors.primary,
@@ -30,8 +33,8 @@ const GuestMain = () => {
             backgroundColor: colors.ivory1,
             borderTopWidth: 1,
             borderTopColor: colors.ivory3,
-            height: 60,
-            paddingBottom: 8,
+            height: 60 + insets.bottom,
+            paddingBottom: 8 + insets.bottom,
             paddingTop: 8,
           },
           headerShown: false,
@@ -92,7 +95,7 @@ const GuestMain = () => {
           }}
         />
       </Tab.Navigator>
-    </SafeAreaView>
+    </View>
   );
 };
 

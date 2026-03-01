@@ -6,7 +6,7 @@
  */
 
 import React, { useState, useEffect, useRef } from 'react';
-import { View, StyleSheet, Text, TouchableOpacity, Alert, ActivityIndicator, Platform } from 'react-native';
+import { View, StyleSheet, Text, TouchableOpacity, Alert, ActivityIndicator, Platform, Animated } from 'react-native';
 import MapView, { Marker, Circle, Polyline, Polygon, PROVIDER_GOOGLE } from 'react-native-maps';
 import * as Location from 'expo-location';
 import Ionicons from 'react-native-vector-icons/Ionicons';
@@ -41,6 +41,7 @@ const GuestMaps = () => {
   });
   const [userLocation, setUserLocation] = useState(null);
   const [hasPermission, setHasPermission] = useState(false);
+  const [isLegendExpanded, setIsLegendExpanded] = useState(false);
 
   useEffect(() => {
     requestLocationPermission();
@@ -163,20 +164,18 @@ const GuestMaps = () => {
             </Marker>
           )}
 
-          {/* Route end / destination marker */}
-          {WEBTODA_ROUTE_COORDINATES.length > 1 && (
-            <Marker
-              coordinate={WEBTODA_ROUTE_COORDINATES[WEBTODA_ROUTE_COORDINATES.length - 1]}
-              title="Route End"
-              description="WEBTODA route end point (destination)"
-              anchor={{ x: 0.5, y: 0.5 }}
-              zIndex={10}
-            >
-              <View style={styles.routeEndMarker}>
-                <Ionicons name="flag" size={14} color="#fff" />
-              </View>
-            </Marker>
-          )}
+          {/* Route end / destination marker - Terminal 1 */}
+          <Marker
+            coordinate={{ latitude: TERMINALS[0].latitude, longitude: TERMINALS[0].longitude }}
+            title="Route End"
+            description="WEBTODA route end point (Terminal 1)"
+            anchor={{ x: 0.5, y: 0.5 }}
+            zIndex={10}
+          >
+            <View style={styles.routeEndMarker}>
+              <Ionicons name="flag" size={14} color="#fff" />
+            </View>
+          </Marker>
 
           {/* Terminal markers and geofence circles */}
           {TERMINALS.map((terminal) => (
@@ -240,50 +239,65 @@ const GuestMaps = () => {
 
       {/* Legend */}
       <View style={styles.legend}>
-        <Text style={styles.legendTitle}>Map Legend</Text>
+        <TouchableOpacity 
+          style={styles.legendHeader}
+          onPress={() => setIsLegendExpanded(!isLegendExpanded)}
+          activeOpacity={0.7}
+        >
+          <Text style={styles.legendTitle}>Map Legend</Text>
+          <Ionicons 
+            name={isLegendExpanded ? 'chevron-down' : 'chevron-up'} 
+            size={18} 
+            color={colors.primary} 
+          />
+        </TouchableOpacity>
 
-        <View style={styles.legendItem}>
-          <View style={[styles.legendLine, { backgroundColor: colors.primary }]} />
-          <Text style={styles.legendText}>WEBTODA Route (Along the Route)</Text>
-        </View>
+        {isLegendExpanded && (
+          <View style={styles.legendContent}>
+            <View style={styles.legendItem}>
+              <View style={[styles.legendLine, { backgroundColor: colors.primary }]} />
+              <Text style={styles.legendText}>WEBTODA Route (Along the Route)</Text>
+            </View>
 
-        <View style={styles.legendItem}>
-          <View style={[styles.legendDot, { backgroundColor: 'rgba(255,140,0,0.6)' }]} />
-          <Text style={styles.legendText}>Service Area</Text>
-        </View>
+            <View style={styles.legendItem}>
+              <View style={[styles.legendDot, { backgroundColor: 'rgba(255,140,0,0.6)' }]} />
+              <Text style={styles.legendText}>Service Area</Text>
+            </View>
 
-        <View style={styles.legendItem}>
-          <View style={[styles.legendIcon, { backgroundColor: '#28a745' }]}>
-            <Ionicons name="play" size={10} color="#fff" />
+            <View style={styles.legendItem}>
+              <View style={[styles.legendIcon, { backgroundColor: '#28a745' }]}>
+                <Ionicons name="play" size={10} color="#fff" />
+              </View>
+              <Text style={styles.legendText}>Route Start</Text>
+            </View>
+
+            <View style={styles.legendItem}>
+              <View style={[styles.legendIcon, { backgroundColor: '#dc3545' }]}>
+                <Ionicons name="flag" size={10} color="#fff" />
+              </View>
+              <Text style={styles.legendText}>Route End (Destination)</Text>
+            </View>
+            
+            <View style={styles.legendItem}>
+              <View style={[styles.legendIcon, { backgroundColor: '#f97316' }]}>
+                <Ionicons name="flag" size={10} color="#fff" />
+              </View>
+              <Text style={styles.legendText}>Tricycle Terminals</Text>
+            </View>
+
+            <View style={styles.legendItem}>
+              <View style={[styles.legendIcon, { backgroundColor: colors.primary }]}>
+                <Ionicons name="person" size={10} color="#fff" />
+              </View>
+              <Text style={styles.legendText}>Your Location</Text>
+            </View>
+
+            <View style={styles.legendItem}>
+              <View style={styles.legendCircle} />
+              <Text style={styles.legendText}>Terminal Coverage Area</Text>
+            </View>
           </View>
-          <Text style={styles.legendText}>Route Start</Text>
-        </View>
-
-        <View style={styles.legendItem}>
-          <View style={[styles.legendIcon, { backgroundColor: '#dc3545' }]}>
-            <Ionicons name="flag" size={10} color="#fff" />
-          </View>
-          <Text style={styles.legendText}>Route End (Destination)</Text>
-        </View>
-        
-        <View style={styles.legendItem}>
-          <View style={[styles.legendIcon, { backgroundColor: '#f97316' }]}>
-            <Ionicons name="flag" size={10} color="#fff" />
-          </View>
-          <Text style={styles.legendText}>Tricycle Terminals</Text>
-        </View>
-
-        <View style={styles.legendItem}>
-          <View style={[styles.legendIcon, { backgroundColor: colors.primary }]}>
-            <Ionicons name="person" size={10} color="#fff" />
-          </View>
-          <Text style={styles.legendText}>Your Location</Text>
-        </View>
-
-        <View style={styles.legendItem}>
-          <View style={styles.legendCircle} />
-          <Text style={styles.legendText}>Terminal Coverage Area</Text>
-        </View>
+        )}
       </View>
     </SafeAreaView>
   );
@@ -364,9 +378,11 @@ const styles = StyleSheet.create({
   legend: {
     position: 'absolute',
     left: spacing.medium,
+    right: spacing.medium,
     bottom: spacing.medium,
     backgroundColor: colors.ivory1,
-    padding: spacing.small,
+    paddingHorizontal: spacing.medium,
+    paddingVertical: spacing.small,
     borderRadius: 12,
     borderWidth: 1,
     borderColor: colors.ivory3,
@@ -375,11 +391,22 @@ const styles = StyleSheet.create({
     shadowRadius: 4,
     elevation: 3,
   },
+  legendHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingVertical: spacing.xsmall,
+  },
   legendTitle: {
     fontSize: 14,
     fontWeight: '700',
     color: colors.primary,
-    marginBottom: spacing.xsmall,
+  },
+  legendContent: {
+    marginTop: spacing.small,
+    paddingTop: spacing.small,
+    borderTopWidth: 1,
+    borderTopColor: colors.ivory3,
   },
   legendItem: {
     flexDirection: 'row',
