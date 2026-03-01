@@ -209,8 +209,23 @@ export const syncCoordinates = async (req, res) => {
       });
     }
 
-    // Append coordinates
-    trip.coordinates.push(...validCoordinates);
+    // Deduplicate: skip coordinates whose timestamp already exists in the trip.
+    // This prevents inflated distance when the same coords are sent from both
+    // the background task and foreground sync (or on resume re-sync).
+    const existingTimestamps = new Set(
+      trip.coordinates.map(c => new Date(c.timestamp).getTime())
+    );
+    const uniqueCoords = validCoordinates.filter(c => {
+      const ts = new Date(c.timestamp).getTime();
+      if (existingTimestamps.has(ts)) return false;
+      existingTimestamps.add(ts); // also dedup within the incoming batch
+      return true;
+    });
+
+    // Append only unique coordinates
+    if (uniqueCoords.length > 0) {
+      trip.coordinates.push(...uniqueCoords);
+    }
     trip.lastSyncAt = new Date();
     trip.syncCount += 1;
 
@@ -295,12 +310,57 @@ export const endTrip = async (req, res) => {
           timestamp: c.timestamp ? new Date(c.timestamp) : new Date(),
         }));
 
+      // Deduplicate final coordinates against existing ones by timestamp
+      const existingTimestamps = new Set(
+        trip.coordinates.map(c => new Date(c.timestamp).getTime())
+      );
+      const uniqueFinalCoords = validCoords.filter(c => {
+        const ts = new Date(c.timestamp).getTime();
+        if (existingTimestamps.has(ts)) return false;
+        existingTimestamps.add(ts);
+        return true;
+      });
+
       // Safety: skip if adding would make document excessively large
-      if (trip.coordinates.length + validCoords.length < 50000) {
-        trip.coordinates.push(...validCoords);
-      } else {
-        console.warn(`Skipping ${validCoords.length} final coords — trip already has ${trip.coordinates.length} points`);
+      if (uniqueFinalCoords.length > 0 && trip.coordinates.length + uniqueFinalCoords.length < 50000) {
+        trip.coordinates.push(...uniqueFinalCoords);
+      } else if (uniqueFinalCoords.length > 0) {
+        console.warn(`Skipping ${uniqueFinalCoords.length} final coords — trip already has ${trip.coordinates.length} points`);
       }
+    }
+
+    // ── Clean coordinates before stats: sort, deduplicate, and remove GPS spikes ──
+    // This prevents inflated distance and "crazy lines" in relive playback.
+    if (trip.coordinates.length >= 2) {
+      // 1. Sort chronologically
+      trip.coordinates.sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+
+      // 2. Deduplicate by timestamp (same second = same reading)
+      const seenTs = new Set();
+      trip.coordinates = trip.coordinates.filter(c => {
+        const ts = new Date(c.timestamp).getTime();
+        if (seenTs.has(ts)) return false;
+        seenTs.add(ts);
+        return true;
+      });
+
+      // 3. Remove GPS spikes (impossible movement between consecutive points)
+      const cleaned = [trip.coordinates[0]];
+      for (let i = 1; i < trip.coordinates.length; i++) {
+        const prev = cleaned[cleaned.length - 1];
+        const curr = trip.coordinates[i];
+        const dist = haversineMeters(prev, curr);
+        const dt = (new Date(curr.timestamp) - new Date(prev.timestamp)) / 1000;
+
+        // Skip if: no time delta, impossibly fast (>100 km/h ≈ 28 m/s), or huge jump in tiny window
+        if (dt <= 0) continue;
+        const speedMps = dist / dt;
+        if (speedMps > 28) continue; // ~100 km/h max for tricycle
+        if (dist > 500 && dt < 10) continue; // 500m jump in <10s impossible
+
+        cleaned.push(curr);
+      }
+      trip.coordinates = cleaned;
     }
 
     // Update trip

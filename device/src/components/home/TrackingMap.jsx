@@ -2434,15 +2434,55 @@ export default function TrackingMap({
       if (response.data.success && response.data.trip.coordinates?.length >= 2) {
         const tripData = response.data.trip;
         // Set positions from trip data — include speed, heading, altitude for stats overlay
-        const coords = tripData.coordinates.map(c => ({
+        let coords = tripData.coordinates.map(c => ({
           latitude: c.latitude,
           longitude: c.longitude,
-          timestamp: c.timestamp,
+          timestamp: c.timestamp ? new Date(c.timestamp).getTime() : 0,
           altitude: c.altitude || 0,
           speed: c.speed || 0,
           heading: c.heading || 0,
           accuracy: c.accuracy || 0,
         }));
+
+        // ── Fix crazy lines: sort, deduplicate, and filter GPS spikes ──
+
+        // 1. Sort chronologically by timestamp
+        coords.sort((a, b) => (a.timestamp || 0) - (b.timestamp || 0));
+
+        // 2. Deduplicate (same timestamp + location = same reading synced multiple times)
+        const seen = new Set();
+        coords = coords.filter(c => {
+          const key = `${c.timestamp}_${c.latitude.toFixed(6)}_${c.longitude.toFixed(6)}`;
+          if (seen.has(key)) return false;
+          seen.add(key);
+          return true;
+        });
+
+        // 3. Remove GPS spikes (impossible speed jumps between consecutive points)
+        if (coords.length >= 2) {
+          const cleaned = [coords[0]];
+          for (let i = 1; i < coords.length; i++) {
+            const prev = cleaned[cleaned.length - 1];
+            const curr = coords[i];
+            const dist = haversineMeters(prev, curr);
+            const dt = ((curr.timestamp || 0) - (prev.timestamp || 0)) / 1000;
+
+            // Skip if: no time delta, impossibly fast (>100 km/h), or huge jump with tiny dt
+            if (dt <= 0) continue;
+            const speedMps = dist / dt;
+            if (speedMps > 28) continue; // ~100 km/h max for tricycle
+            if (dist > 500 && dt < 10) continue; // 500m jump in <10s
+
+            cleaned.push(curr);
+          }
+          coords = cleaned;
+        }
+
+        if (coords.length < 2) {
+          Alert.alert('Error', 'Trip has insufficient data after filtering for playback');
+          return;
+        }
+
         setPositions(coords);
 
         // Store trip-level stats for relive overlay

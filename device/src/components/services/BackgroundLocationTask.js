@@ -178,13 +178,12 @@ TaskManager.defineTask(BG_TASK_NAME, async ({ data, error }) => {
 
     await Promise.all(saveOps);
 
-    // Sync to server if odometer changed
+    // Sync odometer to server if changed (fire-and-forget, no trip coords)
     if (odometerChanged) {
         const trikeId = await AsyncStorage.getItem('active_tricycle_id');
         const token = await AsyncStorage.getItem('auth_token_str');
         
         if (trikeId && token) {
-            // Simple fire-and-forget fetch
             fetch(`${BACKEND}/api/tricycles/${trikeId}/odometer`, {
                 method: 'PUT',
                 headers: {
@@ -196,28 +195,11 @@ TaskManager.defineTask(BG_TASK_NAME, async ({ data, error }) => {
         }
     }
 
-    // Sync only NEW (un-synced) trip coordinates to server periodically in background.
-    // IMPORTANT: Do NOT clear BG_COORDS_KEY here — the foreground merge handler owns that.
-    const unsyncedCoords = bgCoords.slice(bgSyncedIndex);
-    if (hasActiveTrip && unsyncedCoords.length >= 10) {
-      try {
-        const token = await AsyncStorage.getItem('auth_token_str');
-        const headers = { 'Content-Type': 'application/json' };
-        if (token) headers['Authorization'] = `Bearer ${token}`;
-        const response = await fetch(`${BACKEND}/api/tracking/${activeTrip.tripId}/sync`, {
-          method: 'POST',
-          headers,
-          body: JSON.stringify({ coordinates: unsyncedCoords }),
-        });
-        if (response.ok) {
-          // Mark these as synced — do NOT clear coords, foreground merge will handle that
-          bgSyncedIndex = bgCoords.length;
-          await AsyncStorage.setItem(BG_SYNCED_INDEX_KEY, String(bgSyncedIndex));
-        }
-      } catch (syncErr) {
-        console.warn('BG trip coord sync failed', syncErr);
-      }
-    }
+    // NOTE: We do NOT sync trip coordinates to the server from the background task.
+    // The foreground periodic merge (every 5s) reads BG_COORDS_KEY and is the SOLE
+    // path to the server via syncToServer(). Syncing from both BG task and foreground
+    // caused duplicate coordinates on the server, inflating distance (e.g. 0.35 km → 13 km)
+    // and creating "crazy lines" in relive playback.
 
   } catch (e) {
     console.warn('BG task save error', e);
