@@ -26,6 +26,7 @@ import MapView, { Marker, Polyline, PROVIDER_GOOGLE } from 'react-native-maps';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useSelector } from 'react-redux';
+import { CommonActions } from '@react-navigation/native';
 import axios from 'axios';
 
 import { colors, spacing } from '../../components/common/theme';
@@ -215,6 +216,53 @@ const BookingHistoryDetail = ({ navigation, route }) => {
       booking.status === 'completed' ||
       (booking.status === 'cancelled' && booking.cancelledBy === 'driver')
     );
+  };
+
+  // Check if user can report this trip (within 7 days of completion)
+  const REPORT_WINDOW_DAYS = 7;
+  
+  const canReportTrip = () => {
+    // User can report if:
+    // 1. Not viewing as driver
+    // 2. Trip is completed
+    // 3. Driver exists
+    // 4. Within 7 days of completion
+    if (isDriver) return false;
+    if (!booking?.driver) return false;
+    if (booking.status !== 'completed') return false;
+    
+    const completionDate = booking.completedAt ? new Date(booking.completedAt) : new Date(booking.updatedAt);
+    const now = new Date();
+    const daysSinceCompletion = Math.floor((now - completionDate) / (1000 * 60 * 60 * 24));
+    
+    return daysSinceCompletion <= REPORT_WINDOW_DAYS;
+  };
+
+  const getDaysLeftToReport = () => {
+    if (!booking?.completedAt && !booking?.updatedAt) return 0;
+    const completionDate = booking.completedAt ? new Date(booking.completedAt) : new Date(booking.updatedAt);
+    const now = new Date();
+    const daysSinceCompletion = Math.floor((now - completionDate) / (1000 * 60 * 60 * 24));
+    return Math.max(0, REPORT_WINDOW_DAYS - daysSinceCompletion);
+  };
+
+  const handleReportTrip = () => {
+    // Navigate to Home screen first, then to the Complaints tab with pre-selected params
+    // This uses nested navigation since Complaints is inside the guest tab navigator
+    navigation.navigate('Home', {
+      screen: 'Complaints',
+      params: {
+        preSelectedBooking: {
+          _id: booking._id,
+          pickup: booking.pickup,
+          destination: booking.destination,
+          createdAt: booking.createdAt,
+          completedAt: booking.completedAt,
+          fare: booking.fare,
+        },
+        preSelectedDriver: booking.driver,
+      },
+    });
   };
 
   const formatDate = (dateString) => {
@@ -656,6 +704,32 @@ const BookingHistoryDetail = ({ navigation, route }) => {
             >
               <Ionicons name="star" size={18} color="#fff" />
               <Text style={styles.rateButtonText}>Rate Driver</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {/* Report Trip Button (within 7 days of completion) */}
+        {canReportTrip() && (
+          <View style={styles.card}>
+            <View style={styles.cardHeader}>
+              <Ionicons name="flag" size={20} color="#dc3545" />
+              <Text style={[styles.cardTitle, { color: '#dc3545' }]}>Report an Issue</Text>
+            </View>
+            <Text style={styles.ratePromptText}>
+              Had a problem with this trip? You can report issues within 7 days of completion.
+            </Text>
+            <View style={styles.reportTimeWarning}>
+              <Ionicons name="time-outline" size={16} color="#856404" />
+              <Text style={styles.reportTimeText}>
+                {getDaysLeftToReport()} day{getDaysLeftToReport() !== 1 ? 's' : ''} left to report
+              </Text>
+            </View>
+            <TouchableOpacity
+              style={styles.reportButton}
+              onPress={handleReportTrip}
+            >
+              <Ionicons name="flag" size={18} color="#fff" />
+              <Text style={styles.reportButtonText}>Report Trip</Text>
             </TouchableOpacity>
           </View>
         )}
@@ -1137,6 +1211,35 @@ const styles = StyleSheet.create({
     gap: 8,
   },
   rateButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
+  },
+  reportTimeWarning: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fff3cd',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 8,
+    marginBottom: 12,
+    gap: 6,
+  },
+  reportTimeText: {
+    color: '#856404',
+    fontSize: 14,
+    fontWeight: '500',
+  },
+  reportButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#dc3545',
+    paddingVertical: 14,
+    borderRadius: 10,
+    gap: 8,
+  },
+  reportButtonText: {
     color: '#fff',
     fontSize: 16,
     fontWeight: '700',

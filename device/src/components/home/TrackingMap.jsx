@@ -1320,6 +1320,7 @@ export default function TrackingMap({
           deviceId: deviceId || 'dev_sim_device',
           name: `DEV Sim: ${routeLabel} ${new Date().toLocaleDateString()}`,
           initialCoordinate: initialCoord,
+          bookingId: activeBooking?._id,
         });
 
         if (response.data.success) {
@@ -1800,6 +1801,7 @@ export default function TrackingMap({
           deviceId,
           name: tripName,
           initialCoordinate: initialCoord,
+          bookingId: activeBooking?._id,
         }, { timeout: 10000 }); // 10 second timeout
 
         if (response.data.success) {

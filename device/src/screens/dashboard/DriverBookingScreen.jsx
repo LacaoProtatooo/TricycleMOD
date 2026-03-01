@@ -76,6 +76,13 @@ const DriverBookingScreen = () => {
   // DEV: Track whether simulation reached destination (for 300m bypass)
   const [devSimAtDestination, setDevSimAtDestination] = useState(false);
 
+  // GPS Route tracking state (for recording actual route taken)
+  const [trackingTripId, setTrackingTripId] = useState(null);
+  const coordinatesBufferRef = useRef([]);
+  const syncIntervalRef = useRef(null);
+  // Live route coordinates for map display
+  const [liveRouteCoordinates, setLiveRouteCoordinates] = useState([]);
+
   const [region, setRegion] = useState({
     latitude: 14.5176,
     longitude: 121.0509,
@@ -88,6 +95,9 @@ const DriverBookingScreen = () => {
     return () => {
       if (watchRef.current) {
         watchRef.current.remove();
+      }
+      if (syncIntervalRef.current) {
+        clearInterval(syncIntervalRef.current);
       }
     };
   }, [db]);
@@ -179,13 +189,15 @@ const DriverBookingScreen = () => {
     if (!authToken) return;
     
     try {
-      const response = await axios.get(`${BACKEND}/api/booking/driver?status=accepted`, {
+      // Check for both accepted and in_progress bookings
+      const response = await axios.get(`${BACKEND}/api/booking/driver?status=accepted,in_progress`, {
         headers: { Authorization: `Bearer ${authToken}` },
       });
       
       if (response.data.success && response.data.bookings.length > 0) {
-        setActiveBooking(response.data.bookings[0]);
-        startLocationTracking();
+        const booking = response.data.bookings[0];
+        setActiveBooking(booking);
+        startLocationTracking(booking);
       }
     } catch (error) {
       console.error('Error checking active booking:', error);
@@ -209,27 +221,92 @@ const DriverBookingScreen = () => {
     }
   };
 
-  const startLocationTracking = async () => {
+  const startLocationTracking = async (bookingData = null) => {
     if (watchRef.current) return;
 
+    const booking = bookingData || activeBooking;
+    if (!booking) return;
+
     try {
+      // Get current location for initial coordinate
+      const currentLocation = await Location.getCurrentPositionAsync({
+        accuracy: Location.Accuracy.High,
+      });
+      const initialCoord = {
+        latitude: currentLocation.coords.latitude,
+        longitude: currentLocation.coords.longitude,
+        altitude: currentLocation.coords.altitude || 0,
+        accuracy: currentLocation.coords.accuracy || 0,
+        speed: currentLocation.coords.speed || 0,
+        heading: currentLocation.coords.heading || 0,
+      };
+
+      // Initialize live route with current position
+      setLiveRouteCoordinates([{
+        latitude: currentLocation.coords.latitude,
+        longitude: currentLocation.coords.longitude,
+      }]);
+
+      // Start GPS tracking trip on server
+      if (authToken) {
+        try {
+          const trackResponse = await axios.post(
+            `${BACKEND}/api/tracking/start`,
+            {
+              bookingId: booking._id,
+              name: `Trip to ${booking.destination?.address || 'destination'}`,
+              initialCoordinate: initialCoord,
+            },
+            { headers: { Authorization: `Bearer ${authToken}` } }
+          );
+          
+          if (trackResponse.data.success) {
+            setTrackingTripId(trackResponse.data.tripId);
+            coordinatesBufferRef.current = [];
+            
+            // Start interval to sync coordinates every 10 seconds
+            syncIntervalRef.current = setInterval(() => {
+              syncCoordinatesToServer(trackResponse.data.tripId);
+            }, 10000);
+          }
+        } catch (trackErr) {
+          console.warn('Failed to start GPS tracking:', trackErr.message);
+        }
+      }
+
+      // Watch position for distance calculation and coordinate collection
       const subscription = await Location.watchPositionAsync(
         {
           accuracy: Location.Accuracy.High,
-          timeInterval: 5000,
-          distanceInterval: 10,
+          timeInterval: 3000,  // More frequent updates for better route tracking
+          distanceInterval: 5, // Capture every 5 meters for smoother route
         },
         (location) => {
-          const { latitude, longitude } = location.coords;
+          const { latitude, longitude, altitude, accuracy, speed, heading } = location.coords;
           setUserLocation({ latitude, longitude });
           
+          // Add coordinate to live route for map display
+          setLiveRouteCoordinates(prev => [...prev, { latitude, longitude }]);
+          
+          // Add coordinate to buffer for syncing to server
+          coordinatesBufferRef.current.push({
+            latitude,
+            longitude,
+            altitude: altitude || 0,
+            accuracy: accuracy || 0,
+            speed: speed || 0,
+            heading: heading || 0,
+            timestamp: new Date().toISOString(),
+          });
+          
           // Calculate distance to destination if active booking
-          if (activeBooking) {
+          if (activeBooking || booking) {
+            const dest = (activeBooking || booking).destination;
             const distance = calculateDistance(
               latitude,
               longitude,
-              activeBooking.destination.latitude,
-              activeBooking.destination.longitude
+              dest.latitude,
+              dest.longitude
             );
             setDistanceToDestination(distance);
           }
@@ -238,6 +315,61 @@ const DriverBookingScreen = () => {
       watchRef.current = subscription;
     } catch (error) {
       console.error('Error starting location tracking:', error);
+    }
+  };
+
+  // Sync collected coordinates to server
+  const syncCoordinatesToServer = async (tripId) => {
+    if (!tripId || coordinatesBufferRef.current.length === 0) return;
+    
+    try {
+      const coordsToSync = [...coordinatesBufferRef.current];
+      coordinatesBufferRef.current = []; // Clear buffer
+      
+      await axios.post(
+        `${BACKEND}/api/tracking/${tripId}/sync`,
+        { coordinates: coordsToSync },
+        { headers: { Authorization: `Bearer ${authToken}` } }
+      );
+    } catch (err) {
+      // Re-add coordinates to buffer if sync fails
+      coordinatesBufferRef.current = [...coordinatesBufferRef.current, ...coordinatesBufferRef.current];
+      console.warn('Failed to sync coordinates:', err.message);
+    }
+  };
+
+  // Stop GPS tracking and end trip on server
+  const stopLocationTracking = async () => {
+    if (syncIntervalRef.current) {
+      clearInterval(syncIntervalRef.current);
+      syncIntervalRef.current = null;
+    }
+    
+    // Final sync of any remaining coordinates
+    if (trackingTripId && coordinatesBufferRef.current.length > 0) {
+      await syncCoordinatesToServer(trackingTripId);
+    }
+    
+    // End tracking trip on server
+    if (trackingTripId && authToken) {
+      try {
+        await axios.post(
+          `${BACKEND}/api/tracking/${trackingTripId}/end`,
+          {},
+          { headers: { Authorization: `Bearer ${authToken}` } }
+        );
+      } catch (err) {
+        console.warn('Failed to end GPS tracking:', err.message);
+      }
+    }
+    
+    setTrackingTripId(null);
+    coordinatesBufferRef.current = [];
+    setLiveRouteCoordinates([]);
+    
+    if (watchRef.current) {
+      watchRef.current.remove();
+      watchRef.current = null;
     }
   };
 
@@ -312,7 +444,7 @@ const DriverBookingScreen = () => {
         } else {
           Alert.alert('Success', 'Booking accepted!');
           setActiveBooking(response.data.booking);
-          startLocationTracking();
+          startLocationTracking(response.data.booking);
         }
         
         // Refresh nearby bookings
@@ -389,13 +521,12 @@ const DriverBookingScreen = () => {
         if (__DEV__) {
           AsyncStorage.setItem(SIM_BROADCAST_KEY, JSON.stringify({ isActive: false, reachedDestination: false })).catch(() => {});
         }
+        
+        // Stop GPS tracking and end the tracking trip on server
+        await stopLocationTracking();
+        
         setActiveBooking(null);
         setDistanceToDestination(null);
-        
-        if (watchRef.current) {
-          watchRef.current.remove();
-          watchRef.current = null;
-        }
       }
     } catch (error) {
       Alert.alert('Error', error.response?.data?.message || 'Failed to complete trip');
@@ -417,6 +548,10 @@ const DriverBookingScreen = () => {
                 { reason: 'Driver cancelled' },
                 { headers: { Authorization: `Bearer ${authToken}` } }
               );
+              
+              // Stop GPS tracking
+              await stopLocationTracking();
+              
               setActiveBooking(null);
               setDistanceToDestination(null);
             } catch (error) {
@@ -638,13 +773,22 @@ const DriverBookingScreen = () => {
               </View>
             </Marker>
             
-            {/* Route Line */}
-            {activeBooking.pickup && activeBooking.destination && (
+            {/* Live Route Line - shows actual GPS trail taken */}
+            {liveRouteCoordinates.length >= 2 && (
               <Polyline
-                coordinates={[activeBooking.pickup, activeBooking.destination]}
+                coordinates={liveRouteCoordinates}
                 strokeColor={colors.primary}
-                strokeWidth={3}
-                lineDashPattern={[10, 5]}
+                strokeWidth={4}
+              />
+            )}
+            
+            {/* Remaining Route - dashed line from current position to destination */}
+            {userLocation && activeBooking.destination && (
+              <Polyline
+                coordinates={[userLocation, activeBooking.destination]}
+                strokeColor="#888"
+                strokeWidth={2}
+                lineDashPattern={[8, 6]}
               />
             )}
             

@@ -87,7 +87,7 @@ const generateGeoJSON = (record) => {
  */
 export const startTrip = async (req, res) => {
   try {
-    const { deviceId, name, initialCoordinate } = req.body;
+    const { deviceId, name, initialCoordinate, bookingId } = req.body;
     const userId = req.user?._id || null;
 
     // Validate input
@@ -137,6 +137,7 @@ export const startTrip = async (req, res) => {
       tripId,
       userId,
       deviceId: deviceId || null,
+      bookingId: bookingId || null,
       name: name || `Trip ${new Date().toLocaleDateString()}`,
       startTime,
       status: 'active',

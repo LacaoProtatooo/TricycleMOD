@@ -37,8 +37,11 @@ import { API_URL as BASE_URL } from '../../utils/config';
 const BACKEND_URL = BASE_URL;
 const API_URL = `${BACKEND_URL}/api/complaints`;
 
-const ComplaintScreen = ({ navigation }) => {
+const ComplaintScreen = ({ navigation, route }) => {
   const db = useAsyncSQLiteContext();
+  
+  // Pre-selection params from booking history detail
+  const { preSelectedBooking, preSelectedDriver } = route?.params || {};
   
   // Authentication state
   const [isAuthenticated, setIsAuthenticated] = useState(false);
@@ -122,6 +125,24 @@ const ComplaintScreen = ({ navigation }) => {
       loadInitialData();
     }
   }, [isAuthenticated]);
+
+  // Apply pre-selection from booking history detail
+  useEffect(() => {
+    if (isAuthenticated && !loading && preSelectedBooking) {
+      // Pre-select the booking
+      setSelectedBooking(preSelectedBooking);
+      // Pre-select the driver if provided
+      if (preSelectedDriver) {
+        setSelectedDriver(preSelectedDriver);
+      }
+      // Set incident date to booking date
+      if (preSelectedBooking.createdAt) {
+        setIncidentDate(new Date(preSelectedBooking.createdAt));
+      }
+      // Ensure we're in 'file' view
+      setActiveView('file');
+    }
+  }, [isAuthenticated, loading, preSelectedBooking, preSelectedDriver]);
 
   const loadInitialData = async () => {
     setLoading(true);

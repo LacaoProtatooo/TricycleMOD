@@ -16,6 +16,9 @@ const BG_COORDS_KEY = 'bg_trip_coords_v1'; // coordinates accumulated in backgro
 const BG_DISTANCE_KEY = 'bg_trip_distance_v1'; // distance accumulated in background
 const BG_SYNCED_INDEX_KEY = 'bg_trip_synced_index_v1'; // how many coords have been synced to server (don't re-send)
 
+// Key for active booking ID (for pushing driver location to passenger)
+const ACTIVE_BOOKING_ID_KEY = 'bg_active_booking_id_v1';
+
 function toRad(v) { return (v * Math.PI) / 180; }
 function haversineMeters(a, b) {
   if (!a || !b) return 0;
@@ -192,6 +195,26 @@ TaskManager.defineTask(BG_TASK_NAME, async ({ data, error }) => {
                 },
                 body: JSON.stringify({ odometer })
             }).catch(err => console.warn('BG sync failed', err));
+        }
+    }
+
+    // Push driver location to server for active booking (so passenger can track driver even with screen off)
+    if (lastPos && lastPos.latitude && lastPos.longitude) {
+        const bookingId = await AsyncStorage.getItem(ACTIVE_BOOKING_ID_KEY);
+        const token = await AsyncStorage.getItem('auth_token_str');
+        
+        if (bookingId && token) {
+            fetch(`${BACKEND}/api/booking/${bookingId}/driver-location`, {
+                method: 'PUT',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${token}`
+                },
+                body: JSON.stringify({
+                    latitude: lastPos.latitude,
+                    longitude: lastPos.longitude,
+                })
+            }).catch(err => console.warn('BG booking location push failed', err));
         }
     }
 

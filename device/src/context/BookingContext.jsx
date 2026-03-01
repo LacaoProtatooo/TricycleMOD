@@ -24,6 +24,9 @@ const PICKUP_RADIUS_METERS = 50;
 const REROUTE_THRESHOLD_METERS = 80; // Reroute when driver is more than 80m off route
 const REROUTE_COOLDOWN_MS = 15000; // Don't reroute more than once every 15 seconds
 
+// Key for storing active booking ID for background location push
+const ACTIVE_BOOKING_ID_KEY = 'bg_active_booking_id_v1';
+
 const BookingContext = createContext(null);
 
 export const useBooking = () => {
@@ -260,6 +263,20 @@ export const BookingProvider = ({ children }) => {
     
     pushDriverLocation();
   }, [activeBooking?._id, activeBooking?.status, userLocation?.latitude, userLocation?.longitude, authToken]);
+
+  // Store active booking ID in AsyncStorage for background location push
+  useEffect(() => {
+    const storeBookingIdForBg = async () => {
+      if (activeBooking?._id && ['accepted', 'in_progress'].includes(activeBooking.status)) {
+        // Store booking ID for background task
+        await AsyncStorage.setItem(ACTIVE_BOOKING_ID_KEY, activeBooking._id);
+      } else {
+        // Clear booking ID when not active
+        await AsyncStorage.removeItem(ACTIVE_BOOKING_ID_KEY);
+      }
+    };
+    storeBookingIdForBg();
+  }, [activeBooking?._id, activeBooking?.status]);
 
   // Fetch booking route when active booking changes
   useEffect(() => {
