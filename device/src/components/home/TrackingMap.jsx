@@ -1407,6 +1407,25 @@ export default function TrackingMap({
         ...simCoord,
       }));
 
+      // ── Push simulated location to server for passenger tracking (throttled every 3 points) ──
+      if (activeBooking?._id && i % 3 === 0) {
+        try {
+          const token = await AsyncStorage.getItem('auth_token_str');
+          if (token) {
+            await axios.put(`${BASE_URL}/api/booking/${activeBooking._id}/driver-location`, {
+              latitude: pt.latitude,
+              longitude: pt.longitude,
+              heading: hdg,
+              speed: speedMps,
+            }, {
+              headers: { Authorization: `Bearer ${token}` },
+            });
+          }
+        } catch (e) {
+          // Silently ignore errors during simulation
+        }
+      }
+
       // ── Directly add to positions array (polyline + current-session relive) ──
       const newPoint = { latitude: pt.latitude, longitude: pt.longitude };
       setPositions(prev => [...prev, newPoint].slice(-5000));

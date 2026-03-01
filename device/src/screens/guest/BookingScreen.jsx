@@ -361,11 +361,14 @@ const BookingScreen = ({ navigation }) => {
     };
   }, [dispatch]); // Only depend on dispatch which is stable
 
-  // Poll driver's live location during active trip
+  // Poll driver's live location during accepted (en route to pickup) and active trip
   useEffect(() => {
-    const isActive = bookingStatus === BOOKING_STATUS.TRIP_ACTIVE && currentBooking?._id;
+    // Poll when driver has accepted (en route) OR trip is active (in_progress)
+    const isDriverEnRoute = currentBooking?.status === 'accepted' && currentBooking?._id;
+    const isTripActive = bookingStatus === BOOKING_STATUS.TRIP_ACTIVE && currentBooking?._id;
+    const shouldPoll = (isDriverEnRoute || isTripActive) && db;
 
-    if (isActive && db) {
+    if (shouldPoll) {
       const pollDriverLocation = async () => {
         try {
           const token = await getToken(db);
@@ -378,6 +381,14 @@ const BookingScreen = ({ navigation }) => {
             const loc = res.data.driverLocation;
             if (loc.latitude != null && loc.longitude != null) {
               setDriverLocation({ latitude: loc.latitude, longitude: loc.longitude });
+              
+              // When trip is in_progress (passenger is in vehicle), animate map to follow driver
+              if (currentBooking.status === 'in_progress' && mapRef.current) {
+                mapRef.current.animateCamera({
+                  center: { latitude: loc.latitude, longitude: loc.longitude },
+                  zoom: 16,
+                }, { duration: 500 });
+              }
             }
           }
         } catch (e) {
@@ -385,15 +396,15 @@ const BookingScreen = ({ navigation }) => {
         }
       };
 
-      // Fetch immediately, then every 8 seconds (reduced for battery)
+      // Fetch immediately, then every 3 seconds for responsive tracking
       pollDriverLocation();
-      driverLocationPollRef.current = setInterval(pollDriverLocation, 8000);
+      driverLocationPollRef.current = setInterval(pollDriverLocation, 3000);
     } else {
       if (driverLocationPollRef.current) {
         clearInterval(driverLocationPollRef.current);
         driverLocationPollRef.current = null;
       }
-      if (!isActive) setDriverLocation(null);
+      if (!shouldPoll) setDriverLocation(null);
     }
 
     return () => {
@@ -402,7 +413,7 @@ const BookingScreen = ({ navigation }) => {
         driverLocationPollRef.current = null;
       }
     };
-  }, [bookingStatus, currentBooking?._id, db]);
+  }, [bookingStatus, currentBooking?._id, currentBooking?.status, db]);
 
   // Handle errors
   useEffect(() => {
@@ -1402,7 +1413,7 @@ const BookingScreen = ({ navigation }) => {
           region={region}
           onRegionChangeComplete={setRegion}
           onPress={handleMapPress}
-          showsUserLocation={true}
+          showsUserLocation={!(currentBooking?.status === 'in_progress')}
           showsMyLocationButton={false}
         >
         {/* WEBTODA Service Area Polygon Boundary */}
@@ -1525,18 +1536,30 @@ const BookingScreen = ({ navigation }) => {
           />
         )}
 
-        {/* Driver live location marker */}
-        {driverLocation && bookingStatus === BOOKING_STATUS.TRIP_ACTIVE && (
+        {/* Driver live location marker - show when driver is en route (accepted) or during trip */}
+        {driverLocation && (currentBooking?.status === 'accepted' || bookingStatus === BOOKING_STATUS.TRIP_ACTIVE) && (
           <Marker
             coordinate={driverLocation}
-            title="Driver"
-            description="Your driver's current location"
+            title={currentBooking?.status === 'in_progress' ? "You're Here" : currentBooking?.status === 'accepted' ? "Driver En Route" : "Driver"}
+            description={currentBooking?.status === 'in_progress' 
+              ? "You are riding with the driver" 
+              : currentBooking?.status === 'accepted'
+              ? "Driver is on the way to pick you up"
+              : "Your driver's current location"}
             anchor={{ x: 0.5, y: 0.5 }}
             zIndex={102}
             tracksViewChanges={true}
           >
-            <View style={styles.driverMarker} collapsable={false}>
-              <Ionicons name="bicycle" size={16} color="#fff" />
+            <View style={[
+              styles.driverMarker,
+              currentBooking?.status === 'in_progress' && styles.inVehicleMarker,
+              currentBooking?.status === 'accepted' && styles.driverEnRouteMarker
+            ]} collapsable={false}>
+              <Ionicons 
+                name={currentBooking?.status === 'in_progress' ? "car" : "bicycle"} 
+                size={16} 
+                color="#fff" 
+              />
             </View>
           </Marker>
         )}
@@ -3046,6 +3069,22 @@ const styles = StyleSheet.create({
     borderColor: '#fff',
     alignItems: 'center',
     justifyContent: 'center',
+  },
+  inVehicleMarker: {
+    width: 36,
+    height: 36,
+    backgroundColor: '#28a745',
+    borderRadius: 18,
+    borderWidth: 3,
+    borderColor: '#fff',
+  },
+  driverEnRouteMarker: {
+    width: 32,
+    height: 32,
+    backgroundColor: '#ff9500',
+    borderRadius: 16,
+    borderWidth: 2,
+    borderColor: '#fff',
   },
   markerIcon: {
     fontSize: 14,

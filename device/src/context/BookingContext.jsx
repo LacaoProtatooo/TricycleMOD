@@ -235,6 +235,32 @@ export const BookingProvider = ({ children }) => {
     }
   }, [activeBooking, userLocation, isPickedUp, calculateDistance]);
 
+  // Push driver location to server for passenger to track (works in both dev and production)
+  useEffect(() => {
+    if (!activeBooking || !userLocation || !authToken) return;
+    
+    // Only push when booking is active (accepted or in_progress)
+    if (!['accepted', 'in_progress'].includes(activeBooking.status)) return;
+    
+    const pushDriverLocation = async () => {
+      try {
+        await axios.put(
+          `${BACKEND_URL}/api/booking/${activeBooking._id}/driver-location`,
+          {
+            latitude: userLocation.latitude,
+            longitude: userLocation.longitude,
+          },
+          { headers: { Authorization: `Bearer ${authToken}` } }
+        );
+      } catch (err) {
+        // Silently fail - location push is best-effort
+        console.debug('Failed to push driver location:', err.message);
+      }
+    };
+    
+    pushDriverLocation();
+  }, [activeBooking?._id, activeBooking?.status, userLocation?.latitude, userLocation?.longitude, authToken]);
+
   // Fetch booking route when active booking changes
   useEffect(() => {
     const fetchBookingRoute = async () => {
