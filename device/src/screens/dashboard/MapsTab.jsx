@@ -113,7 +113,7 @@ const MapsTab = () => {
   };
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       {/* Coding Day Warning Banner */}
       {codingDayStatus && codingDayStatus.isCodingDay && (
         <View style={styles.codingDayBanner}>

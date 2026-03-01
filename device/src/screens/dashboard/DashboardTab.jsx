@@ -119,7 +119,7 @@ const DashboardTab = () => {
   }, [assignedTricycle]);
 
   return (
-    <SafeAreaView style={styles.container}>
+    <SafeAreaView style={styles.container} edges={['top', 'left', 'right']}>
       <WeatherAdvisoryModal />
       <ScrollView
         style={{ flex: 1 }}
