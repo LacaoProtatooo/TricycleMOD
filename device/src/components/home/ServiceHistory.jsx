@@ -789,7 +789,7 @@ const ServiceHistory = ({ tricycleId, plateNumber, maintenanceData, serverHistor
             </Text>
           </View>
         ) : (
-          <ScrollView style={styles.recordsList} showsVerticalScrollIndicator={false}>
+          <ScrollView style={styles.recordsList} nestedScrollEnabled={true} showsVerticalScrollIndicator={true}>
             {filteredHistory.map((record, idx) => (
               <ServiceRecordCard
                 key={`${record.itemKey}-${record.date}-${idx}`}
@@ -997,7 +997,7 @@ const styles = StyleSheet.create({
     marginBottom: 10,
   },
   recordsList: {
-    maxHeight: 400,
+    maxHeight: 500,
   },
   recordCard: {
     flexDirection: 'row',

@@ -1406,6 +1406,26 @@ const RideExperienceSurvey = ({ tricycleId, onDiagnosticsComplete, maintenanceSc
 						/>
 						<Text style={{ fontSize: 14, color: colors.orangeShade5, fontWeight: '600' }}>km</Text>
 					</View>
+					{odometerKm != null && odometerKm > 0 && (
+						<TouchableOpacity
+							onPress={() => setOdometerReading(String(Math.round(odometerKm)))}
+							style={{
+								flexDirection: 'row',
+								alignItems: 'center',
+								backgroundColor: colors.primary + '14',
+								paddingHorizontal: 12,
+								paddingVertical: 8,
+								borderRadius: 8,
+								marginTop: 8,
+								alignSelf: 'flex-start',
+							}}
+						>
+							<Ionicons name="bicycle" size={16} color={colors.primary} style={{ marginRight: 6 }} />
+							<Text style={{ fontSize: 13, fontWeight: '600', color: colors.primary }}>
+								Auto-fill: {Math.round(odometerKm).toLocaleString()} km
+							</Text>
+						</TouchableOpacity>
+					)}
 					{odometerReading && lastOdo > 0 && parseInt(odometerReading) > lastOdo && (
 						<Text style={{ fontSize: 11, color: '#16a34a', marginTop: 6 }}>
 							+{(parseInt(odometerReading) - lastOdo).toLocaleString()} {t('sinceLastCheckup')}
@@ -1569,14 +1589,6 @@ const RideExperienceSurvey = ({ tricycleId, onDiagnosticsComplete, maintenanceSc
 		return (
 			<View>
 				<View style={{ alignItems: 'center', marginBottom: 20 }}>
-					<View style={{
-						width: 56, height: 56, borderRadius: 28,
-						backgroundColor: colors.primary + '12',
-						alignItems: 'center', justifyContent: 'center',
-						marginBottom: 10,
-					}}>
-						<Ionicons name={category.icon} size={28} color={colors.primary} />
-					</View>
 					<Text style={{ fontSize: 18, fontWeight: '700', color: colors.orangeShade7, textAlign: 'center' }}>
 						{tCatField(category.id, 'title') || category.title}
 					</Text>
@@ -1652,7 +1664,6 @@ const RideExperienceSurvey = ({ tricycleId, onDiagnosticsComplete, maintenanceSc
 								borderColor: isSelected ? severityColor : isRecurring ? '#f8717130' : 'transparent',
 							}}
 						>
-							<Text style={{ fontSize: 20, marginRight: 12 }}>{option.emoji}</Text>
 							<View style={{ flex: 1 }}>
 								<Text style={{
 									fontSize: 15, fontWeight: '600',

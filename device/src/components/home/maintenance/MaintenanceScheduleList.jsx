@@ -380,22 +380,36 @@ const MaintenanceScheduleList = ({
 									)}
 
 									{/* KM Progress Bar */}
-									<View style={styles.progressSection}>
-										<Text style={[styles.progressLabel]}>KM</Text>
+									<View style={{ marginTop: 6 }}>
+										<View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 3 }}>
+											<View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+												<Ionicons name="speedometer-outline" size={10} color={color} />
+												<Text style={{ fontSize: 10, fontWeight: '700', color }}>{progress}%</Text>
+											</View>
+											<Text style={{ fontSize: 10, color: colors.orangeShade5 }}>
+												{Math.max(0, (parseInt(odometerKm || currentKm || '0', 10) - last)).toLocaleString()} / {group.intervalKm.toLocaleString()} km
+											</Text>
+										</View>
 										<View style={styles.barBackgroundSmall}>
 											<View style={[styles.barFillSmall, { width: `${progress}%`, backgroundColor: color }]} />
 										</View>
-										<Text style={[styles.progressPercent, { color }]}>{progress}%</Text>
 									</View>
 									
 									{/* Time Progress Bar */}
 									{group.baselineDays && (
-										<View style={styles.progressSection}>
-											<Text style={[styles.progressLabel]}>Time</Text>
+										<View style={{ marginTop: 6 }}>
+											<View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 3 }}>
+												<View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+													<Ionicons name="calendar-outline" size={10} color={timeColor} />
+													<Text style={{ fontSize: 10, fontWeight: '700', color: timeColor }}>{timeProgress}%</Text>
+												</View>
+												<Text style={{ fontSize: 10, color: colors.orangeShade5 }}>
+													{lastDate ? Math.floor((Date.now() - new Date(lastDate)) / (1000 * 60 * 60 * 24)) : 0} / {group.baselineDays} days
+												</Text>
+											</View>
 											<View style={styles.barBackgroundSmall}>
 												<View style={[styles.barFillSmall, { width: `${timeProgress}%`, backgroundColor: timeColor }]} />
 											</View>
-											<Text style={[styles.progressPercent, { color: timeColor }]}>{timeProgress}%</Text>
 										</View>
 									)}
 									
