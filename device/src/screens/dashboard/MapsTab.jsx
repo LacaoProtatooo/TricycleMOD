@@ -39,6 +39,8 @@ const MapsTab = () => {
     cancelTrip,
     markDriverArrived,
     markNoShow,
+    passengerCancelledBooking,
+    acknowledgeCancellation,
   } = useSafeBooking();
   
   const [user, setUser] = useState(null);
@@ -229,6 +231,32 @@ const MapsTab = () => {
           </View>
         </View>
       </Modal>
+
+      {/* Passenger Cancellation Modal */}
+      <Modal
+        visible={!!passengerCancelledBooking}
+        animationType="fade"
+        transparent
+        onRequestClose={() => {}}
+      >
+        <View style={styles.cancelModalOverlay}>
+          <View style={styles.cancelModalContent}>
+            <View style={styles.cancelModalIcon}>
+              <Ionicons name="close-circle" size={60} color="#dc3545" />
+            </View>
+            <Text style={styles.cancelModalTitle}>Booking Cancelled</Text>
+            <Text style={styles.cancelModalMessage}>
+              {passengerCancelledBooking?.passengerName || 'The passenger'} has cancelled the ride.
+            </Text>
+            <TouchableOpacity
+              style={styles.cancelModalButton}
+              onPress={acknowledgeCancellation}
+            >
+              <Text style={styles.cancelModalButtonText}>OK, Got it</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -308,5 +336,57 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '700',
     color: colors.text,
+  },
+
+  // Passenger Cancellation Modal
+  cancelModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.large,
+  },
+  cancelModalContent: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: spacing.large,
+    alignItems: 'center',
+    width: '100%',
+    maxWidth: 320,
+    shadowColor: '#000',
+    shadowOpacity: 0.25,
+    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 12,
+    elevation: 10,
+  },
+  cancelModalIcon: {
+    marginBottom: spacing.medium,
+  },
+  cancelModalTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#dc3545',
+    marginBottom: spacing.small,
+    textAlign: 'center',
+  },
+  cancelModalMessage: {
+    fontSize: 15,
+    color: '#555',
+    textAlign: 'center',
+    marginBottom: spacing.large,
+    lineHeight: 22,
+  },
+  cancelModalButton: {
+    backgroundColor: colors.primary,
+    paddingVertical: 14,
+    paddingHorizontal: 40,
+    borderRadius: 10,
+    width: '100%',
+    alignItems: 'center',
+  },
+  cancelModalButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
   },
 });

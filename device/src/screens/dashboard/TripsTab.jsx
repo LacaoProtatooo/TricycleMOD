@@ -55,6 +55,8 @@ const TripsTab = () => {
     sendCounterOffer,
     cancelTrip,
     refresh,
+    passengerCancelledBooking,
+    acknowledgeCancellation,
   } = useBooking();
 
   // Counter offer modal state
@@ -346,6 +348,32 @@ const TripsTab = () => {
           </View>
         </View>
       </Modal>
+
+      {/* Passenger Cancellation Modal */}
+      <Modal
+        visible={!!passengerCancelledBooking}
+        animationType="fade"
+        transparent
+        onRequestClose={() => {}}
+      >
+        <View style={styles.cancelNotifyOverlay}>
+          <View style={styles.cancelNotifyContent}>
+            <View style={styles.cancelNotifyIcon}>
+              <Ionicons name="close-circle" size={60} color="#dc3545" />
+            </View>
+            <Text style={styles.cancelNotifyTitle}>Booking Cancelled</Text>
+            <Text style={styles.cancelNotifyMessage}>
+              {passengerCancelledBooking?.passengerName || 'The passenger'} has cancelled the ride.
+            </Text>
+            <TouchableOpacity
+              style={styles.cancelNotifyButton}
+              onPress={acknowledgeCancellation}
+            >
+              <Text style={styles.cancelNotifyButtonText}>OK, Got it</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -608,5 +636,57 @@ const styles = StyleSheet.create({
   sendOfferBtnText: {
     color: '#fff',
     fontWeight: '600',
+  },
+
+  // Passenger Cancellation Notification Modal
+  cancelNotifyOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.6)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: spacing.large,
+  },
+  cancelNotifyContent: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: spacing.large,
+    alignItems: 'center',
+    width: '100%',
+    maxWidth: 320,
+    shadowColor: '#000',
+    shadowOpacity: 0.25,
+    shadowOffset: { width: 0, height: 4 },
+    shadowRadius: 12,
+    elevation: 10,
+  },
+  cancelNotifyIcon: {
+    marginBottom: spacing.medium,
+  },
+  cancelNotifyTitle: {
+    fontSize: 20,
+    fontWeight: '700',
+    color: '#dc3545',
+    marginBottom: spacing.small,
+    textAlign: 'center',
+  },
+  cancelNotifyMessage: {
+    fontSize: 15,
+    color: '#555',
+    textAlign: 'center',
+    marginBottom: spacing.large,
+    lineHeight: 22,
+  },
+  cancelNotifyButton: {
+    backgroundColor: colors.primary,
+    paddingVertical: 14,
+    paddingHorizontal: 40,
+    borderRadius: 10,
+    width: '100%',
+    alignItems: 'center',
+  },
+  cancelNotifyButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: '700',
   },
 });

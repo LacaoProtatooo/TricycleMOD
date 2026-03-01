@@ -18,6 +18,7 @@ import { getRoute } from '../utils/routeService';
 const BACKEND_URL = BASE_URL;
 const API_URL = `${BACKEND_URL}/api/booking`;
 const POLL_INTERVAL = 10000;
+const ACTIVE_BOOKING_POLL_INTERVAL = 5000; // Poll active booking status more frequently
 const COMPLETION_RADIUS_METERS = 300;
 const PICKUP_RADIUS_METERS = 50;
 const REROUTE_THRESHOLD_METERS = 80; // Reroute when driver is more than 80m off route
@@ -43,11 +44,13 @@ const SAFE_DEFAULTS = {
   noShowWaitMinutes: 5,
   bookingRoute: null,
   isRerouting: false,
+  passengerCancelledBooking: null,
   confirmPickup: () => {},
   completeTrip: () => {},
   cancelTrip: () => {},
   markDriverArrived: () => {},
   markNoShow: () => {},
+  acknowledgeCancellation: () => {},
 };
 
 export const useSafeBooking = () => {
@@ -75,6 +78,9 @@ export const BookingProvider = ({ children }) => {
   const [activeBooking, setActiveBooking] = useState(null);
   const [pendingOffers, setPendingOffers] = useState([]);
   
+  // Passenger cancellation notification
+  const [passengerCancelledBooking, setPassengerCancelledBooking] = useState(null);
+  
   // Trip tracking
   const [distanceToDestination, setDistanceToDestination] = useState(null);
   const [distanceToPickup, setDistanceToPickup] = useState(null);
@@ -93,6 +99,7 @@ export const BookingProvider = ({ children }) => {
 
   // Refs
   const pollIntervalRef = useRef(null);
+  const activeBookingPollRef = useRef(null); // Poll active booking status to detect passenger cancellation
   const watchRef = useRef(null);
   const bookingRouteRef = useRef(null); // For rerouting comparison
   const lastRerouteTimeRef = useRef(0);
@@ -172,6 +179,7 @@ export const BookingProvider = ({ children }) => {
     
     return () => {
       if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
+      if (activeBookingPollRef.current) clearInterval(activeBookingPollRef.current);
       if (watchRef.current) watchRef.current.remove();
     };
   }, [db]);
@@ -331,6 +339,76 @@ export const BookingProvider = ({ children }) => {
       console.error('Error checking active booking:', err);
     }
   }, [authToken, startLocationTracking]);
+
+  // Stop polling for active booking status
+  const stopActiveBookingPoll = useCallback(() => {
+    if (activeBookingPollRef.current) {
+      clearInterval(activeBookingPollRef.current);
+      activeBookingPollRef.current = null;
+    }
+  }, []);
+
+  // Poll active booking status to detect passenger cancellation
+  const pollActiveBookingStatus = useCallback(async () => {
+    if (!activeBooking || !authToken) return;
+    
+    try {
+      const response = await axios.get(`${API_URL}/${activeBooking._id}`, {
+        headers: { Authorization: `Bearer ${authToken}` }
+      });
+      
+      if (response.data.success) {
+        const booking = response.data.booking;
+        
+        // Check if booking was cancelled (by passenger or system, not by driver)
+        if (booking.status === 'cancelled' && booking.cancelledBy !== 'driver') {
+          // Store the cancelled booking info for the modal
+          setPassengerCancelledBooking({
+            ...booking,
+            passengerName: booking.cancelledBy === 'user'
+              ? (booking.user?.firstname 
+                  ? `${booking.user.firstname} ${booking.user.lastname || ''}`.trim()
+                  : 'The passenger')
+              : 'The system',
+          });
+          // Clear active booking (will be fully cleared when driver acknowledges)
+          setActiveBooking(null);
+          stopActiveBookingPoll();
+          return;
+        }
+      }
+    } catch (err) {
+      // If booking not found (404), it might have been deleted
+      if (err.response?.status === 404) {
+        setPassengerCancelledBooking({
+          _id: activeBooking._id,
+          passengerName: activeBooking.user?.firstname 
+            ? `${activeBooking.user.firstname} ${activeBooking.user.lastname || ''}`.trim()
+            : 'The passenger',
+        });
+        setActiveBooking(null);
+        stopActiveBookingPoll();
+      }
+    }
+  }, [activeBooking, authToken, stopActiveBookingPoll]);
+
+  // Start polling for active booking status changes
+  const startActiveBookingPoll = useCallback(() => {
+    if (activeBookingPollRef.current) return;
+    
+    activeBookingPollRef.current = setInterval(pollActiveBookingStatus, ACTIVE_BOOKING_POLL_INTERVAL);
+  }, [pollActiveBookingStatus]);
+
+  // Start/stop active booking poll when activeBooking changes
+  useEffect(() => {
+    if (activeBooking && authToken) {
+      startActiveBookingPoll();
+    } else {
+      stopActiveBookingPoll();
+    }
+    
+    return () => stopActiveBookingPoll();
+  }, [activeBooking?._id, authToken, startActiveBookingPoll, stopActiveBookingPoll]);
 
   // Fetch nearby bookings
   const fetchNearbyBookings = useCallback(async () => {
@@ -628,6 +706,12 @@ export const BookingProvider = ({ children }) => {
     AsyncStorage.removeItem('booking_trigger_recording_v1').catch(() => {});
   }, [stopLocationTracking]);
 
+  // Acknowledge passenger cancellation - driver dismisses the modal
+  const acknowledgeCancellation = useCallback(() => {
+    setPassengerCancelledBooking(null);
+    resetTripState();
+  }, [resetTripState]);
+
   // Refresh
   const refresh = useCallback(async () => {
     setIsRefreshing(true);
@@ -655,6 +739,7 @@ export const BookingProvider = ({ children }) => {
     noShowWaitMinutes,
     bookingRoute,
     isRerouting,
+    passengerCancelledBooking,
     
     // Constants
     PICKUP_RADIUS_METERS,
@@ -672,6 +757,7 @@ export const BookingProvider = ({ children }) => {
     refresh,
     fetchNearbyBookings,
     resetTripState,
+    acknowledgeCancellation,
   };
 
   return (
