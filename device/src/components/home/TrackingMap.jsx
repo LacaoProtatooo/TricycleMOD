@@ -2169,12 +2169,15 @@ export default function TrackingMap({
         // Sync odometer to server after trip ends
         try {
           const trikeId = await AsyncStorage.getItem('active_tricycle_id');
-          if (trikeId) {
+          const token = await AsyncStorage.getItem('auth_token_str');
+          if (trikeId && token) {
             const currentKmStr = await AsyncStorage.getItem(KM_KEY);
             const currentKm = currentKmStr ? parseFloat(currentKmStr) : 0;
             if (currentKm > 0) {
               await axios.put(`${BASE_URL}/api/tricycles/${trikeId}/odometer`, {
                 odometer: Math.round(currentKm),
+              }, {
+                headers: { Authorization: `Bearer ${token}` },
               });
               console.log('Odometer synced to server:', Math.round(currentKm));
             }
