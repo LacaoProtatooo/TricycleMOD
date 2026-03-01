@@ -11,6 +11,19 @@ import { v4 as uuidv4 } from 'uuid';
  * Handles trip lifecycle: start → sync coordinates → end → export GPX
  */
 
+// Helper function for haversine distance calculation (meters)
+function haversineMeters(a, b) {
+  const toRad = (v) => (v * Math.PI) / 180;
+  const R = 6371000; // Earth's radius in meters
+  const φ1 = toRad(a.latitude);
+  const φ2 = toRad(b.latitude);
+  const Δφ = toRad(b.latitude - a.latitude);
+  const Δλ = toRad(b.longitude - a.longitude);
+  const aa = Math.sin(Δφ / 2) ** 2 + Math.cos(φ1) * Math.cos(φ2) * Math.sin(Δλ / 2) ** 2;
+  const c = 2 * Math.atan2(Math.sqrt(aa), Math.sqrt(1 - aa));
+  return R * c;
+}
+
 // Helper to generate GPX content
 const generateGPX = (record) => {
   const formatDate = (date) => new Date(date).toISOString();
