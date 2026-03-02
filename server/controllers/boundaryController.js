@@ -29,6 +29,12 @@ export const getDriverBoundaryInfo = async (req, res) => {
       status: { $in: ['pending', 'paid'] }
     }).sort({ createdAt: -1 });
 
+    // Get disputed settlements (operator rejected - driver needs to re-submit)
+    const disputedSettlements = await BoundarySettlement.find({
+      driver: driverId,
+      status: 'disputed'
+    }).sort({ updatedAt: -1 });
+
     // Get recent confirmed settlements (last 30 days)
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
@@ -55,17 +61,37 @@ export const getDriverBoundaryInfo = async (req, res) => {
     let outstandingBalance = 0;
     let daysSinceLastSettlement = 0;
     let lastSettledDate = null;
+    let hasEverSettled = false;
+    let daysSinceType = 'since_start'; // 'since_settlement' or 'since_start'
 
     if (boundaryAmount > 0) {
-      // Find the last confirmed or paid settlement
-      const lastSettlement = await BoundarySettlement.findOne({
+      // Find the last confirmed settlement (actual completed settlement)
+      const lastConfirmedSettlement = await BoundarySettlement.findOne({
         driver: driverId,
         tricycle: tricycle._id,
-        status: { $in: ['confirmed', 'paid'] }
-      }).sort({ periodEnd: -1, createdAt: -1 });
+        status: 'confirmed'
+      }).sort({ confirmedAt: -1 });
 
-      // Determine the reference date (last settlement or tricycle assignment)
-      const referenceDate = lastSettlement?.periodEnd || tricycle.boundary?.lastSettledAt || tricycle.createdAt;
+      // Check if driver has ever made a settlement
+      hasEverSettled = !!lastConfirmedSettlement;
+
+      // Determine the reference date and type
+      let referenceDate;
+      if (lastConfirmedSettlement) {
+        // Use the confirmed date as the last settlement date
+        referenceDate = lastConfirmedSettlement.confirmedAt || lastConfirmedSettlement.periodEnd;
+        daysSinceType = 'since_settlement';
+      } else if (tricycle.boundary?.lastSettledAt) {
+        // An operator may have set an initial settled date
+        referenceDate = tricycle.boundary.lastSettledAt;
+        daysSinceType = 'since_start';
+      } else {
+        // No settlements ever - use tricycle creation or a reasonable start date
+        // Get when driver was assigned (updatedAt might indicate this, but not perfectly)
+        referenceDate = tricycle.createdAt;
+        daysSinceType = 'since_start';
+      }
+      
       lastSettledDate = referenceDate;
 
       const now = new Date();
@@ -104,15 +130,19 @@ export const getDriverBoundaryInfo = async (req, res) => {
         phone: tricycle.operator.phone
       } : null,
       pendingSettlements,
+      disputedSettlements,
       recentSettlements,
       summary: {
         totalPending,
         totalAwaitingConfirmation,
         pendingCount: pendingSettlements.filter(s => s.status === 'pending').length,
         awaitingConfirmationCount: pendingSettlements.filter(s => s.status === 'paid').length,
+        disputedCount: disputedSettlements.length,
         outstandingBalance,
         daysSinceLastSettlement,
-        lastSettledDate
+        lastSettledDate,
+        hasEverSettled,
+        daysSinceType // 'since_settlement' or 'since_start'
       }
     });
 
@@ -221,26 +251,36 @@ export const getOperatorOverview = async (req, res) => {
       .populate('tricycle', 'plateNumber bodyNumber')
       .sort({ paidAt: -1, createdAt: -1 });
 
-    // Get recent confirmed settlements
+    // Get recent confirmed/disputed settlements
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
 
     const recentSettlements = await BoundarySettlement.find({
       operator: operatorId,
-      status: 'confirmed',
-      confirmedAt: { $gte: thirtyDaysAgo }
+      status: { $in: ['confirmed', 'disputed'] },
+      $or: [
+        { confirmedAt: { $gte: thirtyDaysAgo } },
+        { updatedAt: { $gte: thirtyDaysAgo } }
+      ]
     })
       .populate('driver', 'firstname lastname')
       .populate('tricycle', 'plateNumber bodyNumber')
-      .sort({ confirmedAt: -1 })
+      .sort({ updatedAt: -1, confirmedAt: -1 })
       .limit(20);
 
-    // Calculate totals
+    // Get disputed settlements count
+    const disputedCount = await BoundarySettlement.countDocuments({
+      operator: operatorId,
+      status: 'disputed'
+    });
+
+    // Calculate totals - only count CONFIRMED settlements, not disputed
     const totalPendingConfirmation = pendingSettlements
       .filter(s => s.status === 'paid')
       .reduce((sum, s) => sum + s.amount, 0);
 
     const totalConfirmedThisMonth = recentSettlements
+      .filter(s => s.status === 'confirmed')
       .reduce((sum, s) => sum + s.amount, 0);
 
     // Expected daily income
@@ -260,7 +300,8 @@ export const getOperatorOverview = async (req, res) => {
         totalPendingConfirmation,
         totalConfirmedThisMonth,
         expectedDailyIncome: expectedDaily,
-        expectedWeeklyIncome: expectedDaily * 7
+        expectedWeeklyIncome: expectedDaily * 7,
+        disputedCount
       }
     });
 

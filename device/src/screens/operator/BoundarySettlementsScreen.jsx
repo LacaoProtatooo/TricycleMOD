@@ -20,6 +20,7 @@ import {
   RefreshControl,
   ActivityIndicator,
   Modal,
+  TextInput,
 } from 'react-native';
 import Ionicons from 'react-native-vector-icons/Ionicons';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -41,6 +42,12 @@ const BoundarySettlementsScreen = ({ navigation }) => {
   const [overviewData, setOverviewData] = useState(null);
   const [activeTab, setActiveTab] = useState('pending'); // 'pending', 'history', 'tricycles'
   const [confirmingId, setConfirmingId] = useState(null);
+  
+  // Dispute modal state
+  const [isDisputeModalVisible, setIsDisputeModalVisible] = useState(false);
+  const [disputeReason, setDisputeReason] = useState('');
+  const [disputingSettlementId, setDisputingSettlementId] = useState(null);
+  const [isSubmittingDispute, setIsSubmittingDispute] = useState(false);
 
   useEffect(() => {
     initializeScreen();
@@ -102,27 +109,40 @@ const BoundarySettlementsScreen = ({ navigation }) => {
   };
 
   const handleDisputeSettlement = (settlementId) => {
-    Alert.prompt(
-      'Dispute Settlement',
-      'Enter reason for dispute:',
-      async (reason) => {
-        if (!reason) return;
-        try {
-          const response = await axios.put(
-            `${BACKEND_URL}/api/boundary/dispute/${settlementId}`,
-            { reason },
-            { headers: { Authorization: `Bearer ${authToken}` } }
-          );
-          if (response.data.success) {
-            Alert.alert('Disputed', 'Settlement has been marked as disputed.');
-            await fetchOverview();
-          }
-        } catch (error) {
-          Alert.alert('Error', 'Failed to dispute settlement');
-        }
-      },
-      'plain-text'
-    );
+    setDisputingSettlementId(settlementId);
+    setDisputeReason('');
+    setIsDisputeModalVisible(true);
+  };
+
+  const submitDispute = async () => {
+    if (!disputeReason.trim()) {
+      Alert.alert('Error', 'Please enter a reason for the dispute');
+      return;
+    }
+    
+    try {
+      setIsSubmittingDispute(true);
+      const response = await axios.put(
+        `${BACKEND_URL}/api/boundary/dispute/${disputingSettlementId}`,
+        { reason: disputeReason },
+        { headers: { Authorization: `Bearer ${authToken}` } }
+      );
+      if (response.data.success) {
+        setIsDisputeModalVisible(false);
+        Alert.alert('Disputed', 'Settlement has been marked as disputed.');
+        await fetchOverview();
+      }
+    } catch (error) {
+      Alert.alert('Error', error.response?.data?.message || 'Failed to dispute settlement');
+    } finally {
+      setIsSubmittingDispute(false);
+    }
+  };
+
+  const closeDisputeModal = () => {
+    setIsDisputeModalVisible(false);
+    setDisputeReason('');
+    setDisputingSettlementId(null);
   };
 
   const formatDate = (dateString) => {
@@ -204,6 +224,20 @@ const BoundarySettlementsScreen = ({ navigation }) => {
         <View style={styles.confirmedBadge}>
           <Ionicons name="checkmark-circle" size={16} color="#28a745" />
           <Text style={styles.confirmedText}>Confirmed {formatDate(item.confirmedAt)}</Text>
+        </View>
+      )}
+
+      {item.status === 'disputed' && (
+        <View style={styles.disputedBadge}>
+          <View style={styles.disputedHeader}>
+            <Ionicons name="alert-circle" size={16} color="#dc3545" />
+            <Text style={styles.disputedText}>Disputed {formatDate(item.updatedAt)}</Text>
+          </View>
+          {item.notes && item.notes.includes('[DISPUTED]') && (
+            <Text style={styles.disputedReason} numberOfLines={2}>
+              Reason: {item.notes.split('[DISPUTED]:').pop()?.trim() || 'No reason provided'}
+            </Text>
+          )}
         </View>
       )}
     </View>
@@ -316,7 +350,7 @@ const BoundarySettlementsScreen = ({ navigation }) => {
           onPress={() => setActiveTab('history')}
         >
           <Text style={[styles.tabText, activeTab === 'history' && styles.tabTextActive]}>
-            History
+            History {overviewData?.summary?.disputedCount > 0 ? `(${overviewData.summary.disputedCount} disputed)` : ''}
           </Text>
         </TouchableOpacity>
         <TouchableOpacity
@@ -343,7 +377,11 @@ const BoundarySettlementsScreen = ({ navigation }) => {
             <View style={styles.emptyContainer}>
               <Ionicons name="checkmark-done-circle-outline" size={60} color="#ccc" />
               <Text style={styles.emptyText}>No pending settlements</Text>
-              <Text style={styles.emptySubtext}>All driver payments have been confirmed</Text>
+              <Text style={styles.emptySubtext}>
+                {overviewData?.summary?.disputedCount > 0 
+                  ? `${overviewData.summary.disputedCount} disputed - check History tab`
+                  : 'All driver payments have been processed'}
+              </Text>
             </View>
           }
         />
@@ -384,6 +422,58 @@ const BoundarySettlementsScreen = ({ navigation }) => {
           }
         />
       )}
+
+      {/* Dispute Modal */}
+      <Modal
+        visible={isDisputeModalVisible}
+        transparent={true}
+        animationType="fade"
+        onRequestClose={closeDisputeModal}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.disputeModalContainer}>
+            <View style={styles.disputeModalHeader}>
+              <Text style={styles.disputeModalTitle}>Dispute Settlement</Text>
+              <TouchableOpacity onPress={closeDisputeModal} style={styles.closeModalBtn}>
+                <Ionicons name="close" size={24} color="#666" />
+              </TouchableOpacity>
+            </View>
+            
+            <Text style={styles.disputeModalLabel}>Enter reason for dispute:</Text>
+            <TextInput
+              style={styles.disputeInput}
+              placeholder="Describe the issue..."
+              placeholderTextColor="#999"
+              value={disputeReason}
+              onChangeText={setDisputeReason}
+              multiline
+              numberOfLines={4}
+              textAlignVertical="top"
+            />
+            
+            <View style={styles.disputeModalActions}>
+              <TouchableOpacity
+                style={styles.cancelDisputeBtn}
+                onPress={closeDisputeModal}
+                disabled={isSubmittingDispute}
+              >
+                <Text style={styles.cancelDisputeBtnText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.submitDisputeBtn, isSubmittingDispute && { opacity: 0.7 }]}
+                onPress={submitDispute}
+                disabled={isSubmittingDispute}
+              >
+                {isSubmittingDispute ? (
+                  <ActivityIndicator size="small" color="#fff" />
+                ) : (
+                  <Text style={styles.submitDisputeBtnText}>Submit Dispute</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 };
@@ -612,6 +702,29 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#28a745',
   },
+  disputedBadge: {
+    marginTop: 12,
+    paddingTop: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#f0f0f0',
+  },
+  disputedHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  disputedText: {
+    fontSize: 12,
+    color: '#dc3545',
+    fontWeight: '600',
+  },
+  disputedReason: {
+    fontSize: 11,
+    color: '#666',
+    fontStyle: 'italic',
+    marginTop: 4,
+    marginLeft: 22,
+  },
 
   // Tricycle Card
   tricycleCard: {
@@ -687,6 +800,81 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: '#999',
     marginTop: 4,
+  },
+
+  // Dispute Modal
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 20,
+  },
+  disputeModalContainer: {
+    backgroundColor: '#fff',
+    borderRadius: 16,
+    padding: 20,
+    width: '100%',
+    maxWidth: 400,
+  },
+  disputeModalHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 16,
+  },
+  disputeModalTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: '#333',
+  },
+  closeModalBtn: {
+    padding: 4,
+  },
+  disputeModalLabel: {
+    fontSize: 14,
+    color: '#666',
+    marginBottom: 8,
+  },
+  disputeInput: {
+    borderWidth: 1,
+    borderColor: '#ddd',
+    borderRadius: 8,
+    padding: 12,
+    fontSize: 14,
+    minHeight: 100,
+    color: '#333',
+    backgroundColor: '#f9f9f9',
+  },
+  disputeModalActions: {
+    flexDirection: 'row',
+    gap: 12,
+    marginTop: 16,
+  },
+  cancelDisputeBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: '#ddd',
+    alignItems: 'center',
+  },
+  cancelDisputeBtnText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#666',
+  },
+  submitDisputeBtn: {
+    flex: 1,
+    paddingVertical: 12,
+    borderRadius: 8,
+    backgroundColor: '#dc3545',
+    alignItems: 'center',
+  },
+  submitDisputeBtnText: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#fff',
   },
 });
 

@@ -419,6 +419,31 @@ const TripsTab = () => {
                     </View>
                   )}
 
+                  {/* Disputed Settlements Alert */}
+                  {boundaryInfo.summary?.disputedCount > 0 && (
+                    <View style={styles.disputedAlert}>
+                      <View style={styles.disputedAlertHeader}>
+                        <Ionicons name="warning" size={20} color="#dc3545" />
+                        <Text style={styles.disputedAlertTitle}>
+                          {boundaryInfo.summary.disputedCount} Disputed Settlement{boundaryInfo.summary.disputedCount > 1 ? 's' : ''}
+                        </Text>
+                      </View>
+                      <Text style={styles.disputedAlertText}>
+                        Your operator has disputed {boundaryInfo.summary.disputedCount > 1 ? 'some' : 'a'} payment{boundaryInfo.summary.disputedCount > 1 ? 's' : ''}. Please review and re-submit.
+                      </Text>
+                      {boundaryInfo.disputedSettlements?.map((settlement) => (
+                        <View key={settlement._id} style={styles.disputedItem}>
+                          <Text style={styles.disputedItemAmount}>₱{settlement.amount}</Text>
+                          <Text style={styles.disputedItemReason} numberOfLines={2}>
+                            {settlement.notes?.includes('[DISPUTED]') 
+                              ? settlement.notes.split('[DISPUTED]:').pop()?.trim() 
+                              : 'No reason provided'}
+                          </Text>
+                        </View>
+                      ))}
+                    </View>
+                  )}
+
                   {/* Outstanding Balance */}
                   {boundaryInfo.summary?.outstandingBalance > 0 && (
                     <View style={styles.outstandingBox}>
@@ -430,15 +455,19 @@ const TripsTab = () => {
                         ₱{boundaryInfo.summary.outstandingBalance.toLocaleString()}
                       </Text>
                       <Text style={styles.outstandingDetails}>
-                        {boundaryInfo.summary.daysSinceLastSettlement} day{boundaryInfo.summary.daysSinceLastSettlement !== 1 ? 's' : ''} since last settlement
+                        {boundaryInfo.summary.hasEverSettled 
+                          ? `${boundaryInfo.summary.daysSinceLastSettlement} day${boundaryInfo.summary.daysSinceLastSettlement !== 1 ? 's' : ''} since last settlement`
+                          : `${boundaryInfo.summary.daysSinceLastSettlement} day${boundaryInfo.summary.daysSinceLastSettlement !== 1 ? 's' : ''} since assignment (no settlements yet)`
+                        }
                       </Text>
                     </View>
                   )}
 
-                  {/* All Clear - only when no outstanding and no pending */}
+                  {/* All Clear - only when no outstanding, no pending, and no disputed */}
                   {boundaryInfo.summary?.outstandingBalance === 0 && 
                    boundaryInfo.summary?.totalPending === 0 && 
-                   boundaryInfo.summary?.totalAwaitingConfirmation === 0 && (
+                   boundaryInfo.summary?.totalAwaitingConfirmation === 0 &&
+                   (boundaryInfo.summary?.disputedCount || 0) === 0 && (
                     <View style={styles.noPendingBox}>
                       <Ionicons name="checkmark-circle" size={20} color="#28a745" />
                       <Text style={styles.noPendingText}>All settlements cleared!</Text>
@@ -1100,6 +1129,49 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: '600',
     color: '#28a745',
+  },
+  disputedAlert: {
+    backgroundColor: '#fef2f2',
+    padding: spacing.medium,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: '#fecaca',
+    marginBottom: spacing.small,
+  },
+  disputedAlertHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 6,
+  },
+  disputedAlertTitle: {
+    fontSize: 14,
+    fontWeight: '700',
+    color: '#dc3545',
+    marginLeft: 6,
+  },
+  disputedAlertText: {
+    fontSize: 12,
+    color: '#666',
+    marginBottom: 8,
+  },
+  disputedItem: {
+    backgroundColor: '#fff',
+    padding: 10,
+    borderRadius: 6,
+    marginTop: 6,
+    borderLeftWidth: 3,
+    borderLeftColor: '#dc3545',
+  },
+  disputedItemAmount: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#333',
+  },
+  disputedItemReason: {
+    fontSize: 11,
+    color: '#666',
+    fontStyle: 'italic',
+    marginTop: 2,
   },
   outstandingBox: {
     backgroundColor: '#fef2f2',
