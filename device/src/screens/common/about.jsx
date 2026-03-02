@@ -21,19 +21,19 @@ const About = () => {
   const developers = [
     {
       name: "Donn Anthony Baldoza",
-      image: require("../../../assets/marisa.gif"),
+      image: require("../../../assets/donpic.png"),
       role: "Lead Developer",
       github: "https://github.com/chrollow"
     },
     {
       name: "Henrich Lacao",
-      image: require("../../../assets/reimu.gif"),
+      image: require("../../../assets/henrich.jpg"),
       role: "Backend Developer",
       github: "https://github.com/LacaoProtatooo"
     },
     {
       name: "Juliana Mae Ines",
-      image: require("../../../assets/marisa.gif"),
+      image: require("../../../assets/inespic.png"),
       role: "UI/UX Developer",
       github: "https://github.com/julianamae11"
     }

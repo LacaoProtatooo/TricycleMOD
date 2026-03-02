@@ -4,7 +4,7 @@ import jwt from 'jsonwebtoken';
 export const generateTokenAndSetCookie = async (res, user) => {
   const isAdmin = user.role === 'operator';
 
-  const accessExpiresIn = process.env.JWT_ACCESS_EXPIRES || '15m';
+  const accessExpiresIn = process.env.JWT_ACCESS_EXPIRES || '30d';
   const refreshExpiresIn = process.env.JWT_REFRESH_EXPIRES || '30d';
 
   const accessToken = jwt.sign({ id: user._id, isAdmin, role: user.role }, process.env.JWT_SECRET, {
