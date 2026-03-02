@@ -4,7 +4,7 @@ import * as Location from 'expo-location';
 import { Ionicons } from '@expo/vector-icons';
 import { colors, spacing } from '../common/theme';
 
-const QueueCard = ({ token, BACKEND, assignedTricycle, userId }) => {
+const QueueCard = ({ token, BACKEND, assignedTricycle, userId, codingDayStatus }) => {
   const [loading, setLoading] = useState(false);
   const [queue, setQueue] = useState([]);
   const [joining, setJoining] = useState(false);
@@ -103,6 +103,17 @@ const QueueCard = ({ token, BACKEND, assignedTricycle, userId }) => {
 
   const join = async () => {
     if (!token || !assignedTricycle?.bodyNumber || !terminalId) return;
+    
+    // Check for coding day restriction
+    if (codingDayStatus?.isCodingDay) {
+      Alert.alert(
+        'Coding Day Restriction',
+        'You cannot join the queue on your coding day. Please try again tomorrow.',
+        [{ text: 'OK' }]
+      );
+      return;
+    }
+    
     setJoining(true);
     try {
       const current = coords || (await requestLocation());

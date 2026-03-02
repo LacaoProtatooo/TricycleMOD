@@ -13,7 +13,7 @@ export const getDriverBoundaryInfo = async (req, res) => {
     // Find tricycle assigned to this driver
     const tricycle = await Tricycle.findOne({ driver: driverId })
       .populate('operator', 'firstname lastname phone')
-      .select('plateNumber bodyNumber boundary operator');
+      .select('plateNumber bodyNumber boundary operator createdAt');
 
     if (!tricycle) {
       return res.status(200).json({
@@ -23,7 +23,7 @@ export const getDriverBoundaryInfo = async (req, res) => {
       });
     }
 
-    // Get pending settlements
+    // Get pending settlements (recorded payments awaiting operator actions)
     const pendingSettlements = await BoundarySettlement.find({
       driver: driverId,
       status: { $in: ['pending', 'paid'] }
@@ -39,7 +39,7 @@ export const getDriverBoundaryInfo = async (req, res) => {
       confirmedAt: { $gte: thirtyDaysAgo }
     }).sort({ confirmedAt: -1 }).limit(10);
 
-    // Calculate total pending amount
+    // Calculate total pending amount (payments awaiting confirmation)
     const totalPending = pendingSettlements
       .filter(s => s.status === 'pending')
       .reduce((sum, s) => sum + s.amount, 0);
@@ -48,6 +48,46 @@ export const getDriverBoundaryInfo = async (req, res) => {
     const totalAwaitingConfirmation = pendingSettlements
       .filter(s => s.status === 'paid')
       .reduce((sum, s) => sum + s.amount, 0);
+
+    // Calculate outstanding balance based on boundary type and time elapsed
+    const boundaryAmount = tricycle.boundary?.amount || 0;
+    const settlementType = tricycle.boundary?.settlementType || 'daily';
+    let outstandingBalance = 0;
+    let daysSinceLastSettlement = 0;
+    let lastSettledDate = null;
+
+    if (boundaryAmount > 0) {
+      // Find the last confirmed or paid settlement
+      const lastSettlement = await BoundarySettlement.findOne({
+        driver: driverId,
+        tricycle: tricycle._id,
+        status: { $in: ['confirmed', 'paid'] }
+      }).sort({ periodEnd: -1, createdAt: -1 });
+
+      // Determine the reference date (last settlement or tricycle assignment)
+      const referenceDate = lastSettlement?.periodEnd || tricycle.boundary?.lastSettledAt || tricycle.createdAt;
+      lastSettledDate = referenceDate;
+
+      const now = new Date();
+      const diffTime = now - new Date(referenceDate);
+      const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+      daysSinceLastSettlement = Math.max(0, diffDays);
+
+      // Calculate outstanding based on settlement type
+      if (settlementType === 'daily') {
+        outstandingBalance = daysSinceLastSettlement * boundaryAmount;
+      } else if (settlementType === 'weekly') {
+        const weeksSinceLastSettlement = Math.floor(daysSinceLastSettlement / 7);
+        outstandingBalance = weeksSinceLastSettlement * boundaryAmount;
+      } else if (settlementType === 'monthly') {
+        // Approximate months
+        const monthsSinceLastSettlement = Math.floor(daysSinceLastSettlement / 30);
+        outstandingBalance = monthsSinceLastSettlement * boundaryAmount;
+      }
+
+      // Subtract any pending payments (not yet confirmed but already paid)
+      outstandingBalance = Math.max(0, outstandingBalance - totalAwaitingConfirmation);
+    }
 
     res.status(200).json({
       success: true,
@@ -69,7 +109,10 @@ export const getDriverBoundaryInfo = async (req, res) => {
         totalPending,
         totalAwaitingConfirmation,
         pendingCount: pendingSettlements.filter(s => s.status === 'pending').length,
-        awaitingConfirmationCount: pendingSettlements.filter(s => s.status === 'paid').length
+        awaitingConfirmationCount: pendingSettlements.filter(s => s.status === 'paid').length,
+        outstandingBalance,
+        daysSinceLastSettlement,
+        lastSettledDate
       }
     });
 

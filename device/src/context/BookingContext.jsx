@@ -48,12 +48,15 @@ const SAFE_DEFAULTS = {
   bookingRoute: null,
   isRerouting: false,
   passengerCancelledBooking: null,
+  boundaryInfo: null,
+  boundaryLoading: false,
   confirmPickup: () => {},
   completeTrip: () => {},
   cancelTrip: () => {},
   markDriverArrived: () => {},
   markNoShow: () => {},
   acknowledgeCancellation: () => {},
+  fetchBoundaryInfo: () => {},
 };
 
 export const useSafeBooking = () => {
@@ -97,6 +100,10 @@ export const BookingProvider = ({ children }) => {
   // Tricycle info
   const [assignedTricycle, setAssignedTricycle] = useState(null);
   
+  // Boundary settlement info
+  const [boundaryInfo, setBoundaryInfo] = useState(null);
+  const [boundaryLoading, setBoundaryLoading] = useState(false);
+  
   // Rerouting visual state
   const [isRerouting, setIsRerouting] = useState(false);
 
@@ -118,6 +125,24 @@ export const BookingProvider = ({ children }) => {
   const getAuthHeaders = useCallback(() => ({
     headers: { Authorization: `Bearer ${authToken}` }
   }), [authToken]);
+
+  // Fetch boundary settlement info for driver
+  const fetchBoundaryInfo = useCallback(async () => {
+    if (!authToken) return;
+    try {
+      setBoundaryLoading(true);
+      const res = await axios.get(`${BACKEND_URL}/api/boundary/driver-info`, {
+        headers: { Authorization: `Bearer ${authToken}` }
+      });
+      if (res.data.success) {
+        setBoundaryInfo(res.data);
+      }
+    } catch (err) {
+      console.warn('Error fetching boundary info:', err);
+    } finally {
+      setBoundaryLoading(false);
+    }
+  }, [authToken]);
 
   // Calculate distance between two points
   const calculateDistance = useCallback((lat1, lon1, lat2, lon2) => {
@@ -152,6 +177,18 @@ export const BookingProvider = ({ children }) => {
               }
             } catch (err) {
               console.warn('Error fetching tricycle:', err);
+            }
+            
+            // Fetch boundary settlement info
+            try {
+              const boundaryRes = await axios.get(`${BACKEND_URL}/api/boundary/driver-info`, {
+                headers: { Authorization: `Bearer ${token}` }
+              });
+              if (boundaryRes.data.success) {
+                setBoundaryInfo(boundaryRes.data);
+              }
+            } catch (err) {
+              console.warn('Error fetching boundary info:', err);
             }
             
             // Check for active booking
@@ -758,9 +795,9 @@ export const BookingProvider = ({ children }) => {
   // Refresh
   const refresh = useCallback(async () => {
     setIsRefreshing(true);
-    await Promise.all([fetchNearbyBookings(), fetchPendingOffers()]);
+    await Promise.all([fetchNearbyBookings(), fetchPendingOffers(), fetchBoundaryInfo()]);
     setIsRefreshing(false);
-  }, [fetchNearbyBookings, fetchPendingOffers]);
+  }, [fetchNearbyBookings, fetchPendingOffers, fetchBoundaryInfo]);
 
   const value = {
     // State
@@ -783,6 +820,8 @@ export const BookingProvider = ({ children }) => {
     bookingRoute,
     isRerouting,
     passengerCancelledBooking,
+    boundaryInfo,
+    boundaryLoading,
     
     // Constants
     PICKUP_RADIUS_METERS,
@@ -799,6 +838,7 @@ export const BookingProvider = ({ children }) => {
     markNoShow,
     refresh,
     fetchNearbyBookings,
+    fetchBoundaryInfo,
     resetTripState,
     acknowledgeCancellation,
   };

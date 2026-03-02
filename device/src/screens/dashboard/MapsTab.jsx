@@ -227,6 +227,7 @@ const MapsTab = () => {
               BACKEND={BACKEND}
               assignedTricycle={assignedTricycle}
               userId={user?._id || user?.id}
+              codingDayStatus={codingDayStatus}
             />
           </View>
         </View>
