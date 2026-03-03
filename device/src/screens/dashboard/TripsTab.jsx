@@ -78,6 +78,10 @@ const TripsTab = () => {
   const [settlementMethod, setSettlementMethod] = useState('cash');
   const [settlementReference, setSettlementReference] = useState('');
   const [isSettling, setIsSettling] = useState(false);
+  const [selectedDisputeId, setSelectedDisputeId] = useState(null);
+
+  // Boundary section visibility toggle
+  const [showBoundarySection, setShowBoundarySection] = useState(false);
 
   // Handle accept booking
   const handleAcceptBooking = useCallback(async (booking) => {
@@ -126,6 +130,65 @@ const TripsTab = () => {
     );
   }, []);
 
+  // Check if settlement is due (enable/disable logic)
+  const isSettlementDue = useCallback(() => {
+    if (!boundaryInfo?.hasTricycle) return false;
+    
+    const summary = boundaryInfo.summary;
+    const settlementType = boundaryInfo.tricycle?.boundary?.settlementType || 'daily';
+    
+    // If there are disputed settlements, allow re-payment
+    if (summary?.disputedCount > 0) return true;
+    
+    // If there's outstanding balance, settlement is due
+    if (summary?.outstandingBalance > 0) return true;
+    
+    // If there are pending payments awaiting confirmation, prevent new settlement
+    // until the current one is confirmed or disputed
+    if (summary?.totalAwaitingConfirmation > 0) return false;
+    
+    // Check based on settlement period
+    const daysSince = summary?.daysSinceLastSettlement || 0;
+    
+    if (settlementType === 'daily') {
+      // For daily: due if at least 1 day has passed since last settlement
+      return daysSince >= 1;
+    } else if (settlementType === 'weekly') {
+      // For weekly: due if at least 7 days have passed
+      return daysSince >= 7;
+    } else if (settlementType === 'monthly') {
+      // For monthly: due if at least 30 days have passed
+      return daysSince >= 30;
+    }
+    
+    return true;
+  }, [boundaryInfo]);
+
+  const settlementDisabledReason = useCallback(() => {
+    if (!boundaryInfo?.hasTricycle) return null;
+    
+    const summary = boundaryInfo.summary;
+    
+    if (summary?.totalAwaitingConfirmation > 0) {
+      return 'Waiting for operator to confirm your last payment';
+    }
+    
+    const settlementType = boundaryInfo.tricycle?.boundary?.settlementType || 'daily';
+    const daysSince = summary?.daysSinceLastSettlement || 0;
+    
+    if (settlementType === 'daily' && daysSince < 1) {
+      return 'Next settlement available tomorrow';
+    } else if (settlementType === 'weekly') {
+      const daysLeft = 7 - daysSince;
+      if (daysLeft > 0) return `Next settlement in ${daysLeft} day${daysLeft > 1 ? 's' : ''}`;
+    } else if (settlementType === 'monthly') {
+      const daysLeft = 30 - daysSince;
+      if (daysLeft > 0) return `Next settlement in ${daysLeft} day${daysLeft > 1 ? 's' : ''}`;
+    }
+    
+    return null;
+  }, [boundaryInfo]);
+
   // Handle boundary settlement
   const handleOpenSettlementModal = useCallback(() => {
     // Pre-fill with outstanding balance or daily boundary amount
@@ -139,6 +202,17 @@ const TripsTab = () => {
     setShowSettlementModal(true);
   }, [boundaryInfo]);
 
+  // Handle paying a disputed settlement
+  const handlePayDisputedSettlement = useCallback((disputedSettlement) => {
+    // Pre-fill with the disputed amount
+    setSettlementAmount(disputedSettlement.amount.toString());
+    setSettlementNotes(`Repayment for disputed settlement`);
+    setSettlementMethod('cash');
+    setSettlementReference('');
+    setSelectedDisputeId(disputedSettlement._id);
+    setShowSettlementModal(true);
+  }, []);
+
   const handleSettlePayment = useCallback(async () => {
     const amount = parseFloat(settlementAmount);
     if (isNaN(amount) || amount <= 0) {
@@ -148,26 +222,48 @@ const TripsTab = () => {
 
     setIsSettling(true);
     try {
-      const response = await axios.post(
-        `${API_URL}/api/boundary/settle`,
-        {
-          amount,
-          paymentMethod: settlementMethod,
-          referenceNumber: settlementReference || undefined,
-          notes: settlementNotes || undefined,
-        },
-        {
-          headers: { Authorization: `Bearer ${authToken}` }
-        }
-      );
+      let response;
+      
+      // If paying a disputed settlement, use the repay-dispute endpoint
+      if (selectedDisputeId) {
+        response = await axios.post(
+          `${API_URL}/api/boundary/repay-dispute/${selectedDisputeId}`,
+          {
+            amount,
+            paymentMethod: settlementMethod,
+            referenceNumber: settlementReference || undefined,
+            notes: settlementNotes || undefined,
+          },
+          {
+            headers: { Authorization: `Bearer ${authToken}` }
+          }
+        );
+      } else {
+        // Regular settlement
+        response = await axios.post(
+          `${API_URL}/api/boundary/settle`,
+          {
+            amount,
+            paymentMethod: settlementMethod,
+            referenceNumber: settlementReference || undefined,
+            notes: settlementNotes || undefined,
+          },
+          {
+            headers: { Authorization: `Bearer ${authToken}` }
+          }
+        );
+      }
 
       if (response.data.success) {
         Alert.alert(
           'Payment Recorded',
-          'Your boundary payment has been recorded. Awaiting operator confirmation.',
+          selectedDisputeId 
+            ? 'Your repayment has been submitted. Awaiting operator confirmation.'
+            : 'Your boundary payment has been recorded. Awaiting operator confirmation.',
           [{ text: 'OK' }]
         );
         setShowSettlementModal(false);
+        setSelectedDisputeId(null);
         // Refresh boundary info
         if (fetchBoundaryInfo) fetchBoundaryInfo();
       } else {
@@ -179,7 +275,7 @@ const TripsTab = () => {
     } finally {
       setIsSettling(false);
     }
-  }, [settlementAmount, settlementMethod, settlementReference, settlementNotes, authToken, fetchBoundaryInfo]);
+  }, [settlementAmount, settlementMethod, settlementReference, settlementNotes, authToken, fetchBoundaryInfo, selectedDisputeId]);
 
   // Handle cancel trip
   const handleCancelTrip = useCallback(() => {
@@ -241,11 +337,25 @@ const TripsTab = () => {
             </Text>
           </View>
         </View>
-        <OnlineToggle
-          isOnline={isOnline}
-          onToggle={toggleOnlineStatus}
-          disabled={!canOperate}
-        />
+        <View style={styles.headerActions}>
+          {boundaryInfo?.hasTricycle && (
+            <TouchableOpacity
+              style={[styles.boundaryToggleBtn, showBoundarySection && styles.boundaryToggleBtnActive]}
+              onPress={() => setShowBoundarySection(!showBoundarySection)}
+            >
+              <Ionicons 
+                name="wallet-outline" 
+                size={20} 
+                color={showBoundarySection ? '#fff' : colors.primary} 
+              />
+            </TouchableOpacity>
+          )}
+          <OnlineToggle
+            isOnline={isOnline}
+            onToggle={toggleOnlineStatus}
+            disabled={!canOperate}
+          />
+        </View>
       </View>
 
       {/* Active Trip Card - No map, just info + button to go to Maps */}
@@ -358,7 +468,7 @@ const TripsTab = () => {
             </View>
 
             {/* Boundary Settlement Section */}
-            {boundaryInfo?.hasTricycle && (
+            {boundaryInfo?.hasTricycle && showBoundarySection && (
               <View style={styles.section}>
                 <View style={styles.sectionHeader}>
                   <Ionicons name="wallet-outline" size={18} color={colors.primary} />
@@ -432,13 +542,22 @@ const TripsTab = () => {
                         Your operator has disputed {boundaryInfo.summary.disputedCount > 1 ? 'some' : 'a'} payment{boundaryInfo.summary.disputedCount > 1 ? 's' : ''}. Please review and re-submit.
                       </Text>
                       {boundaryInfo.disputedSettlements?.map((settlement) => (
-                        <View key={settlement._id} style={styles.disputedItem}>
-                          <Text style={styles.disputedItemAmount}>₱{settlement.amount}</Text>
-                          <Text style={styles.disputedItemReason} numberOfLines={2}>
-                            {settlement.notes?.includes('[DISPUTED]') 
-                              ? settlement.notes.split('[DISPUTED]:').pop()?.trim() 
-                              : 'No reason provided'}
-                          </Text>
+                        <View key={settlement._id} style={styles.disputedItemContainer}>
+                          <View style={styles.disputedItem}>
+                            <Text style={styles.disputedItemAmount}>₱{settlement.amount}</Text>
+                            <Text style={styles.disputedItemReason} numberOfLines={2}>
+                              {settlement.notes?.includes('[DISPUTED]') 
+                                ? settlement.notes.split('[DISPUTED]:').pop()?.trim() 
+                                : 'No reason provided'}
+                            </Text>
+                          </View>
+                          <TouchableOpacity
+                            style={styles.payDisputeBtn}
+                            onPress={() => handlePayDisputedSettlement(settlement)}
+                          >
+                            <Ionicons name="cash-outline" size={14} color="#fff" />
+                            <Text style={styles.payDisputeBtnText}>Pay Now</Text>
+                          </TouchableOpacity>
                         </View>
                       ))}
                     </View>
@@ -476,12 +595,24 @@ const TripsTab = () => {
 
                   {/* Settle Payment Button */}
                   <TouchableOpacity
-                    style={styles.settlePaymentBtn}
+                    style={[
+                      styles.settlePaymentBtn,
+                      !isSettlementDue() && styles.settlePaymentBtnDisabled
+                    ]}
                     onPress={handleOpenSettlementModal}
+                    disabled={!isSettlementDue()}
                   >
-                    <Ionicons name="cash-outline" size={20} color="#fff" />
-                    <Text style={styles.settlePaymentBtnText}>Settle Payment</Text>
+                    <Ionicons name="cash-outline" size={20} color={isSettlementDue() ? '#fff' : '#999'} />
+                    <Text style={[
+                      styles.settlePaymentBtnText,
+                      !isSettlementDue() && styles.settlePaymentBtnTextDisabled
+                    ]}>Settle Payment</Text>
                   </TouchableOpacity>
+                  
+                  {/* Disabled reason message */}
+                  {!isSettlementDue() && settlementDisabledReason() && (
+                    <Text style={styles.settlementDisabledText}>{settlementDisabledReason()}</Text>
+                  )}
                 </View>
               </View>
             )}
@@ -578,16 +709,34 @@ const TripsTab = () => {
         visible={showSettlementModal}
         transparent
         animationType="slide"
-        onRequestClose={() => setShowSettlementModal(false)}
+        onRequestClose={() => {
+          setShowSettlementModal(false);
+          setSelectedDisputeId(null);
+        }}
       >
         <View style={styles.modalOverlay}>
           <View style={styles.settlementModalContent}>
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Settle Boundary Payment</Text>
-              <TouchableOpacity onPress={() => setShowSettlementModal(false)}>
+              <Text style={styles.modalTitle}>
+                {selectedDisputeId ? 'Repay Disputed Settlement' : 'Settle Boundary Payment'}
+              </Text>
+              <TouchableOpacity onPress={() => {
+                setShowSettlementModal(false);
+                setSelectedDisputeId(null);
+              }}>
                 <Ionicons name="close" size={24} color="#666" />
               </TouchableOpacity>
             </View>
+
+            {/* Repayment indicator */}
+            {selectedDisputeId && (
+              <View style={styles.repaymentIndicator}>
+                <Ionicons name="information-circle" size={18} color="#dc3545" />
+                <Text style={styles.repaymentIndicatorText}>
+                  This payment is for a disputed settlement
+                </Text>
+              </View>
+            )}
 
             <View style={styles.settlementInfo}>
               <Text style={styles.settlementInfoLabel}>
@@ -687,7 +836,10 @@ const TripsTab = () => {
             <View style={styles.modalActions}>
               <TouchableOpacity
                 style={styles.cancelModalBtn}
-                onPress={() => setShowSettlementModal(false)}
+                onPress={() => {
+                  setShowSettlementModal(false);
+                  setSelectedDisputeId(null);
+                }}
                 disabled={isSettling}
               >
                 <Text style={styles.cancelModalBtnText}>Cancel</Text>
@@ -702,7 +854,9 @@ const TripsTab = () => {
                 ) : (
                   <>
                     <Ionicons name="checkmark-circle" size={18} color="#fff" />
-                    <Text style={styles.settleBtnText}>Record Payment</Text>
+                    <Text style={styles.settleBtnText}>
+                      {selectedDisputeId ? 'Submit Repayment' : 'Record Payment'}
+                    </Text>
                   </>
                 )}
               </TouchableOpacity>
@@ -756,6 +910,22 @@ const styles = StyleSheet.create({
     fontSize: 12,
     color: '#666',
     marginTop: 2,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  boundaryToggleBtn: {
+    padding: 8,
+    borderRadius: 8,
+    backgroundColor: '#f0f0f0',
+    borderWidth: 1,
+    borderColor: colors.primary,
+  },
+  boundaryToggleBtnActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
   },
   activeTripCard: {
     backgroundColor: '#fff',
@@ -1154,11 +1324,13 @@ const styles = StyleSheet.create({
     color: '#666',
     marginBottom: 8,
   },
+  disputedItemContainer: {
+    marginTop: 6,
+  },
   disputedItem: {
     backgroundColor: '#fff',
     padding: 10,
     borderRadius: 6,
-    marginTop: 6,
     borderLeftWidth: 3,
     borderLeftColor: '#dc3545',
   },
@@ -1172,6 +1344,22 @@ const styles = StyleSheet.create({
     color: '#666',
     fontStyle: 'italic',
     marginTop: 2,
+  },
+  payDisputeBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#dc3545',
+    paddingVertical: 8,
+    paddingHorizontal: 12,
+    borderRadius: 6,
+    marginTop: 6,
+    gap: 4,
+  },
+  payDisputeBtnText: {
+    color: '#fff',
+    fontSize: 12,
+    fontWeight: '600',
   },
   outstandingBox: {
     backgroundColor: '#fef2f2',
@@ -1219,6 +1407,19 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '700',
   },
+  settlePaymentBtnDisabled: {
+    backgroundColor: '#e0e0e0',
+  },
+  settlePaymentBtnTextDisabled: {
+    color: '#999',
+  },
+  settlementDisabledText: {
+    fontSize: 12,
+    color: '#666',
+    textAlign: 'center',
+    marginTop: 8,
+    fontStyle: 'italic',
+  },
   settlementModalContent: {
     backgroundColor: '#fff',
     borderTopLeftRadius: 20,
@@ -1231,6 +1432,20 @@ const styles = StyleSheet.create({
     padding: spacing.medium,
     borderRadius: 10,
     marginBottom: spacing.medium,
+  },
+  repaymentIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: '#fef2f2',
+    padding: spacing.small,
+    borderRadius: 8,
+    marginBottom: spacing.medium,
+    gap: 8,
+  },
+  repaymentIndicatorText: {
+    fontSize: 13,
+    color: '#dc3545',
+    fontWeight: '500',
   },
   settlementInfoLabel: {
     fontSize: 14,

@@ -6,7 +6,8 @@ import {
   getOperatorOverview,
   confirmSettlement,
   disputeSettlement,
-  getSettlementHistory
+  getSettlementHistory,
+  repayDisputedSettlement
 } from '../controllers/boundaryController.js';
 
 const router = express.Router();
@@ -17,6 +18,7 @@ router.use(protect);
 // Driver routes
 router.get('/driver-info', authorize('driver'), getDriverBoundaryInfo);
 router.post('/settle', authorize('driver'), settlePayment);
+router.post('/repay-dispute/:disputeId', authorize('driver'), repayDisputedSettlement);
 
 // Operator routes
 router.get('/operator-overview', authorize('operator'), getOperatorOverview);

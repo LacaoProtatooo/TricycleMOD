@@ -138,6 +138,7 @@ export const createTricycle = createAsyncThunk(
           model: tricycleData.model,
           status: 'unavailable',
           currentOdometer: tricycleData.currentOdometer ? parseFloat(tricycleData.currentOdometer) : 0,
+          codingDay: tricycleData.codingDay !== undefined ? tricycleData.codingDay : null,
         }),
       });
 

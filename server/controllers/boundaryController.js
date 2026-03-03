@@ -358,10 +358,29 @@ export const confirmSettlement = async (req, res) => {
       'boundary.lastSettledAt': new Date()
     });
 
+    // Resolve any disputed settlements for the same driver/tricycle
+    // When operator confirms a new payment, mark old disputed settlements as resolved
+    const resolvedDisputes = await BoundarySettlement.updateMany(
+      {
+        driver: settlement.driver,
+        tricycle: settlement.tricycle,
+        status: 'disputed',
+        _id: { $ne: settlement._id } // Don't update the current settlement
+      },
+      {
+        $set: {
+          status: 'resolved',
+          notes: (settlement.notes || '') + '\n[RESOLVED]: Resolved after new payment confirmed.',
+          updatedAt: new Date()
+        }
+      }
+    );
+
     res.status(200).json({
       success: true,
       message: 'Settlement confirmed',
-      settlement
+      settlement,
+      resolvedDisputes: resolvedDisputes.modifiedCount
     });
 
   } catch (error) {
@@ -469,6 +488,83 @@ export const getSettlementHistory = async (req, res) => {
     res.status(500).json({
       success: false,
       message: 'Failed to get history',
+      error: error.message
+    });
+  }
+};
+
+/**
+ * Driver repays a disputed settlement
+ * POST /api/boundary/repay-dispute/:disputeId
+ */
+export const repayDisputedSettlement = async (req, res) => {
+  try {
+    const driverId = req.user.id;
+    const { disputeId } = req.params;
+    const { amount, paymentMethod, referenceNumber, notes } = req.body;
+
+    // Find the disputed settlement
+    const disputedSettlement = await BoundarySettlement.findById(disputeId);
+
+    if (!disputedSettlement) {
+      return res.status(404).json({
+        success: false,
+        message: 'Disputed settlement not found'
+      });
+    }
+
+    if (disputedSettlement.driver.toString() !== driverId) {
+      return res.status(403).json({
+        success: false,
+        message: 'You can only repay your own disputed settlements'
+      });
+    }
+
+    if (disputedSettlement.status !== 'disputed') {
+      return res.status(400).json({
+        success: false,
+        message: 'This settlement is not disputed'
+      });
+    }
+
+    const paymentAmount = amount || disputedSettlement.amount;
+
+    // Create a new settlement linked to the disputed one
+    const newSettlement = new BoundarySettlement({
+      driver: driverId,
+      operator: disputedSettlement.operator,
+      tricycle: disputedSettlement.tricycle,
+      amount: paymentAmount,
+      settlementType: disputedSettlement.settlementType,
+      periodStart: disputedSettlement.periodStart,
+      periodEnd: disputedSettlement.periodEnd,
+      status: 'paid',
+      paidAt: new Date(),
+      paymentMethod: paymentMethod || 'cash',
+      referenceNumber,
+      notes: `[REPAYMENT for dispute ${disputeId}] ${notes || ''}`.trim(),
+      linkedDispute: disputeId
+    });
+
+    await newSettlement.save();
+
+    // Update the disputed settlement to mark it as being resolved
+    disputedSettlement.notes = (disputedSettlement.notes || '') + '\n[REPAYMENT SUBMITTED]: Driver submitted new payment. Awaiting operator confirmation.';
+    disputedSettlement.updatedAt = new Date();
+    await disputedSettlement.save();
+
+    res.status(201).json({
+      success: true,
+      message: 'Repayment submitted. Awaiting operator confirmation.',
+      settlement: newSettlement,
+      disputedSettlement
+    });
+
+  } catch (error) {
+    console.error('Error repaying disputed settlement:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Failed to submit repayment',
       error: error.message
     });
   }
