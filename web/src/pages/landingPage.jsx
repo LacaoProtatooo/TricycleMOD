@@ -98,7 +98,7 @@ function useReveal(threshold = 0.12) {
 
 /* ─── QR CODE SVG (dynamic pixel grid) ─── */
 function QRCode({ size = 100 }) {
-  const src = "/images/logo/WEBT-TRaC.png";
+  const src = "/images/logo/WEBTTRAC.png";
   return (
     <img
       src={src}
@@ -239,7 +239,7 @@ function QRPanel() {
             boxShadow: "0 10px 40px rgba(0,0,0,0.1)",
           }}>
             <img
-              src="/images/logo/WEBT-TRaC.png"
+              src="/images/logo/WEBTTRAC.png"
               alt="WEBT-TRaC QR"
               style={{ 
                 display: "block", 
@@ -346,7 +346,7 @@ function QRPanel() {
           }}
         >
           <img
-            src="/images/logo/WEBT-TRaC.png"
+            src="/images/logo/WEBTTRAC.png"
             alt="WEBT-TRaC QR"
             style={{ 
               display: "block", 
