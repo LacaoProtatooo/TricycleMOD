@@ -17,8 +17,10 @@ import ActivityTracker from './src/components/common/ActivityTracker';
 import { fetchUnreadAnnouncements, markAnnouncementsAsRead } from './src/redux/actions/announcementAction';
 import AnnouncementModal from './src/components/common/announcementModal';
 import ComplaintNotificationModal from './src/components/common/ComplaintNotificationModal';
+import UnassignmentNotificationModal from './src/components/common/UnassignmentNotificationModal';
 import { SweetAlertProvider } from './src/context/SweetAlertContext';
 import complaintNotifEmitter from './src/utils/complaintNotificationEvent';
+import unassignmentNotifEmitter from './src/utils/unassignmentNotificationEvent';
 
 // Suppress known react-native-maps warning about topUserLocationChange event
 // This is a known issue with react-native-maps and newer React Native versions
@@ -43,6 +45,12 @@ const AppContent = () => {
     body: '',
     data: {},
   });
+  const [unassignmentModal, setUnassignmentModal] = useState({
+    visible: false,
+    title: '',
+    body: '',
+    data: {},
+  });
   const dispatch = useDispatch();
   const db = useAsyncSQLiteContext(); // Get db from context
   const { unreadAnnouncements } = useSelector((state) => state.announcements);
@@ -63,6 +71,23 @@ const AppContent = () => {
     complaintNotifEmitter.on('show', handleComplaintNotif);
     return () => {
       complaintNotifEmitter.off('show', handleComplaintNotif);
+    };
+  }, []);
+
+  // Listen for unassignment notification events from NotificationHandler
+  useEffect(() => {
+    const handleUnassignmentNotif = ({ title, body, data }) => {
+      setUnassignmentModal({
+        visible: true,
+        title: title || '',
+        body: body || '',
+        data: data || {},
+      });
+    };
+
+    unassignmentNotifEmitter.on('show', handleUnassignmentNotif);
+    return () => {
+      unassignmentNotifEmitter.off('show', handleUnassignmentNotif);
     };
   }, []);
 
@@ -93,6 +118,10 @@ const AppContent = () => {
     setComplaintModal((prev) => ({ ...prev, visible: false }));
   };
 
+  const handleCloseUnassignmentModal = () => {
+    setUnassignmentModal((prev) => ({ ...prev, visible: false }));
+  };
+
   return (
     <>
       <PersistentLogin />
@@ -112,6 +141,13 @@ const AppContent = () => {
         notificationTitle={complaintModal.title}
         notificationBody={complaintModal.body}
         notificationData={complaintModal.data}
+      />
+      <UnassignmentNotificationModal
+        visible={unassignmentModal.visible}
+        onClose={handleCloseUnassignmentModal}
+        notificationTitle={unassignmentModal.title}
+        notificationBody={unassignmentModal.body}
+        notificationData={unassignmentModal.data}
       />
     </>
   );

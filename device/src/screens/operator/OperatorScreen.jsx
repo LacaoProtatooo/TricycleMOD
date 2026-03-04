@@ -189,34 +189,18 @@ export default function OperatorScreen({ navigation }) {
       return;
     }
 
-    if (tricycle.schedules && tricycle.schedules.length > 0) {
-      setTricycleToUnassign(tricycle);
-      setUnassignModalVisible(true);
-      return;
-    }
-
-    // Confirm for exclusive assignment
-    Alert.alert(
-      'Confirm Unassign',
-      'Are you sure you want to unassign this driver?',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Unassign',
-          style: 'destructive',
-          onPress: () => confirmUnassign(tricycle.id || tricycle._id)
-        },
-      ]
-    );
+    // Always show modal to collect reason for unassignment
+    setTricycleToUnassign(tricycle);
+    setUnassignModalVisible(true);
   };
 
-  const confirmUnassign = async (tricycleId, driverId = null) => {
+  const confirmUnassign = async (tricycleId, driverId = null, reason = '') => {
     if (!token) {
       Alert.alert('Error', 'No authentication token found');
       return;
     }
 
-    dispatch(unassignDriver({ token, BACKEND, tricycleId, driverId }));
+    dispatch(unassignDriver({ token, BACKEND, tricycleId, driverId, reason }));
     setUnassignModalVisible(false);
   };
 

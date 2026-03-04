@@ -13,6 +13,7 @@ import {
 import { logoutUser } from '../../redux/actions/authAction';
 import { useAsyncSQLiteContext } from '../../utils/asyncSQliteProvider';
 import complaintNotifEmitter from '../../utils/complaintNotificationEvent';
+import unassignmentNotifEmitter from '../../utils/unassignmentNotificationEvent';
 
 export default function NotificationHandler() {
   const [expoPushToken, setExpoPushToken] = useState('');
@@ -192,6 +193,14 @@ export default function NotificationHandler() {
           body: notification.request.content.body,
           data: notification.request.content.data || {},
         });
+      } else if (type === 'driver_unassigned') {
+        // Driver unassignment notification — show the unassignment modal
+        console.log(`🚫 Driver unassignment notification received`);
+        unassignmentNotifEmitter.emit('show', {
+          title: notification.request.content.title,
+          body: notification.request.content.body,
+          data: notification.request.content.data || {},
+        });
       }
     });
 
@@ -249,6 +258,14 @@ export default function NotificationHandler() {
           console.log('📋 Complaint notification tapped:', data.type);
           complaintNotifEmitter.emit('show', {
             type: data.type,
+            title: content.title,
+            body: content.body,
+            data: data || {},
+          });
+        } else if (data?.type === 'driver_unassigned') {
+          // Tapped an unassignment notification — show the modal
+          console.log('🚫 Unassignment notification tapped');
+          unassignmentNotifEmitter.emit('show', {
             title: content.title,
             body: content.body,
             data: data || {},

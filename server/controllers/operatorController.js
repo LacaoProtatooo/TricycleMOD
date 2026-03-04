@@ -5,6 +5,7 @@ import fs from 'fs';
 import path from 'path';
 import { spawn } from 'child_process';
 import cloudinary from '../utils/cloudinaryConfig.js';
+import { sendNotification } from '../utils/firebase.js';
 
 const resolveOcrScriptPath = () => {
   const scriptCandidates = [
@@ -523,7 +524,7 @@ export const assignDriverToTricycle = async (req, res) => {
 export const unassignDriverFromTricycle = async (req, res) => {
   try {
     const operatorId = req.user.id;
-    const { tricycleId, driverId } = req.body;
+    const { tricycleId, driverId, reason } = req.body;
 
     // User is already verified as operator by middleware
     if (!tricycleId) {
@@ -534,7 +535,11 @@ export const unassignDriverFromTricycle = async (req, res) => {
     }
 
     // Verify tricycle exists and belongs to operator
-    const tricycle = await Tricycle.findById(tricycleId);
+    const tricycle = await Tricycle.findById(tricycleId)
+      .populate('driver', 'firstname lastname FCMToken')
+      .populate('operator', 'firstname lastname')
+      .populate('schedules.driver', 'firstname lastname FCMToken');
+      
     if (!tricycle) {
       return res.status(404).json({
         success: false,
@@ -542,21 +547,40 @@ export const unassignDriverFromTricycle = async (req, res) => {
       });
     }
 
-    if (tricycle.operator.toString() !== operatorId.toString()) {
+    if (tricycle.operator._id.toString() !== operatorId.toString()) {
       return res.status(403).json({
         success: false,
         message: 'You can only unassign drivers from your own tricycles',
       });
     }
 
+    // Collect drivers to notify
+    const driversToNotify = [];
+    const operatorName = `${tricycle.operator.firstname} ${tricycle.operator.lastname}`;
+    const plateNumber = tricycle.plateNumber || tricycle.plate || 'N/A';
+
     if (driverId) {
         // Remove specific driver from schedules
         if (tricycle.schedules && tricycle.schedules.length > 0) {
-            tricycle.schedules = tricycle.schedules.filter(s => s.driver.toString() !== driverId);
+            // Find the driver being removed to notify them
+            const removedSchedule = tricycle.schedules.find(s => s.driver._id.toString() === driverId);
+            if (removedSchedule && removedSchedule.driver.FCMToken) {
+                driversToNotify.push({
+                    token: removedSchedule.driver.FCMToken,
+                    name: `${removedSchedule.driver.firstname} ${removedSchedule.driver.lastname}`,
+                });
+            }
+            tricycle.schedules = tricycle.schedules.filter(s => s.driver._id.toString() !== driverId);
         }
         
         // If this driver was the primary one, remove them
-        if (tricycle.driver && tricycle.driver.toString() === driverId) {
+        if (tricycle.driver && tricycle.driver._id.toString() === driverId) {
+            if (tricycle.driver.FCMToken) {
+                driversToNotify.push({
+                    token: tricycle.driver.FCMToken,
+                    name: `${tricycle.driver.firstname} ${tricycle.driver.lastname}`,
+                });
+            }
             tricycle.driver = null;
         }
         
@@ -565,13 +589,54 @@ export const unassignDriverFromTricycle = async (req, res) => {
             tricycle.status = 'unavailable';
         }
     } else {
-        // Unassign ALL
+        // Unassign ALL - collect all drivers to notify
+        if (tricycle.driver && tricycle.driver.FCMToken) {
+            driversToNotify.push({
+                token: tricycle.driver.FCMToken,
+                name: `${tricycle.driver.firstname} ${tricycle.driver.lastname}`,
+            });
+        }
+        if (tricycle.schedules && tricycle.schedules.length > 0) {
+            tricycle.schedules.forEach(sch => {
+                if (sch.driver && sch.driver.FCMToken) {
+                    // Avoid duplicate notifications
+                    const alreadyAdded = driversToNotify.some(d => d.token === sch.driver.FCMToken);
+                    if (!alreadyAdded) {
+                        driversToNotify.push({
+                            token: sch.driver.FCMToken,
+                            name: `${sch.driver.firstname} ${sch.driver.lastname}`,
+                        });
+                    }
+                }
+            });
+        }
         tricycle.driver = null;
         tricycle.schedules = [];
         tricycle.status = 'unavailable';
     }
 
     await tricycle.save();
+
+    // Send push notifications to all affected drivers
+    const notificationPromises = driversToNotify.map(driver => {
+      return sendNotification(
+        driver.token,
+        'Unassigned from Tricycle',
+        `You have been unassigned from tricycle ${plateNumber} by ${operatorName}`,
+        {
+          type: 'driver_unassigned',
+          operatorName,
+          plateNumber,
+          reason: reason || 'No reason provided',
+          unassignedAt: new Date().toISOString(),
+        }
+      );
+    });
+
+    // Send notifications in parallel (don't block response)
+    Promise.all(notificationPromises)
+      .then(() => console.log(`✅ Sent unassignment notifications to ${driversToNotify.length} driver(s)`))
+      .catch(err => console.error('Error sending unassignment notifications:', err));
 
     // Populate and return updated tricycle
     const updatedTricycle = await Tricycle.findById(tricycleId)

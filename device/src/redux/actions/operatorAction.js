@@ -90,9 +90,9 @@ export const assignDriver = createAsyncThunk(
 
 export const unassignDriver = createAsyncThunk(
   'operator/unassignDriver',
-  async ({ token, BACKEND, tricycleId, driverId = null }, thunkAPI) => {
+  async ({ token, BACKEND, tricycleId, driverId = null, reason = '' }, thunkAPI) => {
     try {
-      const payload = { tricycleId };
+      const payload = { tricycleId, reason };
       if (driverId) payload.driverId = driverId;
 
       const res = await fetch(`${BACKEND}/api/operator/unassign-driver`, {
