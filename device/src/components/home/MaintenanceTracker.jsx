@@ -31,6 +31,9 @@ import {
 	MAINTENANCE_CONFIG_KEY,
 } from './maintenance';
 
+// Maximum number of times a driver can defer maintenance per item
+const MAX_DEFERRALS = 3;
+
 const BACKEND = API_URL;
 
 const MaintenanceTracker = ({ tricycleId, serverHistory }) => {
@@ -496,13 +499,34 @@ const MaintenanceTracker = ({ tricycleId, serverHistory }) => {
 
 	// Handle skip/defer maintenance
 	const handleSkipMaintenance = (item) => {
-		setSkipModalItem(item);
+		// Check current defer count for this item
+		const currentDeferCount = skipReasons[item.key]?.deferCount || 0;
+		
+		if (currentDeferCount >= MAX_DEFERRALS) {
+			Alert.alert(
+				'Defer Limit Reached',
+				`You have already deferred "${item.name}" ${MAX_DEFERRALS} times. This maintenance must be completed now.\n\nPlease complete the maintenance or contact your operator for assistance.`,
+				[
+					{ text: 'Complete Now', onPress: () => handleCompleteFromOverdue(item) },
+					{ text: 'Cancel', style: 'cancel' }
+				]
+			);
+			return;
+		}
+		
+		// Pass current defer count to modal
+		setSkipModalItem({ ...item, deferCount: currentDeferCount });
 		setSkipModalVisible(true);
 	};
 
 	// Submit skip reason (from SkipReasonModal)
 	const handleSubmitSkipReason = async ({ reasonId, reason }) => {
 		if (!skipModalItem) return;
+		
+		// Calculate new defer count
+		const currentDeferCount = skipModalItem.deferCount || 0;
+		const newDeferCount = currentDeferCount + 1;
+		const remainingDefers = MAX_DEFERRALS - newDeferCount;
 		
 		const newSkipReasons = {
 			...skipReasons,
@@ -512,6 +536,7 @@ const MaintenanceTracker = ({ tricycleId, serverHistory }) => {
 				date: new Date().toISOString(),
 				daysOverdue: skipModalItem.daysOverdue,
 				kmOverdue: skipModalItem.kmOverdue,
+				deferCount: newDeferCount, // Track defer count
 			}
 		};
 		
@@ -525,16 +550,53 @@ const MaintenanceTracker = ({ tricycleId, serverHistory }) => {
 			console.warn('Error saving skip reason:', e);
 		}
 		
+		// Sync to server (will handle operator notification on 2nd+ defer)
+		if (tricycleId && db) {
+			try {
+				const token = await getToken(db);
+				await fetch(`${BACKEND}/api/maintenance/tricycle/${tricycleId}/skip`, {
+					method: 'POST',
+					headers: {
+						'Content-Type': 'application/json',
+						'Authorization': `Bearer ${token}`
+					},
+					body: JSON.stringify({
+						itemKey: skipModalItem.key,
+						itemName: skipModalItem.name,
+						reasonId,
+						reason,
+						daysOverdue: skipModalItem.daysOverdue,
+						kmOverdue: skipModalItem.kmOverdue,
+						deferCount: newDeferCount,
+					})
+				});
+			} catch (e) {
+				console.warn('Error syncing skip to server:', e);
+			}
+		}
+		
 		// Remove from overdue list
 		setOverdueItems(prev => prev.filter(i => i.key !== skipModalItem.key));
 		
 		setSkipModalVisible(false);
 		
-		Alert.alert(
-			'Acknowledged',
-			`Maintenance for "${skipModalItem.name}" has been deferred.\nReason: ${reason}\n\nPlease complete this maintenance as soon as possible.`,
-			[{ text: 'OK' }]
-		);
+		// Build alert message based on defer count
+		let alertTitle = 'Acknowledged';
+		let alertMessage = `Maintenance for "${skipModalItem.name}" has been deferred.\nReason: ${reason}`;
+		
+		if (remainingDefers === 0) {
+			alertTitle = '⚠️ Final Deferral';
+			alertMessage += `\n\n🚨 This was your last deferral for this item. You must complete this maintenance next time.`;
+		} else if (remainingDefers === 1) {
+			alertTitle = '⚠️ Warning';
+			alertMessage += `\n\n⚠️ You have 1 deferral remaining for this item. Your operator has been notified.`;
+		} else {
+			alertMessage += `\n\n📋 Deferrals remaining: ${remainingDefers}/${MAX_DEFERRALS}`;
+		}
+		
+		alertMessage += '\n\nPlease complete this maintenance as soon as possible.';
+		
+		Alert.alert(alertTitle, alertMessage, [{ text: 'OK' }]);
 		
 		setSkipModalItem(null);
 	};
@@ -1263,6 +1325,7 @@ const MaintenanceTracker = ({ tricycleId, serverHistory }) => {
 					setOverdueCheckModalVisible(true);
 				}}
 				skipReasonOptions={skipReasonOptions}
+				maxDefers={MAX_DEFERRALS}
 			/>
 
 			{/* Maintenance Completion Modal */}

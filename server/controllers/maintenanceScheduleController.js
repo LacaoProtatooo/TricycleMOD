@@ -6,6 +6,8 @@ import {
     MaintenanceSkip 
 } from "../models/maintenanceScheduleModel.js";
 import Tricycle from "../models/tricycleModel.js";
+import User from "../models/userModel.js";
+import { sendNotification } from '../utils/firebase.js';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
@@ -695,11 +697,14 @@ export const getMaintenanceStatus = async (req, res) => {
 
 // ==================== SKIP/DEFER RECORDS ====================
 
+// Maximum deferrals allowed per item
+const MAX_DEFERRALS = 3;
+
 // Record a maintenance skip/defer
 export const recordSkip = async (req, res) => {
     try {
         const { tricycleId } = req.params;
-        const { itemKey, reasonId, reason, daysOverdue, kmOverdue } = req.body;
+        const { itemKey, itemName, reasonId, reason, daysOverdue, kmOverdue, deferCount } = req.body;
         const userId = req.user?._id;
 
         const skip = await MaintenanceSkip.create({
@@ -711,6 +716,54 @@ export const recordSkip = async (req, res) => {
             kmOverdue,
             skippedBy: userId
         });
+
+        // Notify operator on 2nd or subsequent deferral
+        if (deferCount >= 2) {
+            try {
+                // Get tricycle and operator info
+                const tricycle = await Tricycle.findById(tricycleId)
+                    .populate('operator', 'FCMToken firstName lastName')
+                    .populate('drivers', 'firstName lastName')
+                    .lean();
+                
+                if (tricycle && tricycle.operator && tricycle.operator.FCMToken) {
+                    // Find the driver who deferred
+                    const driver = await User.findById(userId).select('firstName lastName').lean();
+                    const driverName = driver ? `${driver.firstName} ${driver.lastName}` : 'A driver';
+                    const remainingDefers = MAX_DEFERRALS - deferCount;
+                    
+                    // Determine notification urgency
+                    let title, body;
+                    if (deferCount >= MAX_DEFERRALS) {
+                        title = '🚨 Maintenance Defer Limit Reached';
+                        body = `${driverName} has used all ${MAX_DEFERRALS} deferrals for "${itemName || itemKey}" on ${tricycle.plateNumber}. Immediate action required.`;
+                    } else {
+                        title = '⚠️ Maintenance Deferred Again';
+                        body = `${driverName} has deferred "${itemName || itemKey}" on ${tricycle.plateNumber} (${deferCount}/${MAX_DEFERRALS}). Reason: ${reason}`;
+                    }
+                    
+                    await sendNotification(
+                        tricycle.operator.FCMToken,
+                        title,
+                        body,
+                        {
+                            type: 'maintenance_defer_alert',
+                            tricycleId: tricycleId.toString(),
+                            plateNumber: tricycle.plateNumber,
+                            itemKey,
+                            itemName: itemName || itemKey,
+                            deferCount: deferCount.toString(),
+                            remainingDefers: remainingDefers.toString(),
+                            driverName,
+                            reason
+                        }
+                    );
+                }
+            } catch (notifyError) {
+                console.error('Failed to notify operator about maintenance deferral:', notifyError);
+                // Don't fail the request just because notification failed
+            }
+        }
 
         res.status(201).json({
             success: true,

@@ -12,10 +12,16 @@ const SkipReasonModal = ({
 	onSubmit,
 	onCancel,
 	skipReasonOptions = FALLBACK_SKIP_REASON_OPTIONS, // Accept dynamic options with fallback
+	maxDefers = 3, // Maximum deferrals allowed
 }) => {
 	const [selectedReason, setSelectedReason] = useState(null);
 	const [customReason, setCustomReason] = useState('');
-
+	
+	// Calculate deferrals info
+	const currentDeferCount = item?.deferCount || 0;
+	const remainingDefers = maxDefers - currentDeferCount - 1; // -1 because this would be the next defer
+	const isLastDefer = remainingDefers === 0;
+	const isWarning = remainingDefers <= 1;
 	const handleSubmit = () => {
 		if (!selectedReason) {
 			Alert.alert('Required', 'Please select a reason for skipping maintenance.');
@@ -74,6 +80,45 @@ const SkipReasonModal = ({
 							</Text>
 						</View>
 					)}
+					
+					{/* Defer count warning banner */}
+					<View style={{
+						backgroundColor: isLastDefer ? '#DC262615' : isWarning ? '#F59E0B15' : '#3B82F615',
+						borderWidth: 1,
+						borderColor: isLastDefer ? '#DC262640' : isWarning ? '#F59E0B40' : '#3B82F640',
+						borderRadius: 10,
+						padding: 12,
+						marginBottom: 12,
+						flexDirection: 'row',
+						alignItems: 'center',
+					}}>
+						<Ionicons 
+							name={isLastDefer ? "warning" : isWarning ? "alert-circle" : "information-circle"} 
+							size={22} 
+							color={isLastDefer ? '#DC2626' : isWarning ? '#F59E0B' : '#3B82F6'} 
+							style={{ marginRight: 10 }}
+						/>
+						<View style={{ flex: 1 }}>
+							<Text style={{ 
+								fontSize: 13, 
+								fontWeight: '700', 
+								color: isLastDefer ? '#DC2626' : isWarning ? '#D97706' : '#2563EB',
+								marginBottom: 2
+							}}>
+								{isLastDefer ? '⚠️ Final Deferral' : isWarning ? 'Limited Deferrals' : 'Deferrals Available'}
+							</Text>
+							<Text style={{ 
+								fontSize: 12, 
+								color: isLastDefer ? '#991B1B' : isWarning ? '#B45309' : '#1D4ED8',
+								lineHeight: 16
+							}}>
+								{isLastDefer 
+									? 'This is your last deferral. You must complete this maintenance next time.'
+									: `${remainingDefers + 1} of ${maxDefers} deferrals remaining after this.`}
+								{isWarning && !isLastDefer && ' Your operator will be notified.'}
+							</Text>
+						</View>
+					</View>
 					
 					<Text style={styles.skipReasonLabel}>Select a reason:</Text>
 					<ScrollView style={styles.skipReasonList} showsVerticalScrollIndicator={false}>
