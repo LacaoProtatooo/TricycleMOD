@@ -33,38 +33,51 @@ const rulesDataEN = {
   },
   sections: [
     {
+      id: 0,
+      title: "PASSENGER VIOLATIONS",
+      icon: "people",
+      color: "#E11D48",
+      rules: [
+        {
+          number: 1,
+          offense: "Discourteous acts committed against passengers within the association playing route area",
+          penalties: ["Suspension 3 days", "Suspension 1 week", "Dismissal"]
+        },
+        {
+          number: 2,
+          offense: "Illegal pick-up of passengers",
+          penalties: ["Suspension 3 days", "Suspension 1 week", "Suspension 1 month or dismissal", "Dismissal"]
+        },
+      ]
+    },
+    {
       id: 1,
       title: "I. WORK AND DRIVE EFFICIENCY",
       icon: "car-sport",
       color: colors.orangeShade4,
       rules: [
         {
-          number: 1,
+          number: 3,
           offense: "Any act of insubordination",
           penalties: ["Suspension 3 days", "Suspension 1 week", "Suspension 1 month or dismissal", "Dismissal"]
         },
         {
-          number: 2,
+          number: 4,
           offense: "Illegal lining other than prescribed point",
           penalties: ["Suspension 3 days", "Suspension 1 week", "Suspension 1 month or dismissal", "Dismissal"]
         },
         {
-          number: 3,
-          offense: "Illegal pick-up of passengers",
-          penalties: ["Suspension 3 days", "Suspension 1 week", "Suspension 1 month or dismissal", "Dismissal"]
-        },
-        {
-          number: 4,
+          number: 5,
           offense: "Wearing sandos, short pants and sandals from Monday to Friday (except during rainy days when declared by the President)",
           penalties: ["Suspension 3 days", "Suspension 1 week", "Suspension 1 month or dismissal", "Dismissal"]
         },
         {
-          number: 5,
+          number: 6,
           offense: "Wearing sandos during Saturday, Sunday and Holiday",
           penalties: ["Suspension 3 days", "Suspension 1 week", "Suspension 1 month or dismissal", "Dismissal"]
         },
         {
-          number: 6,
+          number: 7,
           offense: "Wearing slippers and short pants during weekdays",
           penalties: ["Suspension 3 days", "Suspension 1 week", "Suspension 1 month or dismissal", "Dismissal"]
         },
@@ -77,12 +90,12 @@ const rulesDataEN = {
       color: colors.orangeShade6,
       rules: [
         {
-          number: 7,
+          number: 8,
           offense: "Failure and/or refusing to pay the daily dues",
           penalties: ["Suspension 1 day", "Suspension 3 days", "Suspension 1 month or dismissal", "Dismissal"]
         },
         {
-          number: 8,
+          number: 9,
           offense: "FALSE STATEMENT – Any applicant who had been accepted for membership and later found out to have fraudulent entries in order to 'influence' approval",
           penalties: ["Dismissal"]
         },
@@ -95,39 +108,34 @@ const rulesDataEN = {
       color: colors.orangeShade2,
       rules: [
         {
-          number: 9,
+          number: 10,
           offense: "Driving under the influence of liquor, drug and/or participating in any drinking spree within the WEBTTODA premises or any form of illegal gambling within the route",
           penalties: ["Suspension 1 week", "Dismissal"]
         },
         {
-          number: 10,
+          number: 11,
           offense: "Defacing and/or tearing down posters of the association from bulletin board, or adding insulting words and/or pictures or marks",
           penalties: ["Suspension 1 week", "Suspension 1 month", "Dismissal"]
         },
         {
-          number: 11,
+          number: 12,
           offense: "Fighting in the association regardless of the cause",
           penalties: ["Suspension 1 week", "Dismissal"]
         },
         {
-          number: 12,
+          number: 13,
           offense: "Attacking another member without any provocation causing bodily harm and/or injury",
           penalties: ["Suspension 1 week", "Dismissal"]
         },
         {
-          number: 13,
+          number: 14,
           offense: "Challenging any member to fight",
           penalties: ["Suspension 2 weeks", "Dismissal"]
         },
         {
-          number: 14,
+          number: 15,
           offense: "Challenging Officers and Trustees",
           penalties: ["Suspension 2 weeks or dismissal", "Dismissal"]
-        },
-        {
-          number: 15,
-          offense: "Discourteous acts committed against passengers within the association playing route area",
-          penalties: ["Suspension 3 days", "Suspension 1 week", "Dismissal"]
         },
         {
           number: 16,
@@ -287,38 +295,51 @@ const rulesDataTL = {
   },
   sections: [
     {
+      id: 0,
+      title: "PAGLABAG SA MGA PASAHERO",
+      icon: "people",
+      color: "#E11D48",
+      rules: [
+        {
+          number: 1,
+          offense: "Bastos na gawa laban sa mga pasahero sa loob ng ruta ng samahan",
+          penalties: ["Suspensyon 3 araw", "Suspensyon 1 linggo", "Pagtitiwalag"]
+        },
+        {
+          number: 2,
+          offense: "Iligal na pagsakay ng mga pasahero",
+          penalties: ["Suspensyon 3 araw", "Suspensyon 1 linggo", "Suspensyon 1 buwan o pagtitiwalag", "Pagtitiwalag"]
+        },
+      ]
+    },
+    {
       id: 1,
       title: "I. KAHUSAYAN SA TRABAHO AT PAGMAMANEHO",
       icon: "car-sport",
       color: colors.orangeShade4,
       rules: [
         {
-          number: 1,
+          number: 3,
           offense: "Anumang gawa ng pagsuway (insubordination)",
           penalties: ["Suspensyon 3 araw", "Suspensyon 1 linggo", "Suspensyon 1 buwan o pagtitiwalag", "Pagtitiwalag"]
         },
         {
-          number: 2,
+          number: 4,
           offense: "Iligal na pagpila maliban sa itinalagang punto",
           penalties: ["Suspensyon 3 araw", "Suspensyon 1 linggo", "Suspensyon 1 buwan o pagtitiwalag", "Pagtitiwalag"]
         },
         {
-          number: 3,
-          offense: "Iligal na pagsakay ng mga pasahero",
-          penalties: ["Suspensyon 3 araw", "Suspensyon 1 linggo", "Suspensyon 1 buwan o pagtitiwalag", "Pagtitiwalag"]
-        },
-        {
-          number: 4,
+          number: 5,
           offense: "Pagsusuot ng sando, short pants at tsinelas mula Lunes hanggang Biyernes (maliban kung umuulan na idineklara ng Pangulo)",
           penalties: ["Suspensyon 3 araw", "Suspensyon 1 linggo", "Suspensyon 1 buwan o pagtitiwalag", "Pagtitiwalag"]
         },
         {
-          number: 5,
+          number: 6,
           offense: "Pagsusuot ng sando tuwing Sabado, Linggo at Holiday",
           penalties: ["Suspensyon 3 araw", "Suspensyon 1 linggo", "Suspensyon 1 buwan o pagtitiwalag", "Pagtitiwalag"]
         },
         {
-          number: 6,
+          number: 7,
           offense: "Pagsusuot ng tsinelas at short pants tuwing weekdays",
           penalties: ["Suspensyon 3 araw", "Suspensyon 1 linggo", "Suspensyon 1 buwan o pagtitiwalag", "Pagtitiwalag"]
         },
@@ -331,12 +352,12 @@ const rulesDataTL = {
       color: colors.orangeShade6,
       rules: [
         {
-          number: 7,
+          number: 8,
           offense: "Pagkabigo at/o pagtanggi na magbayad ng araw-araw na dues",
           penalties: ["Suspensyon 1 araw", "Suspensyon 3 araw", "Suspensyon 1 buwan o pagtitiwalag", "Pagtitiwalag"]
         },
         {
-          number: 8,
+          number: 9,
           offense: "MALING PAHAYAG – Sinumang aplikante na tinanggap bilang miyembro at kalaunan ay natuklasang may mapanlinlang na mga entry upang 'maimpluwensyahan' ang pag-apruba",
           penalties: ["Pagtitiwalag"]
         },
@@ -349,39 +370,34 @@ const rulesDataTL = {
       color: colors.orangeShade2,
       rules: [
         {
-          number: 9,
+          number: 10,
           offense: "Pagmamaneho sa ilalim ng impluwensya ng alak, droga at/o pagsali sa anumang inuman sa loob ng WEBTTODA premises o anumang uri ng iligal na sugal sa ruta",
           penalties: ["Suspensyon 1 linggo", "Pagtitiwalag"]
         },
         {
-          number: 10,
+          number: 11,
           offense: "Pagpunit at/o pagbura ng mga poster ng samahan mula sa bulletin board, o pagdagdag ng nakakainsultong salita at/o larawan o marka",
           penalties: ["Suspensyon 1 linggo", "Suspensyon 1 buwan", "Pagtitiwalag"]
         },
         {
-          number: 11,
+          number: 12,
           offense: "Pag-aaway sa loob ng samahan anuman ang dahilan",
           penalties: ["Suspensyon 1 linggo", "Pagtitiwalag"]
         },
         {
-          number: 12,
+          number: 13,
           offense: "Pag-atake sa kapwa miyembro nang walang probokasyon na nagdudulot ng pinsala sa katawan",
           penalties: ["Suspensyon 1 linggo", "Pagtitiwalag"]
         },
         {
-          number: 13,
+          number: 14,
           offense: "Paghamon sa sinumang miyembro na makipag-away",
           penalties: ["Suspensyon 2 linggo", "Pagtitiwalag"]
         },
         {
-          number: 14,
+          number: 15,
           offense: "Paghamon sa mga Opisyal at Trustees",
           penalties: ["Suspensyon 2 linggo o pagtitiwalag", "Pagtitiwalag"]
-        },
-        {
-          number: 15,
-          offense: "Bastos na gawa laban sa mga pasahero sa loob ng ruta ng samahan",
-          penalties: ["Suspensyon 3 araw", "Suspensyon 1 linggo", "Pagtitiwalag"]
         },
         {
           number: 16,
