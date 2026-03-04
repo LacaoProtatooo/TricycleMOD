@@ -179,11 +179,26 @@ const DashboardTab = () => {
         {/* NEW: Weather for today + following hours */}
         <WeatherWidget />
 
-        {/* Maintenance tracker */}
-        <MaintenanceTracker 
-            tricycleId={assignedTricycle?._id} 
-            serverHistory={assignedTricycle?.maintenanceHistory}
-        />
+        {/* Maintenance tracker - only show if tricycle is assigned */}
+        {assignedTricycle ? (
+            <MaintenanceTracker 
+                tricycleId={assignedTricycle._id} 
+                serverHistory={assignedTricycle.maintenanceHistory}
+            />
+        ) : (
+            <View style={styles.noTricycleContainer}>
+                <View style={styles.noTricycleIconContainer}>
+                    <Ionicons name="construct-outline" size={48} color={colors.orangeShade4} />
+                </View>
+                <Text style={styles.noTricycleTitle}>Maintenance Tracker</Text>
+                <Text style={styles.noTricycleMessage}>
+                    To access the maintenance tracker, you need to be assigned to a tricycle.
+                </Text>
+                <Text style={styles.noTricycleHint}>
+                    Please contact your operator to get assigned.
+                </Text>
+            </View>
+        )}
 
       </ScrollView>
     </SafeAreaView>
@@ -258,5 +273,44 @@ const styles = StyleSheet.create({
   codingDayText: {
     fontSize: 13,
     lineHeight: 18,
+  },
+  // No Tricycle Assigned Container
+  noTricycleContainer: {
+    backgroundColor: colors.ivory2,
+    borderRadius: 16,
+    padding: spacing.large,
+    marginTop: spacing.medium,
+    alignItems: 'center',
+    borderWidth: 1,
+    borderColor: colors.ivory3,
+    borderStyle: 'dashed',
+  },
+  noTricycleIconContainer: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: colors.ivory3,
+    justifyContent: 'center',
+    alignItems: 'center',
+    marginBottom: spacing.medium,
+  },
+  noTricycleTitle: {
+    fontSize: 18,
+    fontWeight: '700',
+    color: colors.orangeShade6,
+    marginBottom: spacing.small,
+  },
+  noTricycleMessage: {
+    fontSize: 14,
+    color: colors.orangeShade5,
+    textAlign: 'center',
+    lineHeight: 20,
+    marginBottom: spacing.small,
+  },
+  noTricycleHint: {
+    fontSize: 12,
+    color: colors.orangeShade4,
+    textAlign: 'center',
+    fontStyle: 'italic',
   },
 });
