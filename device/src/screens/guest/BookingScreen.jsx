@@ -476,6 +476,7 @@ const BookingScreen = ({ navigation }) => {
         case 'completed':
           setBookingStatus(BOOKING_STATUS.TRIP_COMPLETED);
           setShowCompletionModal(false);
+          setSelectedRating(5); // Default to 5 stars
           setShowRatingModal(true);
           break;
         case 'cancelled':
@@ -1075,6 +1076,7 @@ const BookingScreen = ({ navigation }) => {
         
         // Show rating modal directly
         setBookingStatus(BOOKING_STATUS.TRIP_COMPLETED);
+        setSelectedRating(5); // Default to 5 stars
         setShowRatingModal(true);
         
         Alert.alert('Trip Confirmed', 'Thank you for confirming! Please rate your driver.');

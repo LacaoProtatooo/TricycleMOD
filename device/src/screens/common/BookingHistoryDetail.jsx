@@ -716,12 +716,12 @@ const BookingHistoryDetail = ({ navigation, route }) => {
               <Text style={[styles.cardTitle, { color: '#dc3545' }]}>Report an Issue</Text>
             </View>
             <Text style={styles.ratePromptText}>
-              Had a problem with this trip? You can report issues within 7 days of completion.
+              Had a problem with this trip? You can report issues within 7 working days of completion.
             </Text>
             <View style={styles.reportTimeWarning}>
               <Ionicons name="time-outline" size={16} color="#856404" />
               <Text style={styles.reportTimeText}>
-                {getDaysLeftToReport()} day{getDaysLeftToReport() !== 1 ? 's' : ''} left to report
+                {getDaysLeftToReport()} working day{getDaysLeftToReport() !== 1 ? 's' : ''} left to report
               </Text>
             </View>
             <TouchableOpacity
