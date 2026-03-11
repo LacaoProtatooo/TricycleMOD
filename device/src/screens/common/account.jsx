@@ -495,7 +495,7 @@ const Account = () => {
                 <Text style={styles.usernameText}>@{username}</Text>
                 <View style={styles.roleContainer}>
                   <Ionicons 
-                    name={role === 'driver' ? 'bicycle' : 'briefcase'} 
+                    name={role === 'driver' || role === 'driOps' ? 'bicycle' : 'briefcase'} 
                     size={16} 
                     color={colors.orangeShade5} 
                   />
@@ -507,7 +507,7 @@ const Account = () => {
         </View>
 
         {/* Rating Section - Display Only for drivers */}
-        {!isEditing && role === 'driver' && (
+        {!isEditing && (role === 'driver' || role === 'driOps') && (
           <Card style={styles.ratingCard}>
             <Card.Content>
               <View style={styles.ratingContainer}>
@@ -528,7 +528,7 @@ const Account = () => {
         )}
 
         {/* License Section */}
-        {!isEditing && role === 'driver' && (
+        {!isEditing && (role === 'driver' || role === 'driOps') && (
           <Card style={styles.contentCard}>
             <Card.Content>
               <View style={styles.sectionHeader}>

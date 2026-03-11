@@ -8,7 +8,7 @@ export const operatorOnly = async (req, res, next) => {
       });
     }
 
-    if (req.user.role !== 'operator') {
+    if (req.user.role !== 'operator' && req.user.role !== 'driOps') {
       return res.status(403).json({
         success: false,
         message: 'Only operators can access this resource',

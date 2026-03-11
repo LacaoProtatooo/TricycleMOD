@@ -37,7 +37,7 @@ export const suspendDriver = async (req, res) => {
     }
 
     // Only drivers can be suspended
-    if (targetUser.role !== 'driver') {
+    if (targetUser.role !== 'driver' && targetUser.role !== 'driOps') {
       return res.status(400).json({
         success: false,
         message: 'Only drivers can be suspended',
@@ -218,7 +218,7 @@ export const changeUserRole = async (req, res) => {
     const adminUser = req.user;
 
     // Validate new role
-    const allowedRoles = ['guest', 'driver', 'operator'];
+    const allowedRoles = ['guest', 'driver', 'operator', 'driOps'];
     if (!allowedRoles.includes(newRole)) {
       return res.status(400).json({
         success: false,

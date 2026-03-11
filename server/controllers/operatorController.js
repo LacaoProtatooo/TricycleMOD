@@ -436,7 +436,7 @@ export const assignDriverToTricycle = async (req, res) => {
       });
     }
 
-    if (driver.role !== 'driver') {
+    if (driver.role !== 'driver' && driver.role !== 'driOps') {
       return res.status(400).json({
         success: false,
         message: 'User is not a driver',
@@ -674,7 +674,7 @@ export const getDriverDetails = async (req, res) => {
       });
     }
 
-    if (driver.role !== 'driver') {
+    if (driver.role !== 'driver' && driver.role !== 'driOps') {
       return res.status(400).json({
         success: false,
         message: 'User is not a driver',

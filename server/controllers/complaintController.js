@@ -1688,7 +1688,7 @@ export const getDriverComplaintSummary = async (req, res) => {
     const { driverId } = req.params;
     
     // If operator, verify they own this driver
-    if (req.user.role === 'operator') {
+    if (req.user.role === 'operator' || req.user.role === 'driOps') {
       const tricycles = await Tricycle.find({ operator: req.user._id }).select('driver');
       const driverIds = tricycles.map(t => t.driver?.toString()).filter(Boolean);
       

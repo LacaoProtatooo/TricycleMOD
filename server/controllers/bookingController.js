@@ -228,7 +228,8 @@ export const getBookingDetails = async (req, res) => {
       booking.user._id.toString() === req.user._id.toString() ||
       (booking.driver && booking.driver._id.toString() === req.user._id.toString()) ||
       req.user.role === 'admin' ||
-      req.user.role === 'operator';
+      req.user.role === 'operator' ||
+      req.user.role === 'driOps';
 
     if (!isAuthorized) {
       return res.status(403).json({

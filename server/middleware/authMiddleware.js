@@ -51,6 +51,12 @@ export const authUser = async (req, res, next) => {
 // Alias for authUser - commonly used name for protecting routes
 export const protect = authUser;
 
+// driOps role can act as both driver and operator
+const expandRole = (role) => {
+  if (role === 'driOps') return ['driver', 'operator', 'driOps'];
+  return [role];
+};
+
 // Role-based authorization middleware
 export const authorize = (...roles) => {
   return (req, res, next) => {
@@ -61,7 +67,8 @@ export const authorize = (...roles) => {
       });
     }
     
-    if (!roles.includes(req.user.role)) {
+    const effectiveRoles = expandRole(req.user.role);
+    if (!roles.some(role => effectiveRoles.includes(role))) {
       return res.status(403).json({ 
         success: false, 
         message: `Role '${req.user.role}' is not authorized to access this resource` 
@@ -88,7 +95,7 @@ export const adminOnly = async (req, res, next) => {
     req.user = await User.findById(decoded.id).select('-password');
 
     // Check if user is an operator (admin) based on role
-    if (req.user && (req.user.role === 'operator' || req.user.role === 'admin')) {
+    if (req.user && (req.user.role === 'operator' || req.user.role === 'admin' || req.user.role === 'driOps')) {
       return next();
     } else {
       return res.status(403).json({ success: false, message: 'Not authorized as an admin' });
@@ -117,7 +124,7 @@ export const operatorAndAdmin = async (req, res, next) => {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
     req.user = await User.findById(decoded.id).select('-password');
     // Check if user is an operator or admin based on role
-    if (req.user && (req.user.role === 'operator' || req.user.role === 'admin')) {
+    if (req.user && (req.user.role === 'operator' || req.user.role === 'admin' || req.user.role === 'driOps')) {
       return next();
     } else {
       return res.status(403).json({ success: false, message: 'Not authorized as an operator or admin' });
@@ -224,7 +231,7 @@ export const requireDriverLicense = async (req, res, next) => {
     });
   }
 
-  if (req.user.role !== 'driver') {
+  if (req.user.role !== 'driver' && req.user.role !== 'driOps') {
     return res.status(403).json({
       success: false,
       message: 'This endpoint is for drivers only',

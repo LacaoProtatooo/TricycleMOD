@@ -542,7 +542,7 @@ export const getDriverDetails = async (req, res) => {
         const { driverId } = req.params;
 
         const driver = await User.findById(driverId).select('-password').lean();
-        if (!driver || driver.role !== 'driver') {
+        if (!driver || (driver.role !== 'driver' && driver.role !== 'driOps')) {
             return res.status(404).json({ success: false, message: "Driver not found" });
         }
 

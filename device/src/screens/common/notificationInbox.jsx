@@ -46,7 +46,7 @@ const NotificationInbox = ({ navigation }) => {
   }, [filter, db]);
 
   useEffect(() => {
-    if (currentUser?.role === 'driver' && db) {
+    if ((currentUser?.role === 'driver' || currentUser?.role === 'driOps') && db) {
       fetchLicenseData();
     }
   }, [currentUser, db]);
@@ -95,7 +95,7 @@ const NotificationInbox = ({ navigation }) => {
     }
     
     // Check license for drivers only
-    if (currentUser.role === 'driver') {
+    if (currentUser.role === 'driver' || currentUser.role === 'driOps') {
       if (!licenseData && !dismissedNotices.includes('license_missing')) {
         notices.push({
           _id: 'system_license_missing',
@@ -179,7 +179,7 @@ const NotificationInbox = ({ navigation }) => {
   const loadInbox = async () => {
     if (!db) return;
     await dispatch(fetchInbox(db, filter));
-    if (currentUser?.role === 'driver') {
+    if (currentUser?.role === 'driver' || currentUser?.role === 'driOps') {
       await fetchLicenseData();
     }
   };

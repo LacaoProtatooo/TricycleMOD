@@ -224,6 +224,8 @@ export default function Users() {
         return 'bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-400';
       case 'operator':
         return 'bg-purple-100 text-purple-800 dark:bg-purple-900/30 dark:text-purple-400';
+      case 'driOps':
+        return 'bg-cyan-100 text-cyan-800 dark:bg-cyan-900/30 dark:text-cyan-400';
       case 'guest':
         return 'bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-400';
       case 'admin':
@@ -319,6 +321,7 @@ export default function Users() {
             <option value="guest">Guests</option>
             <option value="driver">Drivers</option>
             <option value="operator">Operators</option>
+            <option value="driOps">DriOps</option>
           </select>
 
           {/* Status Filter */}
@@ -849,7 +852,7 @@ export default function Users() {
 
                   {/* Role Selection */}
                   <div className="flex gap-3 mb-6">
-                    {['guest', 'driver', 'operator'].map((role) => (
+                    {['guest', 'driver', 'operator', 'driOps'].map((role) => (
                       <button
                         key={role}
                         onClick={() => setSelectedNewRole(role)}

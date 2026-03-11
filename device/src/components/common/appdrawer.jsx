@@ -18,7 +18,7 @@ const AppDrawer = ({ closeDrawer, navigation }) => {
   const insets = useSafeAreaInsets();
 
   // Check if driver is suspended
-  const isDriverSuspended = user && user.role === 'driver' && user.isSuspended && 
+  const isDriverSuspended = user && (user.role === 'driver' || user.role === 'driOps') && user.isSuspended && 
     user.suspendedUntil && new Date(user.suspendedUntil) > new Date();
 
   // Refresh user data every time the drawer is focused
@@ -246,8 +246,8 @@ const AppDrawer = ({ closeDrawer, navigation }) => {
                     }}
                   />
   
-                  {/* Only show Operator for operators */}
-                  {user.role === 'operator' && (
+                  {/* Only show Operator for operators and driOps */}
+                  {(user.role === 'operator' || user.role === 'driOps') && (
                     <>
                       <DrawerItem
                         icon={({ focused }) => renderIcon('settings-outline', focused)}
@@ -289,17 +289,20 @@ const AppDrawer = ({ closeDrawer, navigation }) => {
                     />
                   )}
 
-                  <DrawerItem
-                    icon={({ focused }) => renderIcon('alert-circle-outline', focused)}
-                    label={() => renderLabel('About')}
-                    activeBackgroundColor={`${colors.ivory4}CC`}
-                    activeTintColor={colors.primary}
-                    inactiveTintColor={colors.orangeShade8}
-                    onPress={() => {
-                      navigateSafe('About');
-                      closeDrawer();
-                    }}
-                  />
+                  {/* Hide About for driOps to keep drawer compact */}
+                  {user.role !== 'driOps' && (
+                    <DrawerItem
+                      icon={({ focused }) => renderIcon('alert-circle-outline', focused)}
+                      label={() => renderLabel('About')}
+                      activeBackgroundColor={`${colors.ivory4}CC`}
+                      activeTintColor={colors.primary}
+                      inactiveTintColor={colors.orangeShade8}
+                      onPress={() => {
+                        navigateSafe('About');
+                        closeDrawer();
+                      }}
+                    />
+                  )}
 
                   {/* Hide Lost & Found for suspended drivers */}
                   {!isDriverSuspended && (
@@ -317,7 +320,7 @@ const AppDrawer = ({ closeDrawer, navigation }) => {
                   )}
 
                   {/* Rules & Regulations - visible to drivers and operators */}
-                  {(user.role === 'driver' || user.role === 'operator') && (
+                  {(user.role === 'driver' || user.role === 'operator' || user.role === 'driOps') && (
                     <DrawerItem
                       icon={({ focused }) => renderIcon('document-text-outline', focused)}
                       label={() => renderLabel('Rules & Regulations')}

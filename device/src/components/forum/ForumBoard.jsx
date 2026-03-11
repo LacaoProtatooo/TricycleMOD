@@ -50,6 +50,8 @@ const RoleBadge = ({ role }) => {
         return { bg: '#8B5CF6', text: 'Operator' };
       case 'driver':
         return { bg: '#3B82F6', text: 'Driver' };
+      case 'driops':
+        return { bg: '#0EA5E9', text: 'DriOps' };
       case 'admin':
         return { bg: '#EF4444', text: 'Admin' };
       default:

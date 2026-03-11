@@ -557,7 +557,7 @@ export const recordMaintenance = async (req, res) => {
 
         // Determine approval status based on who submits
         // Operators can directly approve, drivers need operator approval
-        const isOperator = userRole === 'operator';
+        const isOperator = userRole === 'operator' || userRole === 'driOps';
         const approvalStatus = isOperator ? 'approved' : 'pending';
         const submittedByRole = isOperator ? 'operator' : 'driver';
 

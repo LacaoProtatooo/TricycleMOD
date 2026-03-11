@@ -174,7 +174,7 @@ export const getSickLeaveById = async (req, res) => {
         }
 
         // If the user is an operator, check if the driver is assigned to them
-        if (userRole === 'operator') {
+        if (userRole === 'operator' || userRole === 'driOps') {
             const tricycles = await Tricycle.find({ operator: userId });
             const driverIds = new Set();
             tricycles.forEach(t => {

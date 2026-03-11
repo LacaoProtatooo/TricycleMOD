@@ -451,7 +451,9 @@ export const getSettlementHistory = async (req, res) => {
     const { page = 1, limit = 20 } = req.query;
 
     let query = {};
-    if (user.role === 'driver') {
+    if (user.role === 'driOps') {
+      query.$or = [{ driver: userId }, { operator: userId }];
+    } else if (user.role === 'driver') {
       query.driver = userId;
     } else if (user.role === 'operator') {
       query.operator = userId;

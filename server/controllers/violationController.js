@@ -268,7 +268,7 @@ export const createViolation = async (req, res) => {
     
     // Validate driver
     const driver = await User.findById(driverId);
-    if (!driver || driver.role !== 'driver') {
+    if (!driver || (driver.role !== 'driver' && driver.role !== 'driOps')) {
       return res.status(404).json({
         success: false,
         message: 'Driver not found',
@@ -856,7 +856,7 @@ export const getMyViolations = async (req, res) => {
     const { page = 1, limit = 20, status } = req.query;
     
     // Verify user is a driver
-    if (req.user.role !== 'driver') {
+    if (req.user.role !== 'driver' && req.user.role !== 'driOps') {
       return res.status(403).json({
         success: false,
         message: 'Only drivers can access their violations',
@@ -917,7 +917,7 @@ export const submitAppeal = async (req, res) => {
     const driverId = req.user._id;
     
     // Verify user is a driver
-    if (req.user.role !== 'driver') {
+    if (req.user.role !== 'driver' && req.user.role !== 'driOps') {
       return res.status(403).json({
         success: false,
         message: 'Only drivers can submit appeals',

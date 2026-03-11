@@ -168,7 +168,7 @@ export const login = async (req, res) => {
 
       res.status(200).json({
         success: true,
-        message: user.role === 'operator' ? 'Logged in successfully as operator' : 'Logged in successfully as driver',
+        message: (user.role === 'operator' || user.role === 'driOps') ? 'Logged in successfully as operator' : 'Logged in successfully as driver',
         token,
         user: { ...user._doc, password: undefined },
       });

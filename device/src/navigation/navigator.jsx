@@ -49,7 +49,7 @@ const Navigator = () => {
   const insets = useSafeAreaInsets();
 
   // Check if user is suspended driver
-  const isDriverSuspended = user && user.role === 'driver' && user.isSuspended && 
+  const isDriverSuspended = user && (user.role === 'driver' || user.role === 'driOps') && user.isSuspended && 
     user.suspendedUntil && new Date(user.suspendedUntil) > new Date();
 
   // Determine initial route
@@ -57,6 +57,7 @@ const Navigator = () => {
     if (!user) return 'Login';
     if (isDriverSuspended) return 'Suspended';
     if (user.role === 'operator') return 'OperatorScreen';
+    if (user.role === 'driOps') return 'Home';
     return 'Home';
   };
 

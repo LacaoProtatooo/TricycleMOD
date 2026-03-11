@@ -36,7 +36,7 @@ const NotificationBell = () => {
   }, [db, dispatch]);
 
   useEffect(() => {
-    if (currentUser?.role === 'driver' && db) {
+    if ((currentUser?.role === 'driver' || currentUser?.role === 'driOps') && db) {
       fetchLicenseData();
     }
   }, [currentUser, db]);
@@ -69,7 +69,7 @@ const NotificationBell = () => {
     }
     
     // Check license for drivers
-    if (currentUser.role === 'driver') {
+    if (currentUser.role === 'driver' || currentUser.role === 'driOps') {
       if (!licenseData) {
         count++;
       } else if (!licenseData.isVerified) {

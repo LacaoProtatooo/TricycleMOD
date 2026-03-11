@@ -385,7 +385,8 @@ export const getAnnouncementById = async (req, res) => {
     const canAccess = announcement.targetAudience === 'all' || 
                       announcement.targetAudience === userRole ||
                       userRole === 'admin' ||
-                      userRole === 'operator';
+                      userRole === 'operator' ||
+                      userRole === 'driOps';
 
     if (!canAccess) {
       return res.status(403).json({

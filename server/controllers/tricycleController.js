@@ -190,7 +190,13 @@ export const getTricycles = async (req, res) => {
     if (status) query.status = status;
 
     // If user is authenticated and is an operator, only show their tricycles
-    if (req.user && req.user.role === 'operator') {
+    if (req.user && req.user.role === 'driOps') {
+      query.$or = [
+        { operator: req.user.id },
+        { driver: req.user.id },
+        { 'schedules.driver': req.user.id }
+      ];
+    } else if (req.user && req.user.role === 'operator') {
       query.operator = req.user.id;
     } else if (req.user && req.user.role === 'driver') {
       query.$or = [
@@ -304,7 +310,7 @@ export const createTricycle = async (req, res) => {
     }
 
     // If user is authenticated, verify they are an operator
-    if (req.user && req.user.role !== 'operator') {
+    if (req.user && req.user.role !== 'operator' && req.user.role !== 'driOps') {
       return res.status(403).json({
         success: false,
         message: "Only operators can create tricycles",
@@ -373,7 +379,7 @@ export const updateTricycle = async (req, res) => {
     }
 
     // If user is authenticated and is an operator, verify ownership
-    if (req.user && req.user.role === 'operator') {
+    if (req.user && (req.user.role === 'operator' || req.user.role === 'driOps')) {
       if (tricycle.operator.toString() !== req.user.id.toString()) {
         return res.status(403).json({
           success: false,
@@ -434,7 +440,7 @@ export const updateTricycle = async (req, res) => {
       bodyNumber: bodyNumber || tricycle.bodyNumber,
       model: model || tricycle.model,
       // Operators cannot change the operator field - it's always their own
-      operator: (req.user && req.user.role === 'operator') ? req.user.id : (operator || tricycle.operator),
+      operator: (req.user && (req.user.role === 'operator' || req.user.role === 'driOps')) ? req.user.id : (operator || tricycle.operator),
       driver: driver || tricycle.driver,
       status: status || tricycle.status,
       codingDay: codingDayValue,
@@ -467,7 +473,7 @@ export const deleteTricycle = async (req, res) => {
       return res.status(404).json({ success: false, message: "Tricycle not found" });
 
     // If user is authenticated and is an operator, verify ownership
-    if (req.user && req.user.role === 'operator') {
+    if (req.user && (req.user.role === 'operator' || req.user.role === 'driOps')) {
       if (tricycle.operator.toString() !== req.user.id.toString()) {
         return res.status(403).json({
           success: false,
@@ -630,7 +636,7 @@ export const assignDriver = async (req, res) => {
     }
 
     // Verify operator ownership
-    if (req.user && req.user.role === 'operator' && tricycle.operator.toString() !== req.user.id) {
+    if (req.user && (req.user.role === 'operator' || req.user.role === 'driOps') && tricycle.operator.toString() !== req.user.id) {
       return res.status(403).json({ success: false, message: "Not authorized" });
     }
 
@@ -679,7 +685,7 @@ export const updateSchedule = async (req, res) => {
     }
 
     // Verify operator ownership
-    if (req.user && req.user.role === 'operator' && tricycle.operator.toString() !== req.user.id) {
+    if (req.user && (req.user.role === 'operator' || req.user.role === 'driOps') && tricycle.operator.toString() !== req.user.id) {
       return res.status(403).json({ success: false, message: "Not authorized" });
     }
 
@@ -836,7 +842,7 @@ export const updateTricycleDocuments = async (req, res) => {
     }
 
     // Verify operator ownership
-    if (req.user && req.user.role === 'operator') {
+    if (req.user && (req.user.role === 'operator' || req.user.role === 'driOps')) {
       if (tricycle.operator.toString() !== req.user.id.toString()) {
         return res.status(403).json({
           success: false,

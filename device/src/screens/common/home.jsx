@@ -91,7 +91,7 @@ const Home = () => {
           }}
         />
         {/* Driver Booking Tab - Only for drivers */}
-        {currentUser?.role === 'driver' && (
+        {(currentUser?.role === 'driver' || currentUser?.role === 'driOps') && (
           <Tab.Screen
             name="Trips"
             component={TripsTab}
@@ -104,7 +104,7 @@ const Home = () => {
           />
         )}
         {/* Leaderboard Tab - Only for drivers */}
-        {currentUser?.role === 'driver' && (
+        {(currentUser?.role === 'driver' || currentUser?.role === 'driOps') && (
           <Tab.Screen
             name="Leaderboard"
             component={LeaderboardTab}
@@ -139,7 +139,7 @@ const Home = () => {
   );
 
   // For drivers, wrap with BookingProvider to share state between Trips and Maps
-  if (currentUser?.role === 'driver') {
+  if (currentUser?.role === 'driver' || currentUser?.role === 'driOps') {
     return <BookingProvider>{tabNavigator}</BookingProvider>;
   }
 
